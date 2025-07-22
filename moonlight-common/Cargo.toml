@@ -1,0 +1,12 @@
+[package]
+name = "moonlight-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+moonlight-common-sys = { workspace = true }
+
+thiserror = "2.0.12"
+
+[lints]
+workspace = true

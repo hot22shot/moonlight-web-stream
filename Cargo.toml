@@ -1,0 +1,10 @@
+[workspace]
+resolver = "3"
+members = [ "moonlight-client-simple","moonlight-common", "moonlight-common-sys"]
+
+[workspace.dependencies]
+moonlight-common = { path = "./moonlight-common" }
+moonlight-common-sys = { path = "./moonlight-common-sys" }
+
+[workspace.lints.clippy]
+too_many_arguments = "allow"
