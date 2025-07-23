@@ -1,16 +1,23 @@
 use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc};
 
 use moonlight_common_sys::{
-    _SERVER_INFORMATION, _STREAM_CONFIGURATION, LI_ERR_UNSUPPORTED, LI_ROT_UNKNOWN,
-    LiGetEstimatedRttInfo, LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent,
-    LiSendMousePositionEvent, LiSendTouchEvent, LiStartConnection, LiStopConnection,
-    PSERVER_INFORMATION, PSTREAM_CONFIGURATION,
+    _SERVER_INFORMATION, _STREAM_CONFIGURATION, LI_ERR_UNSUPPORTED, LI_FF_CONTROLLER_TOUCH_EVENTS,
+    LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
+    LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
+    LiSendTouchEvent, LiStartConnection, LiStopConnection, PSERVER_INFORMATION,
+    PSTREAM_CONFIGURATION,
 };
 
 use crate::{
     Error, Handle,
     data::{ServerInfo, StreamConfiguration, TouchEventType},
 };
+
+#[derive(Debug, Clone)]
+pub struct HostFeatures {
+    pub pen_touch_events: bool,
+    pub controller_touch_events: bool,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct EstimatedRttInfo {
@@ -89,6 +96,18 @@ impl MoonlightConnection {
         }
     }
 
+    pub fn host_features(&self) -> HostFeatures {
+        let features = unsafe { LiGetHostFeatureFlags() };
+
+        let pen_touch_events = (features & LI_FF_PEN_TOUCH_EVENTS) != 0;
+        let controller_touch_events = (features & LI_FF_CONTROLLER_TOUCH_EVENTS) != 0;
+
+        HostFeatures {
+            pen_touch_events,
+            controller_touch_events,
+        }
+    }
+
     pub fn estimated_rtt_info(&self) -> Result<EstimatedRttInfo, Error> {
         // TODO: look if we're connected on fail
         unsafe {
@@ -113,7 +132,7 @@ impl MoonlightConnection {
         match error {
             0 => None,
             LI_ERR_UNSUPPORTED => Some(Error::NotSupportedOnHost),
-            _ => Some(Error::EventSent),
+            _ => Some(Error::EventSendError),
         }
     }
 

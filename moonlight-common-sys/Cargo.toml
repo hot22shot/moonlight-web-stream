@@ -3,9 +3,27 @@ name = "moonlight-common-sys"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.60.2", features = [
+    "Win32_Media",
+], optional = true }
 
 [features]
+default = [
+    "windows-symbol-fix",
+    "link-openssl",
+    "link-enet",
+    "build-moonlight_common_c",
+]
+
+# Moonlight on windows requires the symbols __imp_timeBeginPeriod and __imp_timeEndPeriod.
+# This feature will export them using the windows-sys crate
+windows-symbol-fix = ["dep:windows-sys"]
+
+link-openssl = []
+link-enet = []
+link-moonlight_common_c = []
+build-moonlight_common_c = ["link-moonlight_common_c"]
 
 [build-dependencies]
 bindgen = "0.72.0"

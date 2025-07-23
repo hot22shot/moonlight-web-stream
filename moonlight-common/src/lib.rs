@@ -19,7 +19,7 @@ pub enum Error {
     #[error("the host doesn't support this feature")]
     NotSupportedOnHost,
     #[error("an error happened whilst sending an event")]
-    EventSent,
+    EventSendError,
     #[error("this call requires a GFE version which uses ENet")]
     ENetRequired,
     #[error("a string contained a nul byte which is not allowed in c strings")]

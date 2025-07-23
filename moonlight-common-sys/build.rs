@@ -1,9 +1,18 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     generate_bindings();
 
-    compile_and_link();
+    #[allow(unused)]
+    let moonlight_output: Option<&PathBuf> = None;
+
+    #[cfg(feature = "build-moonlight_common_c")]
+    let moonlight_output = Some(compile_moonlight());
+
+    link(moonlight_output.as_deref());
 }
 
 fn generate_bindings() {
@@ -20,10 +29,47 @@ fn generate_bindings() {
         .expect("Couldn't write bindings!");
 }
 
-fn compile_and_link() {
+#[cfg(feature = "build-moonlight_common_c")]
+fn compile_moonlight() -> PathBuf {
     // builds into $OUT_DIR
-    let dst = cmake::Config::new("wrapper").profile("Release").build();
+    cmake::Config::new("moonlight-common-c")
+        .define("BUILD_SHARED_LIBS", "OFF")
+        .profile("Release")
+        .build()
+}
 
-    println!("cargo:rustc-link-search=native={}", dst.display());
-    println!("cargo:rustc-link-lib=static=wrapper");
+fn link(moonlight_path: Option<&Path>) {
+    // OpenSSL, crypto
+    #[cfg(feature = "link-openssl")]
+    {
+        println!(
+            "cargo:rustc-link-search=native={}",
+            env::var("OPENSSL_LIB_DIR").unwrap()
+        );
+        println!("cargo:rustc-link-lib=static=libcrypto");
+    }
+
+    // ENet
+    #[cfg(feature = "link-enet")]
+    {
+        if let Some(path) = moonlight_path {
+            println!(
+                "cargo:rustc-link-search=native={}/build/enet/Release",
+                path.display()
+            );
+        }
+        println!("cargo:rustc-link-lib=static=enet");
+    }
+
+    // Moonlight
+    #[cfg(feature = "link-moonlight_common_c")]
+    {
+        println!(
+            "cargo:rustc-link-search=native={}/build/Release",
+            moonlight_path
+                .expect("moonlight build output path")
+                .display()
+        );
+        println!("cargo:rustc-link-lib=static=moonlight-common-c");
+    }
 }
