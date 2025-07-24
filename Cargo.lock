@@ -773,7 +773,6 @@ dependencies = [
  "form_urlencoded",
  "hex",
  "moonlight-common-sys",
- "rand",
  "reqwest",
  "roxmltree",
  "sha1",

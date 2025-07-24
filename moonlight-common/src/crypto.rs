@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
+use moonlight_common_sys::crypto::{
+    PPLT_CRYPTO_CONTEXT, PltCreateCryptoContext, PltDestroyCryptoContext, PltGenerateRandomData,
+};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 
 use crate::{
-    Handle,
+    Handle, MoonlightInstance,
     host::{
         network::ServerVersion,
         pair::{PairPin, SALT_LENGTH},
@@ -13,22 +16,70 @@ use crate::{
 
 #[derive(Clone)]
 pub(crate) struct CryptoHandle {
+    #[allow(unused)]
     handle: Arc<Handle>,
+    context: PPLT_CRYPTO_CONTEXT,
+}
+
+impl Drop for CryptoHandle {
+    fn drop(&mut self) {
+        unsafe {
+            PltDestroyCryptoContext(self.context);
+        }
+    }
 }
 
 pub struct MoonlightCrypto {
+    #[allow(unused)]
     handle: CryptoHandle,
 }
 
 impl MoonlightCrypto {
-    pub fn generate_salt(&self) -> [u8; SALT_LENGTH] {
-        rand::random()
-    }
-    pub fn generate_client_cert_pem(&self) -> [u8; 16] {
-        rand::random()
+    pub(crate) fn new(instance: &MoonlightInstance) -> Self {
+        let context = unsafe { PltCreateCryptoContext() };
+
+        let handle = CryptoHandle {
+            handle: instance.handle.clone(),
+            context,
+        };
+
+        Self { handle }
     }
 
-    fn salt_pin(&self, salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; SALT_LENGTH + 4] {
+    pub fn generate_random(&self, bytes: &mut [u8]) {
+        unsafe {
+            PltGenerateRandomData(bytes.as_mut_ptr(), bytes.len() as i32);
+        }
+    }
+
+    pub fn generate_pin(&self) -> PairPin {
+        let random_number = || {
+            let mut byte = [0u8];
+            self.generate_random(&mut byte);
+
+            byte[0] % 10
+        };
+
+        let n1 = random_number();
+        let n2 = random_number();
+        let n3 = random_number();
+        let n4 = random_number();
+
+        PairPin::from_array([n1, n2, n3, n4]).expect("pair pin")
+    }
+
+    pub fn generate_salt(&self) -> [u8; SALT_LENGTH] {
+        let mut salt = [0; _];
+        self.generate_random(&mut salt);
+        salt
+    }
+    pub fn generate_client_cert_pem(&self) -> [u8; 16] {
+        let mut cert = [0; _];
+        self.generate_random(&mut cert);
+        cert
+    }
+
+    pub fn salt_pin(&self, salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; SALT_LENGTH + 4] {
         let mut out = [0u8; SALT_LENGTH + 4];
 
         out[0..16].copy_from_slice(&salt);

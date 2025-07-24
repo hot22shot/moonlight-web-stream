@@ -11,7 +11,6 @@ use thiserror::Error;
 
 use crate::{
     connection::MoonlightConnection,
-    crypto::MoonlightCrypto,
     data::{ServerInfo, StreamConfiguration},
 };
 
@@ -104,7 +103,8 @@ impl MoonlightInstance {
         }
     }
 
-    pub fn crypto(&self) -> MoonlightCrypto {
-        todo!()
+    #[cfg(feature = "crypto")]
+    pub fn crypto(&self) -> crypto::MoonlightCrypto {
+        crypto::MoonlightCrypto::new(self)
     }
 }

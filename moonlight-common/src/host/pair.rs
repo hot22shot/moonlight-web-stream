@@ -1,54 +1,44 @@
 use std::fmt::{Debug, Display};
 
-use rand::random_range;
-use sha1::Sha1;
-use sha2::{Digest, Sha256};
-
-use crate::host::network::ServerVersion;
-
 /// A pin which contains four values in the range 0..10
 #[derive(Clone, Copy)]
 pub struct PairPin {
-    n1: u8,
-    n2: u8,
-    n3: u8,
-    n4: u8,
+    numbers: [u8; 4],
 }
 
 impl PairPin {
-    pub fn random() -> Self {
-        let n1 = random_range(0..10);
-        let n2 = random_range(0..10);
-        let n3 = random_range(0..10);
-        let n4 = random_range(0..10);
+    pub fn from_array(numbers: [u8; 4]) -> Option<Self> {
+        let range = 0..10;
 
-        Self { n1, n2, n3, n4 }
+        if range.contains(&numbers[0])
+            && range.contains(&numbers[1])
+            && range.contains(&numbers[2])
+            && range.contains(&numbers[3])
+        {
+            return Some(Self { numbers });
+        }
+
+        None
     }
 
     pub fn n(&self, index: usize) -> Option<u8> {
-        match index {
-            0 => Some(self.n1),
-            1 => Some(self.n2),
-            2 => Some(self.n3),
-            3 => Some(self.n4),
-            _ => None,
-        }
+        self.numbers.get(index).copied()
     }
     pub fn n1(&self) -> u8 {
-        self.n1
+        self.numbers[0]
     }
     pub fn n2(&self) -> u8 {
-        self.n2
+        self.numbers[1]
     }
     pub fn n3(&self) -> u8 {
-        self.n3
+        self.numbers[2]
     }
     pub fn n4(&self) -> u8 {
-        self.n4
+        self.numbers[3]
     }
 
     pub fn array(&self) -> [u8; 4] {
-        [self.n1, self.n2, self.n3, self.n4]
+        self.numbers
     }
 }
 

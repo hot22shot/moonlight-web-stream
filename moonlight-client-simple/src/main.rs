@@ -10,7 +10,7 @@ use moonlight_common::{
             PairStatus, get_host_apps, get_host_info, host_pair_challenge, host_pair_initiate,
             launch_host,
         },
-        pair::{PairPin, generate_client_cert_pem, generate_salt},
+        pair::PairPin,
     },
 };
 use rand::random;
@@ -21,6 +21,10 @@ async fn main() {
     let host_ip = "localhost";
     let device_name = "TestDevice";
     let client_info = ClientInfo::default();
+
+    println!("-- Initialize Moonlight");
+    let moonlight = MoonlightInstance::global().unwrap();
+    let crypto = moonlight.crypto();
 
     println!("-- Host Details");
     let http_address = format!("{host_ip}:47989");
@@ -33,12 +37,12 @@ async fn main() {
     println!("- Stage: Pairing");
 
     println!("-- Initiate Pairing");
-    let pin = PairPin::random();
+    let pin = crypto.generate_pin();
     println!("Pin {pin}, Device Name: {device_name}");
 
     // TODO: read already paired information
-    let salt = generate_salt();
-    let client_cert_pem = generate_client_cert_pem();
+    let salt = crypto.generate_salt();
+    let client_cert_pem = crypto.generate_client_cert_pem();
 
     if true {
         let pair_response = host_pair_initiate(
@@ -86,7 +90,6 @@ async fn main() {
 
     println!("- Stage: Streaming");
     println!("-- Host Launch");
-    let moonlight = MoonlightInstance::global().unwrap();
 
     let launch_response = launch_host(
         &moonlight,
