@@ -4,6 +4,7 @@ use std::{
 };
 
 fn main() {
+    #[cfg(feature = "generate-bindings")]
     generate_bindings();
 
     #[allow(unused)]
@@ -15,9 +16,16 @@ fn main() {
     link(moonlight_output.as_deref());
 }
 
+#[cfg(feature = "generate-bindings")]
 fn generate_bindings() {
+    generate_bindings_with_name("limelight.h", "limelight.rs");
+    #[cfg(feature = "crypto")]
+    generate_bindings_with_name("crypto.h", "crypto.rs");
+}
+#[cfg(feature = "generate-bindings")]
+fn generate_bindings_with_name(header_name: &str, rust_name: &str) {
     let bindings = bindgen::Builder::default()
-        .header("wrapper.h")
+        .header(header_name)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings");
@@ -25,7 +33,7 @@ fn generate_bindings() {
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
-        .write_to_file(out_path.join("bindings.rs"))
+        .write_to_file(out_path.join(rust_name))
         .expect("Couldn't write bindings!");
 }
 

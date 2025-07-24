@@ -16,6 +16,10 @@ default = [
     "build-moonlight_common_c",
 ]
 
+crypto = []
+
+generate-bindings = []
+
 # Moonlight on windows requires the symbols __imp_timeBeginPeriod and __imp_timeEndPeriod.
 # This feature will export them using the windows-sys crate
 windows-symbol-fix = ["dep:windows-sys"]

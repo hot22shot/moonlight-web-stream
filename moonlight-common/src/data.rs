@@ -125,6 +125,21 @@ pub struct SupportedVideoFormats {
 }
 
 impl SupportedVideoFormats {
+    pub fn all() -> Self {
+        Self {
+            h264: true,
+            h264_high8_444: true,
+            h265: true,
+            h265_main10: true,
+            h265_rext8_444: true,
+            h265_rext10_444: true,
+            av1_main8: true,
+            av1_main10: true,
+            av1_high8_444: true,
+            av1_high10_444: true,
+        }
+    }
+
     pub(crate) fn raw(self) -> i32 {
         let mut flags = 0x0;
 

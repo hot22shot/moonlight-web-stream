@@ -1,16 +1,17 @@
 use std::{
-    ffi::NulError,
+    ffi::{CStr, NulError},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
 
-use moonlight_common_sys::LiInterruptConnection;
+use moonlight_common_sys::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
 use thiserror::Error;
 
 use crate::{
     connection::MoonlightConnection,
+    crypto::MoonlightCrypto,
     data::{ServerInfo, StreamConfiguration},
 };
 
@@ -25,16 +26,22 @@ pub enum Error {
     #[error("a string contained a nul byte which is not allowed in c strings")]
     StringNulError(#[from] NulError),
     #[error("a moonlight instance already exists")]
+    ConnectionAlreadyExists,
+    #[error("a moonlight instance already exists")]
     InstanceAlreadyExists,
 }
 
 pub mod connection;
+#[cfg(feature = "crypto")]
+pub mod crypto;
 pub mod data;
+pub mod host;
 
 static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
 
 struct Handle {
-    connection: Mutex<()>,
+    /// This is also the lock because start / stop Connection is not thread safe
+    connection_exists: Mutex<bool>,
 }
 
 impl Handle {
@@ -45,7 +52,7 @@ impl Handle {
             .is_ok()
         {
             Some(Self {
-                connection: Mutex::new(()),
+                connection_exists: Mutex::new(false),
             })
         } else {
             None
@@ -72,6 +79,17 @@ impl MoonlightInstance {
         })
     }
 
+    pub fn launch_url_query_parameters(&self) -> &str {
+        unsafe {
+            // # Safety
+            // The returned string is not freed by the caller
+            // FIXME: Let's hope this string lives long enough...
+            let str_raw = LiGetLaunchUrlQueryParameters();
+            let str = CStr::from_ptr(str_raw);
+            str.to_str().expect("valid moonlight query parameters")
+        }
+    }
+
     pub fn start_connection(
         &self,
         server_info: ServerInfo,
@@ -84,5 +102,9 @@ impl MoonlightInstance {
         unsafe {
             LiInterruptConnection();
         }
+    }
+
+    pub fn crypto(&self) -> MoonlightCrypto {
+        todo!()
     }
 }

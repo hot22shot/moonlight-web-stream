@@ -36,6 +36,14 @@ impl MoonlightConnection {
         stream_config: StreamConfiguration,
     ) -> Result<Self, Error> {
         unsafe {
+            let mut connection_guard = handle
+                .connection_exists
+                .lock()
+                .expect("connection lock poisoned");
+            if *connection_guard {
+                return Err(Error::ConnectionAlreadyExists);
+            }
+
             let address = CString::from_str(server_info.address)?;
             let app_version = CString::from_str(server_info.app_version)?;
             let gfe_version = CString::from_str(server_info.gfe_version)?;
@@ -71,9 +79,7 @@ impl MoonlightConnection {
             };
 
             // # Safety
-            // LiStartConnection is not thread safe so we need a mutex
-            let guard = handle.connection.lock().expect("connection lock poisoned");
-
+            // LiStartConnection is not thread safe so we are using the connection_guard mutex
             let result = LiStartConnection(
                 &mut server_info_raw as PSERVER_INFORMATION,
                 &mut stream_config as PSTREAM_CONFIGURATION,
@@ -86,7 +92,9 @@ impl MoonlightConnection {
                 0,
             );
 
-            drop(guard);
+            *connection_guard = true;
+
+            drop(connection_guard);
 
             if result != 0 {
                 todo!()
@@ -256,15 +264,17 @@ impl Drop for MoonlightConnection {
         unsafe {
             // # Safety
             // LiStopConnection is not thread safe so we need a mutex
-            let guard = self
+            let mut connection_guard = self
                 .handle
-                .connection
+                .connection_exists
                 .lock()
                 .expect("connection lock poisoned");
 
             LiStopConnection();
 
-            drop(guard);
+            *connection_guard = false;
+
+            drop(connection_guard);
         }
     }
 }
