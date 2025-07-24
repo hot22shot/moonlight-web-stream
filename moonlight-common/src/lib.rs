@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use moonlight_common_sys::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
+use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
 use thiserror::Error;
 
 use crate::{
