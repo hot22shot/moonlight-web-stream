@@ -35,12 +35,14 @@ pub enum Error {
     Api(#[from] ApiError),
 }
 
+pub mod audio;
 #[cfg(feature = "crypto")]
 pub mod crypto;
 pub mod data;
 pub mod network;
 pub mod pair;
 pub mod stream;
+pub mod video;
 
 #[cfg(feature = "high")]
 pub mod high;

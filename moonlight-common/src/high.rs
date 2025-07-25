@@ -40,7 +40,7 @@ pub enum MaybePaired {
 }
 
 impl MoonlightHost<Unknown> {
-    pub fn new(address: String, http_port: Option<u16>, client: Option<ClientInfo>) -> Self {
+    pub fn new(address: String, http_port: u16, client: Option<ClientInfo>) -> Self {
         #[allow(clippy::unwrap_or_default)]
         let client = client.unwrap_or(ClientInfo::default());
 
@@ -48,7 +48,7 @@ impl MoonlightHost<Unknown> {
             client_unique_id: client.unique_id.to_string(),
             client_uuid: client.uuid,
             address,
-            http_port: http_port.unwrap_or(47989),
+            http_port,
             info: None,
             paired: Unknown,
         }
@@ -257,7 +257,6 @@ impl MoonlightHost<Paired> {
             },
         )
         .await?;
-        println!("{launch_response:#?}");
 
         let app_version = self.version().await?;
         let server_codec_mode_support = self.server_codec_mode_support().await?;

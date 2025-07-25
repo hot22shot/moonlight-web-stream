@@ -3,6 +3,7 @@ use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc};
 use moonlight_common_sys::limelight::{
     _SERVER_INFORMATION, _STREAM_CONFIGURATION, LI_ERR_UNSUPPORTED, LI_FF_CONTROLLER_TOUCH_EVENTS,
     LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
+    LiInitializeAudioCallbacks, LiInitializeConnectionCallbacks, LiInitializeVideoCallbacks,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
     LiSendTouchEvent, LiStartConnection, LiStopConnection, PSERVER_INFORMATION,
     PSTREAM_CONFIGURATION,
@@ -276,6 +277,11 @@ impl Drop for MoonlightStream {
             *connection_guard = false;
 
             drop(connection_guard);
+
+            // Null out all the callbacks
+            LiInitializeAudioCallbacks(null_mut());
+            LiInitializeVideoCallbacks(null_mut());
+            LiInitializeConnectionCallbacks(null_mut());
         }
     }
 }

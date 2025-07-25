@@ -7,15 +7,17 @@ use moonlight_common::{
 #[tokio::main]
 async fn main() {
     let host_ip = "localhost";
+    let host_http_port = 47989;
     let device_name = "TestDevice";
 
+    // Initialize Moonlight
     let moonlight = MoonlightInstance::global().unwrap();
     let crypto = moonlight.crypto();
 
     // Create a host
     // - http_port = None -> Default Port
     // - client_info = None -> Generates a client
-    let host = MoonlightHost::new(host_ip.to_string(), None, None);
+    let host = MoonlightHost::new(host_ip.to_string(), host_http_port, None);
 
     // Get the current pair state
     let host = host.pair_state().await.map_err(|(_, err)| err).unwrap();
