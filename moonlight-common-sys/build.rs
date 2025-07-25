@@ -65,9 +65,8 @@ fn link(moonlight_path: Option<&Path>) {
                 "cargo:rustc-link-search=native={}/build/enet/Release",
                 path.display()
             );
-        } else {
-            println!("cargo:rustc-link-lib=static=enet");
         }
+        println!("cargo:rustc-link-lib=static=enet");
     }
 
     // Moonlight

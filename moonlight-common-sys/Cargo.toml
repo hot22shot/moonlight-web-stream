@@ -18,7 +18,7 @@ default = [
 
 crypto = []
 
-generate-bindings = []
+generate-bindings = ["dep:bindgen"]
 
 # Moonlight on windows requires the symbols __imp_timeBeginPeriod and __imp_timeEndPeriod.
 # This feature will export them using the windows-sys crate
@@ -27,8 +27,8 @@ windows-symbol-fix = ["dep:windows-sys"]
 link-openssl = []
 link-enet = []
 link-moonlight_common_c = []
-build-moonlight_common_c = ["link-moonlight_common_c"]
+build-moonlight_common_c = ["link-moonlight_common_c", "dep:cmake"]
 
 [build-dependencies]
-bindgen = "0.72.0"
-cmake = "0.1.54"
+bindgen = { version = "0.72.0", optional = true }
+cmake = { version = "0.1.54", optional = true }

@@ -36,6 +36,12 @@ pub mod crypto;
 pub mod data;
 pub mod host;
 
+fn flag_if(current_flags: &mut u32, flag: u32, enabled: bool) {
+    if enabled {
+        *current_flags |= flag;
+    }
+}
+
 static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
 
 struct Handle {
