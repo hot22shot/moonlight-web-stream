@@ -18,4 +18,4 @@ pub mod crypto;
 
 #[cfg(all(target_os = "windows", feature = "windows-symbol-fix"))]
 #[allow(clippy::missing_safety_doc)]
-pub mod windows_fix;
+mod windows_fix;
