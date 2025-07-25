@@ -15,11 +15,11 @@ use moonlight_common_sys::limelight::{
     VIDEO_FORMAT_H265_REXT8_444, VIDEO_FORMAT_H265_REXT10_444,
 };
 
-use crate::flag_if;
+use crate::{flag_if, network::ServerVersion};
 
 pub struct ServerInfo<'a> {
     pub address: &'a str,
-    pub app_version: &'a str,
+    pub app_version: ServerVersion,
     pub gfe_version: &'a str,
     pub rtsp_session_url: &'a str,
     // TODO: enum?

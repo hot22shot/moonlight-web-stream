@@ -8,7 +8,7 @@ use uuid::{Uuid, fmt::Hyphenated};
 
 use crate::{
     MoonlightInstance,
-    host::pair::{CHALLENGE_LENGTH, SALT_LENGTH},
+    pair::{CHALLENGE_LENGTH, SALT_LENGTH},
 };
 
 #[derive(Debug, Error)]
@@ -206,7 +206,7 @@ pub struct HostInfo {
     pub state: ServerState,
 }
 
-pub async fn get_host_info(
+pub async fn host_get_info(
     use_https: bool,
     address: &str,
     info: Option<ClientInfo<'_>>,
@@ -335,7 +335,7 @@ pub struct ClientPairChallengeRequest {
 #[derive(Debug, Clone)]
 pub struct ServerPairChallengeResponse {
     pub paired: PairStatus,
-    pub encrypted_challenge_response: [u8; CHALLENGE_LENGTH],
+    pub encrypted_response: Vec<u8>,
 }
 
 // TODO: use cert? https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L223C8-L224C40
@@ -371,13 +371,13 @@ pub async fn host_pair_challenge(
 
     let paired = xml_child_paired(root, "paired")?;
 
-    let challenge_response_str = xml_child_text(root, "challenge_response")?;
-    let mut challenge_response = [0u8; CHALLENGE_LENGTH];
+    let challenge_response_str = xml_child_text(root, "challengeresponse")?;
+    let mut challenge_response = vec![0u8; challenge_response_str.len() / 2];
     hex::decode_to_slice(challenge_response_str, &mut challenge_response)?;
 
     Ok(ServerPairChallengeResponse {
         paired,
-        encrypted_challenge_response: challenge_response,
+        encrypted_response: challenge_response,
     })
 }
 
@@ -392,7 +392,7 @@ pub async fn host_unpair(http_address: &str, info: ClientInfo<'_>) -> Result<(),
 #[derive(Debug, Clone)]
 pub struct HostAppListResponse {}
 
-pub async fn get_host_apps(
+pub async fn host_get_apps(
     https_address: &str,
     info: ClientInfo<'_>,
 ) -> Result<HostAppListResponse, ApiError> {
@@ -430,7 +430,7 @@ pub struct HostLaunchResponse {
     pub rtsp_session_url: String,
 }
 
-pub async fn launch_host(
+pub async fn host_launch(
     instance: &MoonlightInstance,
     https_address: &str,
     info: ClientInfo<'_>,
@@ -457,7 +457,7 @@ pub struct HostResumeResponse {
     pub rtsp_session_url: String,
 }
 
-pub async fn resume_host(
+pub async fn host_resume(
     instance: &MoonlightInstance,
     https_address: &str,
     info: ClientInfo<'_>,

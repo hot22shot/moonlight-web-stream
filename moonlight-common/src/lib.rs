@@ -10,8 +10,9 @@ use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterrupt
 use thiserror::Error;
 
 use crate::{
-    connection::MoonlightConnection,
     data::{ServerInfo, StreamConfiguration},
+    network::ApiError,
+    stream::MoonlightStream,
 };
 
 #[derive(Debug, Error)]
@@ -28,13 +29,21 @@ pub enum Error {
     ConnectionAlreadyExists,
     #[error("a moonlight instance already exists")]
     InstanceAlreadyExists,
+    #[error("couldn't pair with the client")]
+    PairError, // TODO: more details?
+    #[error("{0}")]
+    Api(#[from] ApiError),
 }
 
-pub mod connection;
 #[cfg(feature = "crypto")]
 pub mod crypto;
 pub mod data;
-pub mod host;
+pub mod network;
+pub mod pair;
+pub mod stream;
+
+#[cfg(feature = "high")]
+pub mod high;
 
 fn flag_if(current_flags: &mut u32, flag: u32, enabled: bool) {
     if enabled {
@@ -99,8 +108,8 @@ impl MoonlightInstance {
         &self,
         server_info: ServerInfo,
         stream_config: StreamConfiguration,
-    ) -> Result<MoonlightConnection, Error> {
-        MoonlightConnection::start(self.handle.clone(), server_info, stream_config)
+    ) -> Result<MoonlightStream, Error> {
+        MoonlightStream::start(self.handle.clone(), server_info, stream_config)
     }
 
     pub fn interrupt_connection(&self) {

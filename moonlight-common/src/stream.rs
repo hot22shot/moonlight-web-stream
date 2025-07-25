@@ -25,11 +25,11 @@ pub struct EstimatedRttInfo {
     pub rtt_variance: u32,
 }
 
-pub struct MoonlightConnection {
+pub struct MoonlightStream {
     handle: Arc<Handle>,
 }
 
-impl MoonlightConnection {
+impl MoonlightStream {
     pub(crate) fn start(
         handle: Arc<Handle>,
         server_info: ServerInfo,
@@ -45,7 +45,8 @@ impl MoonlightConnection {
             }
 
             let address = CString::from_str(server_info.address)?;
-            let app_version = CString::from_str(server_info.app_version)?;
+            let app_version = server_info.app_version.to_string();
+            let app_version = CString::from_str(&app_version)?;
             let gfe_version = CString::from_str(server_info.gfe_version)?;
             let rtsp_session_url = CString::from_str(server_info.rtsp_session_url)?;
 
@@ -259,7 +260,7 @@ impl MoonlightConnection {
     }
 }
 
-impl Drop for MoonlightConnection {
+impl Drop for MoonlightStream {
     fn drop(&mut self) {
         unsafe {
             // # Safety

@@ -18,9 +18,18 @@ hex = "0.4.3"
 sha2 = { version = "0.10.9", optional = true }
 sha1 = { version = "0.10.6", optional = true }
 
-[features]
-default = ["crypto"]
+# High
+tokio = { version = "1.46.1", default-features = false, features = [
+    "rt",
+], optional = true }
 
+[features]
+default = ["high", "dep:tokio"]
+
+# High level api
+high = ["crypto"]
+
+# Crypto
 crypto = ["moonlight-common-sys/crypto", "dep:sha1", "dep:sha2"]
 
 [lints]

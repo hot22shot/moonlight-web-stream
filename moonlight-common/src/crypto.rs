@@ -11,10 +11,8 @@ use thiserror::Error;
 
 use crate::{
     Handle, MoonlightInstance, flag_if,
-    host::{
-        network::ServerVersion,
-        pair::{PairPin, SALT_LENGTH},
-    },
+    network::ServerVersion,
+    pair::{PairPin, SALT_LENGTH},
 };
 
 #[derive(Clone)]
@@ -49,6 +47,23 @@ impl CryptoAlgorithm {
         match self {
             Self::AesCbc => ALGORITHM_AES_CBC as i32,
             Self::AesGcm => ALGORITHM_AES_GCM as i32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HashAlgorithm {
+    Sha1,
+    Sha256,
+}
+
+impl HashAlgorithm {
+    pub const MAX_HASH_LEN: usize = 32;
+
+    pub fn hash_len(&self) -> usize {
+        match self {
+            Self::Sha1 => 20,
+            Self::Sha256 => 32,
         }
     }
 }
@@ -120,12 +135,9 @@ impl MoonlightCrypto {
         self.generate_random(&mut salt);
         salt
     }
-    pub fn generate_client_cert_pem(&self) -> [u8; 16] {
-        let mut cert = [0; _];
-        self.generate_random(&mut cert);
-        cert
+    pub fn generate_client_cert(&self) -> () {
+        todo!()
     }
-
     pub fn salt_pin(&self, salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; SALT_LENGTH + 4] {
         let mut out = [0u8; SALT_LENGTH + 4];
 
@@ -134,23 +146,42 @@ impl MoonlightCrypto {
 
         out
     }
+
+    pub fn hash_algorithm_for_server(&self, server_version: ServerVersion) -> HashAlgorithm {
+        if server_version.major >= 7 {
+            HashAlgorithm::Sha256
+        } else {
+            HashAlgorithm::Sha1
+        }
+    }
+    pub fn hash(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
+        match algorithm {
+            HashAlgorithm::Sha1 => {
+                let digest = Sha1::digest(data);
+                output.copy_from_slice(&digest);
+            }
+            HashAlgorithm::Sha256 => {
+                let digest = Sha256::digest(data);
+                output.copy_from_slice(&digest);
+            }
+        }
+    }
+    pub fn hash_size_uneq(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
+        let mut hash = [0u8; HashAlgorithm::MAX_HASH_LEN];
+        self.hash(algorithm, data, &mut hash);
+
+        output.copy_from_slice(&hash[0..output.len()]);
+    }
     pub fn generate_aes_key(
         &self,
-        server_version: ServerVersion,
+        algorithm: HashAlgorithm,
         salt: [u8; SALT_LENGTH],
         pin: PairPin,
     ) -> [u8; 16] {
         let mut hash = [0u8; 16];
 
         let salted = self.salt_pin(salt, pin);
-
-        if server_version.major >= 7 {
-            let digest = Sha256::digest(salted);
-            hash.copy_from_slice(&digest[0..16]);
-        } else {
-            let digest = Sha1::digest(salted);
-            hash.copy_from_slice(&digest[0..16]);
-        }
+        self.hash_size_uneq(algorithm, &salted, &mut hash);
 
         hash
     }
