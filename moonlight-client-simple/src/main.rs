@@ -10,10 +10,9 @@ use moonlight_common::{
             PairStatus, get_host_apps, get_host_info, host_pair_challenge, host_pair_initiate,
             launch_host,
         },
-        pair::{CHALLENGE_LENGTH, PairPin},
+        pair::CHALLENGE_LENGTH,
     },
 };
-use rand::random;
 use tokio::task::spawn_blocking;
 
 #[tokio::main]

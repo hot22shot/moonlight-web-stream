@@ -78,7 +78,6 @@ impl CipherFlags {
 }
 
 pub struct MoonlightCrypto {
-    #[allow(unused)]
     handle: CryptoHandle,
 }
 
