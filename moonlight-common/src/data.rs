@@ -15,11 +15,7 @@ use moonlight_common_sys::limelight::{
     VIDEO_FORMAT_H265_REXT8_444, VIDEO_FORMAT_H265_REXT10_444,
 };
 
-fn flag_if(current_flags: &mut u32, flag: u32, enabled: bool) {
-    if enabled {
-        *current_flags |= flag;
-    }
-}
+use crate::flag_if;
 
 pub struct ServerInfo<'a> {
     pub address: &'a str,

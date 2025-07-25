@@ -10,7 +10,7 @@ use moonlight_common::{
             PairStatus, get_host_apps, get_host_info, host_pair_challenge, host_pair_initiate,
             launch_host,
         },
-        pair::PairPin,
+        pair::{CHALLENGE_LENGTH, PairPin},
     },
 };
 use rand::random;
@@ -38,11 +38,12 @@ async fn main() {
 
     println!("-- Initiate Pairing");
     let pin = crypto.generate_pin();
-    println!("Pin {pin}, Device Name: {device_name}");
+    println!("[INFO] Pin {pin}, Device Name: {device_name}");
 
     // TODO: read already paired information
     let salt = crypto.generate_salt();
     let client_cert_pem = crypto.generate_client_cert_pem();
+    let aes_key = crypto.generate_aes_key(host_info.app_version, salt, pin);
 
     if true {
         let pair_response = host_pair_initiate(
@@ -67,13 +68,36 @@ async fn main() {
             panic!("Paired whilst another device was pairing!");
         };
 
-        //         let challenge: [] = random();
-        //
-        //         let challenge_response = host_pair_challenge(&http_address, client_info, ClientPairChallengeRequest {
-        // encrypted_challenge:
-        //         })
-        //             .await
-        //             .unwrap();
+        println!("-- Sending Challenge");
+        let mut challenge = [0u8; CHALLENGE_LENGTH];
+        crypto.generate_random(&mut challenge);
+
+        let mut encrypted_challenge = [0u8; CHALLENGE_LENGTH];
+        crypto
+            .encrypt_aes(&aes_key, &challenge, &mut encrypted_challenge)
+            .unwrap();
+
+        let challenge_response = host_pair_challenge(
+            &http_address,
+            client_info,
+            ClientPairChallengeRequest {
+                encrypted_challenge,
+            },
+        )
+        .await
+        .unwrap();
+        println!("{challenge_response:?}");
+
+        let mut response_challenge = [0u8; CHALLENGE_LENGTH];
+        crypto
+            .decrypt_aes(
+                &aes_key,
+                &challenge_response.encrypted_challenge_response,
+                &mut response_challenge,
+            )
+            .unwrap();
+
+        todo!()
     }
 
     println!("-- ");
@@ -111,7 +135,7 @@ async fn main() {
     let connection = spawn_blocking(move || {
         let server_info = ServerInfo {
             address: "127.0.0.1:47989",
-            app_version: &host_info.app_version,
+            app_version: &host_info.app_version.to_string(),
             gfe_version: &host_info.gfe_version,
             rtsp_session_url: &launch_response.rtsp_session_url,
             server_codec_mode_support: host_info.server_codec_mode_support as i32,

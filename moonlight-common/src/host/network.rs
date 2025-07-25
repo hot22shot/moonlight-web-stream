@@ -1,4 +1,4 @@
-use std::{num::ParseIntError, str::FromStr};
+use std::{fmt::Display, num::ParseIntError, str::FromStr};
 
 use reqwest::Url;
 use roxmltree::{Document, Error, Node};
@@ -93,12 +93,6 @@ pub enum ServerState {
     Free,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum PairStatus {
-    NotPaired,
-    Paired,
-}
-
 impl FromStr for ServerState {
     type Err = ParseServerStateError;
 
@@ -109,6 +103,12 @@ impl FromStr for ServerState {
             _ => Err(ParseServerStateError),
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum PairStatus {
+    NotPaired,
+    Paired,
 }
 
 fn build_url(
@@ -146,6 +146,16 @@ pub struct ServerVersion {
     pub mini_patch: i32,
 }
 
+impl Display for ServerVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}-{}-{}-{}",
+            self.major, self.minor, self.patch, self.mini_patch
+        )
+    }
+}
+
 impl FromStr for ServerVersion {
     type Err = ParseServerVersionError;
 
@@ -181,7 +191,7 @@ impl FromStr for ServerVersion {
 #[derive(Debug, Clone)]
 pub struct HostInfo {
     pub host_name: String,
-    pub app_version: String,
+    pub app_version: ServerVersion,
     pub gfe_version: String,
     pub unique_id: Uuid,
     pub https_port: u16,
@@ -216,7 +226,7 @@ pub async fn get_host_info(
 
     Ok(HostInfo {
         host_name: xml_child_text(root, "hostname")?.to_string(),
-        app_version: xml_child_text(root, "appversion")?.to_string(),
+        app_version: xml_child_text(root, "appversion")?.parse()?,
         gfe_version: xml_child_text(root, "GfeVersion")?.to_string(),
         unique_id: xml_child_text(root, "uniqueid")?.parse()?,
         https_port: xml_child_text(root, "HttpsPort")?.parse()?,
@@ -247,7 +257,7 @@ where
 {
     let content = xml_child_text(list_node, name)?.parse::<i32>()?;
 
-    Ok(if content == 0 {
+    Ok(if content == 1 {
         PairStatus::Paired
     } else {
         PairStatus::NotPaired
@@ -319,9 +329,10 @@ pub async fn host_pair_initiate(
 
 #[derive(Debug, Clone)]
 pub struct ClientPairChallengeRequest {
-    encrypted_challenge: [u8; CHALLENGE_LENGTH],
+    pub encrypted_challenge: [u8; CHALLENGE_LENGTH],
 }
 
+#[derive(Debug, Clone)]
 pub struct ServerPairChallengeResponse {
     pub paired: PairStatus,
     pub encrypted_challenge_response: [u8; CHALLENGE_LENGTH],
