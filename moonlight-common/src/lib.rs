@@ -29,8 +29,8 @@ pub enum Error {
     ConnectionAlreadyExists,
     #[error("a moonlight instance already exists")]
     InstanceAlreadyExists,
-    #[error("couldn't pair with the client")]
-    PairError, // TODO: more details?
+    #[error("the client is not paired")]
+    NotPaired,
     #[error("{0}")]
     Api(#[from] ApiError),
 }

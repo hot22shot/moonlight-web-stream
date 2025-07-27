@@ -1,4 +1,4 @@
-use std::{fmt::Display, num::ParseIntError, str::FromStr};
+use std::{fmt::Display, num::ParseIntError, str::FromStr, string::FromUtf8Error};
 
 use reqwest::Url;
 use roxmltree::{Document, Error, Node};
@@ -37,6 +37,8 @@ pub enum ApiError {
     ParseUuidError(#[from] uuid::Error),
     #[error("{0}")]
     ParseHexError(#[from] hex::FromHexError),
+    #[error("{0}")]
+    Utf8Error(#[from] FromUtf8Error),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -268,7 +270,7 @@ where
 pub struct ClientPairRequest<'a> {
     pub device_name: &'a str,
     pub salt: [u8; SALT_LENGTH],
-    pub client_cert_pem: [u8; 16],
+    pub client_cert_pem: &'a [u8],
 }
 
 #[derive(Debug, Clone)]
@@ -298,13 +300,8 @@ pub async fn host_pair_initiate(
         str::from_utf8(&salt_str_bytes).expect("salt string as utf8"),
     );
 
-    let mut client_cert_pem_str_bytes = [0u8; 16 * 2];
-    hex::encode_to_slice(request.client_cert_pem, &mut client_cert_pem_str_bytes)
-        .expect("encode client cert pem as hex");
-    query_params.append_pair(
-        "clientcert",
-        str::from_utf8(&client_cert_pem_str_bytes).expect("client cert pem as utf8"),
-    );
+    let client_cert_pem_str = hex::encode(request.client_cert_pem);
+    query_params.append_pair("clientcert", &client_cert_pem_str);
     drop(query_params);
 
     let response = reqwest::get(url).await?.text().await?;
@@ -319,7 +316,11 @@ pub async fn host_pair_initiate(
     let paired = xml_child_paired(root, "paired")?;
 
     let cert = match xml_child_text(root, "plaincert") {
-        Ok(value) => Some(value.to_string()),
+        Ok(value) => {
+            let value = hex::decode(value)?;
+
+            Some(String::from_utf8(value)?)
+        }
         Err(ApiError::DetailNotFound("plaincert")) => None,
         Err(err) => return Err(err),
     };
@@ -328,27 +329,31 @@ pub async fn host_pair_initiate(
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientPairChallengeRequest {
-    pub encrypted_challenge: [u8; CHALLENGE_LENGTH],
+pub struct ClientPairRequest1<'a> {
+    pub device_name: &'a str,
+    pub encrypted_challenge: &'a [u8],
 }
 
 #[derive(Debug, Clone)]
-pub struct ServerPairChallengeResponse {
+pub struct ServerPairResponse1 {
     pub paired: PairStatus,
     pub encrypted_response: Vec<u8>,
 }
 
 // TODO: use cert? https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L223C8-L224C40
-pub async fn host_pair_challenge(
+pub async fn host_pair1(
     http_address: &str,
     info: ClientInfo<'_>,
-    request: ClientPairChallengeRequest,
-) -> Result<ServerPairChallengeResponse, ApiError> {
+    request: ClientPairRequest1<'_>,
+) -> Result<ServerPairResponse1, ApiError> {
     let mut url = build_url(false, http_address, "pair", Some(info))?;
 
     let mut query_params = url.query_pairs_mut();
 
-    let mut encrypted_challenge_str_bytes = [0u8; CHALLENGE_LENGTH * 2];
+    query_params.append_pair("devicename", request.device_name);
+    query_params.append_pair("updateState", "1"); // <--- TODO: what does this do?
+
+    let mut encrypted_challenge_str_bytes = vec![0u8; request.encrypted_challenge.len() * 2];
     hex::encode_to_slice(
         request.encrypted_challenge,
         &mut encrypted_challenge_str_bytes,
@@ -375,9 +380,64 @@ pub async fn host_pair_challenge(
     let mut challenge_response = vec![0u8; challenge_response_str.len() / 2];
     hex::decode_to_slice(challenge_response_str, &mut challenge_response)?;
 
-    Ok(ServerPairChallengeResponse {
+    Ok(ServerPairResponse1 {
         paired,
         encrypted_response: challenge_response,
+    })
+}
+
+pub struct ClientPairRequest2<'a> {
+    pub device_name: &'a str,
+    pub encrypted_challenge_response_hash: &'a [u8],
+}
+#[derive(Debug, Clone)]
+pub struct ServerPairResponse2 {
+    pub paired: PairStatus,
+    pub pairing_secret: Vec<u8>,
+}
+
+pub async fn host_pair2(
+    http_address: &str,
+    info: ClientInfo<'_>,
+    request: ClientPairRequest2<'_>,
+) -> Result<ServerPairResponse2, ApiError> {
+    let mut url = build_url(false, http_address, "pair", Some(info))?;
+
+    let mut query_params = url.query_pairs_mut();
+
+    query_params.append_pair("devicename", request.device_name);
+    query_params.append_pair("updateState", "1"); // <--- TODO: what does this do?
+
+    let mut encrypted_challenge_str_bytes =
+        vec![0u8; request.encrypted_challenge_response_hash.len() * 2];
+    hex::encode_to_slice(
+        request.encrypted_challenge_response_hash,
+        &mut encrypted_challenge_str_bytes,
+    )
+    .expect("encode encrypted challenge as hex");
+    query_params.append_pair(
+        "serverchallengeresp",
+        str::from_utf8(&encrypted_challenge_str_bytes).expect("encrypted challenge string as utf8"),
+    );
+    drop(query_params);
+
+    let response = reqwest::get(url).await?.text().await?;
+
+    let doc = Document::parse(&response)?;
+    let root = doc
+        .root()
+        .children()
+        .find(|node| node.tag_name().name() == "root")
+        .ok_or(ApiError::XmlRootNotFound)?;
+
+    let paired = xml_child_paired(root, "paired")?;
+
+    let pairing_secret_str = xml_child_text(root, "pairingsecret")?;
+    let pairing_secret = hex::decode(pairing_secret_str)?;
+
+    Ok(ServerPairResponse2 {
+        paired,
+        pairing_secret,
     })
 }
 

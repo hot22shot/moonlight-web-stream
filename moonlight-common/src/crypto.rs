@@ -5,8 +5,6 @@ use moonlight_common_sys::crypto::{
     CIPHER_FLAG_RESET_IV, PPLT_CRYPTO_CONTEXT, PltCreateCryptoContext, PltDecryptMessage,
     PltDestroyCryptoContext, PltEncryptMessage, PltGenerateRandomData,
 };
-use sha1::{Digest, Sha1};
-use sha2::Sha256;
 use thiserror::Error;
 
 use crate::{
@@ -16,13 +14,19 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub(crate) struct CryptoHandle {
-    #[allow(unused)]
-    handle: Arc<Handle>,
+pub(crate) struct CryptoContext {
     context: PPLT_CRYPTO_CONTEXT,
 }
 
-impl Drop for CryptoHandle {
+impl CryptoContext {
+    fn new() -> Self {
+        let context = unsafe { PltCreateCryptoContext() };
+
+        Self { context }
+    }
+}
+
+impl Drop for CryptoContext {
     fn drop(&mut self) {
         unsafe {
             PltDestroyCryptoContext(self.context);
@@ -93,19 +97,15 @@ impl CipherFlags {
 }
 
 pub struct MoonlightCrypto {
-    handle: CryptoHandle,
+    #[allow(unused)]
+    handle: Arc<Handle>,
 }
 
 impl MoonlightCrypto {
     pub(crate) fn new(instance: &MoonlightInstance) -> Self {
-        let context = unsafe { PltCreateCryptoContext() };
-
-        let handle = CryptoHandle {
+        Self {
             handle: instance.handle.clone(),
-            context,
-        };
-
-        Self { handle }
+        }
     }
 
     pub fn generate_random(&self, bytes: &mut [u8]) {
@@ -135,17 +135,6 @@ impl MoonlightCrypto {
         self.generate_random(&mut salt);
         salt
     }
-    pub fn generate_client_cert(&self) -> () {
-        todo!()
-    }
-    pub fn salt_pin(&self, salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; SALT_LENGTH + 4] {
-        let mut out = [0u8; SALT_LENGTH + 4];
-
-        out[0..16].copy_from_slice(&salt);
-        out[16..].copy_from_slice(&pin.array());
-
-        out
-    }
 
     pub fn hash_algorithm_for_server(&self, server_version: ServerVersion) -> HashAlgorithm {
         if server_version.major >= 7 {
@@ -153,37 +142,6 @@ impl MoonlightCrypto {
         } else {
             HashAlgorithm::Sha1
         }
-    }
-    pub fn hash(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
-        match algorithm {
-            HashAlgorithm::Sha1 => {
-                let digest = Sha1::digest(data);
-                output.copy_from_slice(&digest);
-            }
-            HashAlgorithm::Sha256 => {
-                let digest = Sha256::digest(data);
-                output.copy_from_slice(&digest);
-            }
-        }
-    }
-    pub fn hash_size_uneq(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
-        let mut hash = [0u8; HashAlgorithm::MAX_HASH_LEN];
-        self.hash(algorithm, data, &mut hash);
-
-        output.copy_from_slice(&hash[0..output.len()]);
-    }
-    pub fn generate_aes_key(
-        &self,
-        algorithm: HashAlgorithm,
-        salt: [u8; SALT_LENGTH],
-        pin: PairPin,
-    ) -> [u8; 16] {
-        let mut hash = [0u8; 16];
-
-        let salted = self.salt_pin(salt, pin);
-        self.hash_size_uneq(algorithm, &salted, &mut hash);
-
-        hash
     }
 
     pub fn encrypt_message(
@@ -221,9 +179,11 @@ impl MoonlightCrypto {
 
         let mut output_len = 0;
 
+        let context = CryptoContext::new();
+
         unsafe {
             if !PltEncryptMessage(
-                self.handle.context,
+                context.context,
                 algorithm.raw(),
                 flags.raw(),
                 key.as_ptr() as *mut _,
@@ -241,30 +201,12 @@ impl MoonlightCrypto {
             }
         }
 
+        if output_len > output.len() as i32 {
+            panic!("output buffer was overwritten");
+        }
+
         Ok(output_len as usize)
     }
-    pub fn encrypt_aes(
-        &self,
-        key: &[u8],
-        input: &[u8],
-        output: &mut [u8],
-    ) -> Result<usize, CryptoError> {
-        let iv = [0u8; 16];
-
-        self.encrypt_message(
-            CryptoAlgorithm::AesCbc,
-            CipherFlags {
-                finish: true,
-                ..Default::default()
-            },
-            key,
-            &iv,
-            None,
-            input,
-            output,
-        )
-    }
-
     pub fn decrypt_message(
         &self,
         algorithm: CryptoAlgorithm,
@@ -306,9 +248,11 @@ impl MoonlightCrypto {
 
         let mut output_len = 0;
 
+        let context = CryptoContext::new();
+
         unsafe {
             if !PltDecryptMessage(
-                self.handle.context,
+                context.context,
                 algorithm.raw(),
                 flags.raw(),
                 key.as_ptr() as *mut _,
@@ -326,27 +270,10 @@ impl MoonlightCrypto {
             }
         }
 
-        Ok(output_len as usize)
-    }
-    pub fn decrypt_aes(
-        &self,
-        key: &[u8],
-        input: &[u8],
-        output: &mut [u8],
-    ) -> Result<usize, CryptoError> {
-        let iv = [0u8; 16];
+        if output_len > output.len() as i32 {
+            panic!("output buffer was overwritten");
+        }
 
-        self.decrypt_message(
-            CryptoAlgorithm::AesCbc,
-            CipherFlags {
-                finish: true,
-                ..Default::default()
-            },
-            key,
-            &iv,
-            None,
-            input,
-            output,
-        )
+        Ok(output_len as usize)
     }
 }

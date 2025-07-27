@@ -2,6 +2,7 @@
 //! The high level api of the moonlight wrapper
 //!
 
+use pem::Pem;
 use tokio::task::block_in_place;
 use uuid::Uuid;
 
@@ -16,7 +17,7 @@ use crate::{
         ClientInfo, ClientStreamRequest, HostInfo, PairStatus, ServerState, ServerVersion,
         host_get_info, host_launch,
     },
-    pair::{PairPin, host_pair},
+    pair::{PairPin, high::host_pair},
     stream::MoonlightStream,
 };
 
@@ -37,6 +38,17 @@ pub struct Paired {
 pub enum MaybePaired {
     Unpaired(Unpaired),
     Paired(Paired),
+}
+
+impl From<Paired> for MaybePaired {
+    fn from(value: Paired) -> Self {
+        Self::Paired(value)
+    }
+}
+impl From<Unpaired> for MaybePaired {
+    fn from(value: Unpaired) -> Self {
+        Self::Unpaired(value)
+    }
 }
 
 impl MoonlightHost<Unknown> {
@@ -161,6 +173,22 @@ impl<PairStatus> MoonlightHost<PairStatus> {
     }
 }
 
+impl<PairStatus> MoonlightHost<PairStatus>
+where
+    PairStatus: Into<MaybePaired>,
+{
+    pub fn maybe_paired(self) -> MoonlightHost<MaybePaired> {
+        MoonlightHost {
+            client_unique_id: self.client_unique_id,
+            client_uuid: self.client_uuid,
+            address: self.address,
+            http_port: self.http_port,
+            info: self.info,
+            paired: self.paired.into(),
+        }
+    }
+}
+
 impl MoonlightHost<MaybePaired> {
     #[allow(clippy::result_large_err)]
     pub fn into_paired(self) -> Result<MoonlightHost<Paired>, MoonlightHost<Unpaired>> {
@@ -189,8 +217,9 @@ impl MoonlightHost<Unpaired> {
     pub async fn pair(
         mut self,
         crypto: &MoonlightCrypto,
-        pin: PairPin,
+        client_cert_pem: &Pem,
         device_name: String,
+        pin: PairPin,
     ) -> Result<MoonlightHost<Paired>, (Self, Error)> {
         let http_address = self.http_address();
         let server_version = match self.version().await {
@@ -202,8 +231,9 @@ impl MoonlightHost<Unpaired> {
             crypto,
             &http_address,
             self.client_info(),
-            server_version,
+            client_cert_pem,
             &device_name,
+            server_version,
             pin,
         )
         .await
@@ -213,7 +243,7 @@ impl MoonlightHost<Unpaired> {
         };
 
         match status {
-            PairStatus::NotPaired => Err((self, Error::PairError)),
+            PairStatus::NotPaired => Err((self, Error::NotPaired)),
             PairStatus::Paired => Ok(MoonlightHost {
                 client_unique_id: self.client_unique_id,
                 client_uuid: self.client_uuid,
@@ -296,7 +326,7 @@ impl MoonlightHost<Paired> {
         Ok(connection)
     }
 
-    pub fn device_name(&self) -> &str {
+    pub fn pair_device_name(&self) -> &str {
         &self.paired.device_name
     }
 }
