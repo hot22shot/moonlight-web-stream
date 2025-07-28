@@ -3,7 +3,7 @@ use moonlight_common::{
     data::{ColorRange, Colorspace},
     high::MoonlightHost,
 };
-use rcgen::{CertifiedKey, KeyPair};
+use rcgen::CertifiedKey;
 use tokio::{
     fs::{read_to_string, try_exists, write},
     task::spawn_blocking,
@@ -29,7 +29,7 @@ async fn main() {
     let host = MoonlightHost::new(host_ip.to_string(), host_http_port, None);
 
     // Load or Create a key pair and certificate
-    let signing_key;
+    let private_key_pem;
     let cert_pem;
 
     if let Ok(true) = try_exists(key_file).await
@@ -37,7 +37,7 @@ async fn main() {
     {
         // Load already valid pairing information
         let key_contents = read_to_string(key_file).await.unwrap();
-        signing_key = KeyPair::from_pem(&key_contents).unwrap();
+        private_key_pem = pem::parse(key_contents).unwrap();
 
         let crt_contents = read_to_string(crt_file).await.unwrap();
         cert_pem = pem::parse(crt_contents).unwrap();
@@ -48,9 +48,12 @@ async fn main() {
             cert: generated_cert,
         } = rcgen::generate_simple_self_signed(Vec::new()).unwrap();
 
-        signing_key = generated_signing_key;
+        private_key_pem = pem::parse(generated_signing_key.serialize_pem()).unwrap();
         cert_pem = pem::parse(generated_cert.pem()).unwrap();
     }
+
+    assert_eq!(private_key_pem.tag(), "PRIVATE KEY");
+    assert_eq!(cert_pem.tag(), "CERTIFICATE");
 
     // Get the current pair state
     let host = host.pair_state().await.map_err(|(_, err)| err).unwrap();
@@ -67,15 +70,21 @@ async fn main() {
             println!("Pin: {pin}, Device Name: {device_name}");
 
             // Pair to the host
-            host.pair(&crypto, &cert_pem, device_name.to_string(), pin)
-                .await
-                .map_err(|(_, err)| err)
-                .unwrap()
+            host.pair(
+                &crypto,
+                &private_key_pem,
+                &cert_pem,
+                device_name.to_string(),
+                pin,
+            )
+            .await
+            .map_err(|(_, err)| err)
+            .unwrap()
         }
     };
 
     // Save the pair information
-    write(key_file, signing_key.serialize_pem()).await.unwrap();
+    write(key_file, private_key_pem.to_string()).await.unwrap();
     write(crt_file, cert_pem.to_string()).await.unwrap();
 
     // Start the stream (only 1 stream per program is allowed)

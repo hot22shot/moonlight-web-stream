@@ -11,11 +11,11 @@ use thiserror::Error;
 
 use crate::{
     data::{ServerInfo, StreamConfiguration},
-    network::ApiError,
     stream::MoonlightStream,
 };
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("the host doesn't support this feature")]
     NotSupportedOnHost,
@@ -31,14 +31,17 @@ pub enum Error {
     InstanceAlreadyExists,
     #[error("the client is not paired")]
     NotPaired,
+    // TODO: i don't like marking this as non_exhaustive
+    #[cfg(feature = "network")]
     #[error("{0}")]
-    Api(#[from] ApiError),
+    Api(#[from] network::ApiError),
 }
 
 pub mod audio;
 #[cfg(feature = "crypto")]
 pub mod crypto;
 pub mod data;
+#[cfg(feature = "network")]
 pub mod network;
 pub mod pair;
 pub mod stream;

@@ -3,9 +3,15 @@ use std::str::FromStr;
 use aes::Aes128;
 use block_modes::{BlockMode, Ecb, block_padding::NoPadding};
 use pem::Pem;
-use rsa::{Pkcs1v15Sign, RsaPublicKey, pkcs8::DecodePublicKey};
+use rsa::{
+    Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
+    pkcs1::DecodeRsaPrivateKey,
+    pkcs1v15::SigningKey,
+    pkcs8::{DecodePrivateKey, DecodePublicKey},
+};
 use sha2::Sha256;
 use x509_parser::{
+    der_parser::rusticata_macros::q,
     parse_x509_certificate,
     prelude::{FromDer, X509Certificate},
 };
@@ -14,12 +20,13 @@ use crate::{
     crypto::{HashAlgorithm, MoonlightCrypto},
     network::{
         ApiError, ClientInfo, ClientPairRequest, ClientPairRequest1, ClientPairRequest2,
-        PairStatus, ServerVersion, host_pair_initiate, host_pair1, host_pair2,
+        ClientPairRequest3, ClientPairRequestFinal, PairStatus, ServerVersion, host_pair_final,
+        host_pair_initiate, host_pair1, host_pair2, host_pair3,
     },
     pair::{CHALLENGE_LENGTH, PairPin, SALT_LENGTH},
 };
 
-pub fn hash(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
+fn hash(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
     use sha1::Digest;
 
     match algorithm {
@@ -33,14 +40,14 @@ pub fn hash(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
         }
     }
 }
-pub fn hash_size_uneq(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
+fn hash_size_uneq(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
     let mut hash = [0u8; HashAlgorithm::MAX_HASH_LEN];
     self::hash(algorithm, data, &mut hash);
 
     output.copy_from_slice(&hash[0..output.len()]);
 }
 
-pub fn salt_pin(salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; SALT_LENGTH + 4] {
+fn salt_pin(salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; SALT_LENGTH + 4] {
     let mut out = [0u8; SALT_LENGTH + 4];
 
     out[0..16].copy_from_slice(&salt);
@@ -54,11 +61,7 @@ pub fn salt_pin(salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; SALT_LENGTH + 4] 
     out
 }
 
-pub fn generate_aes_key(
-    algorithm: HashAlgorithm,
-    salt: [u8; SALT_LENGTH],
-    pin: PairPin,
-) -> [u8; 16] {
+fn generate_aes_key(algorithm: HashAlgorithm, salt: [u8; SALT_LENGTH], pin: PairPin) -> [u8; 16] {
     let mut hash = [0u8; 16];
 
     let salted = self::salt_pin(salt, pin);
@@ -69,7 +72,7 @@ pub fn generate_aes_key(
 
 type Aes128Ecb = Ecb<Aes128, NoPadding>;
 
-pub fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes128Ecb::new_from_slices(key, &[]).unwrap();
 
     // Decrypt in place, so clone ciphertext to mutable vec
@@ -83,7 +86,7 @@ pub fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     Ok(buffer)
 }
 
-pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes128Ecb::new_from_slices(key, &[])
         .map_err(|e| format!("Error initializing ECB cipher: {e:?}"))?;
 
@@ -95,8 +98,44 @@ pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-pub fn verify_signature(server_secret: &[u8], server_signature: (), server_cert: ()) {
-    todo!()
+fn verify_signature(
+    server_secret: &[u8],
+    server_signature: &[u8],
+    server_cert: &X509Certificate,
+) -> bool {
+    const HASH_ALGO: HashAlgorithm = HashAlgorithm::Sha256;
+
+    let public_key = RsaPublicKey::from_public_key_der(server_cert.public_key().raw).unwrap();
+
+    let mut hashed = [0u8; HashAlgorithm::MAX_HASH_LEN];
+    hash(HASH_ALGO, server_secret, &mut hashed);
+
+    public_key
+        .verify(
+            Pkcs1v15Sign::new::<Sha256>(),
+            &hashed[0..HASH_ALGO.hash_len()],
+            server_signature,
+        )
+        .is_ok()
+}
+
+fn sign_data(private_key: &Pem, data: &[u8]) -> Vec<u8> {
+    let private_key: RsaPrivateKey = if private_key.tag() == "PRIVATE KEY" {
+        RsaPrivateKey::from_pkcs8_pem(&private_key.to_string()).unwrap()
+    } else if private_key.tag() == "RSA PRIVATE KEY" {
+        RsaPrivateKey::from_pkcs1_pem(&private_key.to_string()).unwrap()
+    } else {
+        panic!("invalid pem private key");
+    };
+
+    private_key
+        .sign(Pkcs1v15Sign::new::<Sha256>(), data)
+        .unwrap()
+}
+
+pub enum PairResult {
+    NotPaired,
+    Paired { server_certificate: Pem },
 }
 
 // TODO: call unpair on error?
@@ -104,16 +143,18 @@ pub async fn host_pair(
     crypto: &MoonlightCrypto,
     http_address: &str,
     client_info: ClientInfo<'_>,
-    client_cert_pem: &Pem,
+    client_private_key_pem: &Pem,
+    client_certificate_pem: &Pem,
     device_name: &str,
     server_version: ServerVersion,
     pin: PairPin,
-) -> Result<PairStatus, ApiError> {
-    assert_eq!(client_cert_pem.tag(), "CERTIFICATE");
+) -> Result<PairResult, ApiError> {
+    // assert_eq!(client_private_key_pem.tag(), "PRIVATE KEY");
+    // assert_eq!(client_certificate_pem.tag(), "CERTIFICATE");
 
-    let (_, client_cert) = X509Certificate::from_der(client_cert_pem.contents()).unwrap();
+    let (_, client_cert) = X509Certificate::from_der(client_certificate_pem.contents()).unwrap();
 
-    let client_cert_pem = pem::encode(&Pem::new("CERTIFICATE", client_cert.public_key().raw));
+    let client_cert_pem = client_certificate_pem.to_string();
 
     let hash_algorithm = crypto.hash_algorithm_for_server(server_version);
     // TODO: read already paired information
@@ -206,16 +247,22 @@ pub async fn host_pair(
     println!("{server_response2:#?}");
 
     if !matches!(server_response2.paired, PairStatus::Paired) {
+        // TODO: unpair
         todo!()
     }
 
     let mut server_secret = [0u8; 16];
-    server_secret.copy_from_slice(&server_response2.pairing_secret[0..16]);
+    server_secret.copy_from_slice(&server_response2.server_pairing_secret[0..16]);
 
     let mut server_signature = Vec::new();
-    server_signature.extend_from_slice(&server_response2.pairing_secret[16..]);
+    server_signature.extend_from_slice(&server_response2.server_pairing_secret[16..]);
 
-    // TODO: verify signature -> MITM: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L259C10-L266C10
+    if !verify_signature(&server_secret, &server_signature, &server_cert) {
+        // TODO: unpair
+
+        // MITM likely
+        todo!()
+    }
 
     let mut expected_response = Vec::new();
     expected_response.extend_from_slice(&challenge);
@@ -231,10 +278,42 @@ pub async fn host_pair(
 
     if &expected_response_hash[0..hash_algorithm.hash_len()] != server_response_hash {
         // TODO: unpair and error
-        panic!("Incorrect pin");
+
+        // Probably wrong pin
+        // todo!()
     }
 
-    // https://github.com/moonlight-stream/moonlight-qt/blob/master/app/backend/nvpairingmanager.cpp#L324C5-L326C63
+    // Send the server our signed secret
+    let mut client_pairing_secret = Vec::new();
+    client_pairing_secret.extend_from_slice(&client_secret);
+    client_pairing_secret.extend_from_slice(&sign_data(client_private_key_pem, &client_secret));
 
-    todo!()
+    host_pair3(
+        http_address,
+        client_info,
+        ClientPairRequest3 {
+            device_name,
+            client_pairing_secret: &client_pairing_secret,
+        },
+    )
+    .await
+    .unwrap();
+
+    // Required for us to show as paired
+    let final_response = host_pair_final(
+        http_address,
+        client_info,
+        ClientPairRequestFinal { device_name },
+    )
+    .await
+    .unwrap();
+
+    if !matches!(final_response.paired, PairStatus::Paired) {
+        // TODO: unpair
+        todo!()
+    }
+
+    Ok(PairResult::Paired {
+        server_certificate: server_cert_pem,
+    })
 }

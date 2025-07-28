@@ -6,10 +6,7 @@ use thiserror::Error;
 use url::{ParseError, UrlQuery, form_urlencoded::Serializer};
 use uuid::{Uuid, fmt::Hyphenated};
 
-use crate::{
-    MoonlightInstance,
-    pair::{CHALLENGE_LENGTH, SALT_LENGTH},
-};
+use crate::{MoonlightInstance, pair::SALT_LENGTH};
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -288,7 +285,7 @@ pub async fn host_pair_initiate(
 
     let mut query_params = url.query_pairs_mut();
     query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1"); // <--- TODO: what does this do?
+    query_params.append_pair("updateState", "1");
 
     // https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L207
     query_params.append_pair("phrase", "getservercert");
@@ -351,7 +348,7 @@ pub async fn host_pair1(
     let mut query_params = url.query_pairs_mut();
 
     query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1"); // <--- TODO: what does this do?
+    query_params.append_pair("updateState", "1");
 
     let mut encrypted_challenge_str_bytes = vec![0u8; request.encrypted_challenge.len() * 2];
     hex::encode_to_slice(
@@ -393,7 +390,7 @@ pub struct ClientPairRequest2<'a> {
 #[derive(Debug, Clone)]
 pub struct ServerPairResponse2 {
     pub paired: PairStatus,
-    pub pairing_secret: Vec<u8>,
+    pub server_pairing_secret: Vec<u8>,
 }
 
 pub async fn host_pair2(
@@ -406,7 +403,7 @@ pub async fn host_pair2(
     let mut query_params = url.query_pairs_mut();
 
     query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1"); // <--- TODO: what does this do?
+    query_params.append_pair("updateState", "1");
 
     let mut encrypted_challenge_str_bytes =
         vec![0u8; request.encrypted_challenge_response_hash.len() * 2];
@@ -437,8 +434,93 @@ pub async fn host_pair2(
 
     Ok(ServerPairResponse2 {
         paired,
-        pairing_secret,
+        server_pairing_secret: pairing_secret,
     })
+}
+
+pub struct ClientPairRequest3<'a> {
+    pub device_name: &'a str,
+    pub client_pairing_secret: &'a [u8],
+}
+#[derive(Debug, Clone)]
+pub struct ServerPairResponse3 {
+    pub paired: PairStatus,
+}
+
+pub async fn host_pair3(
+    http_address: &str,
+    info: ClientInfo<'_>,
+    request: ClientPairRequest3<'_>,
+) -> Result<ServerPairResponse3, ApiError> {
+    let mut url = build_url(false, http_address, "pair", Some(info))?;
+
+    let mut query_params = url.query_pairs_mut();
+
+    query_params.append_pair("devicename", request.device_name);
+    query_params.append_pair("updateState", "1");
+
+    let mut client_pairing_secret_str_bytes = vec![0u8; request.client_pairing_secret.len() * 2];
+    hex::encode_to_slice(
+        request.client_pairing_secret,
+        &mut client_pairing_secret_str_bytes,
+    )
+    .expect("encode encrypted challenge as hex");
+    query_params.append_pair(
+        "clientpairingsecret",
+        str::from_utf8(&client_pairing_secret_str_bytes)
+            .expect("client pairing secret string as utf8"),
+    );
+    drop(query_params);
+
+    let response = reqwest::get(url).await?.text().await?;
+
+    let doc = Document::parse(&response)?;
+    let root = doc
+        .root()
+        .children()
+        .find(|node| node.tag_name().name() == "root")
+        .ok_or(ApiError::XmlRootNotFound)?;
+
+    let paired = xml_child_paired(root, "paired")?;
+
+    Ok(ServerPairResponse3 { paired })
+}
+
+pub struct ClientPairRequestFinal<'a> {
+    pub device_name: &'a str,
+}
+#[derive(Debug, Clone)]
+pub struct ServerPairResponseFinal {
+    pub paired: PairStatus,
+}
+
+pub async fn host_pair_final(
+    http_address: &str,
+    info: ClientInfo<'_>,
+    request: ClientPairRequestFinal<'_>,
+) -> Result<ServerPairResponseFinal, ApiError> {
+    let mut url = build_url(false, http_address, "pair", Some(info))?;
+
+    let mut query_params = url.query_pairs_mut();
+
+    query_params.append_pair("phrase", "pairchallenge");
+    query_params.append_pair("devicename", request.device_name);
+    query_params.append_pair("updateState", "1");
+
+    drop(query_params);
+
+    let response = reqwest::get(url).await?.text().await?;
+
+    let doc = Document::parse(&response)?;
+    let root = doc
+        .root()
+        .children()
+        .find(|node| node.tag_name().name() == "root")
+        .ok_or(ApiError::XmlRootNotFound)?;
+
+    let paired = xml_child_paired(root, "paired")?;
+
+    Ok(ServerPairResponseFinal { paired })
 }
 
 pub async fn host_unpair(http_address: &str, info: ClientInfo<'_>) -> Result<(), ApiError> {

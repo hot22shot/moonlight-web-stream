@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display};
 
+#[cfg(feature = "high")]
 pub mod high;
 
 /// A pin which contains four values in the range 0..10

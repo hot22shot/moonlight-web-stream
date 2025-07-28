@@ -14,10 +14,13 @@ use crate::{
         SupportedVideoFormats,
     },
     network::{
-        ClientInfo, ClientStreamRequest, HostInfo, PairStatus, ServerState, ServerVersion,
-        host_get_info, host_launch,
+        ClientInfo, ClientStreamRequest, HostInfo, ServerState, ServerVersion, host_get_info,
+        host_launch,
     },
-    pair::{PairPin, high::host_pair},
+    pair::{
+        PairPin,
+        high::{PairResult, host_pair},
+    },
     stream::MoonlightStream,
 };
 
@@ -34,6 +37,7 @@ pub struct Unknown;
 pub struct Unpaired;
 pub struct Paired {
     device_name: String,
+    server_certificate: Pem,
 }
 pub enum MaybePaired {
     Unpaired(Unpaired),
@@ -217,7 +221,8 @@ impl MoonlightHost<Unpaired> {
     pub async fn pair(
         mut self,
         crypto: &MoonlightCrypto,
-        client_cert_pem: &Pem,
+        client_private_key_pem: &Pem,
+        client_certificate_pem: &Pem,
         device_name: String,
         pin: PairPin,
     ) -> Result<MoonlightHost<Paired>, (Self, Error)> {
@@ -231,7 +236,8 @@ impl MoonlightHost<Unpaired> {
             crypto,
             &http_address,
             self.client_info(),
-            client_cert_pem,
+            client_private_key_pem,
+            client_certificate_pem,
             &device_name,
             server_version,
             pin,
@@ -243,15 +249,18 @@ impl MoonlightHost<Unpaired> {
         };
 
         match status {
-            PairStatus::NotPaired => Err((self, Error::NotPaired)),
-            PairStatus::Paired => Ok(MoonlightHost {
+            PairResult::NotPaired => Err((self, Error::NotPaired)),
+            PairResult::Paired { server_certificate } => Ok(MoonlightHost {
                 client_unique_id: self.client_unique_id,
                 client_uuid: self.client_uuid,
                 address: self.address,
                 http_port: self.http_port,
                 info: self.info,
                 // TODO: other info which is required
-                paired: Paired { device_name },
+                paired: Paired {
+                    device_name,
+                    server_certificate,
+                },
             }),
         }
     }
