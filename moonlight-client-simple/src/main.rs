@@ -2,8 +2,9 @@ use moonlight_common::{
     MoonlightInstance,
     data::{ColorRange, Colorspace},
     high::MoonlightHost,
+    pair::high::generate_key_and_cert,
 };
-use rcgen::CertifiedKey;
+use rcgen::{CertificateParams, KeyPair, PKCS_RSA_SHA256};
 use tokio::{
     fs::{read_to_string, try_exists, write},
     task::spawn_blocking,
@@ -43,10 +44,7 @@ async fn main() {
         cert_pem = pem::parse(crt_contents).unwrap();
     } else {
         // Generate new private key and certificate
-        let CertifiedKey {
-            signing_key: generated_signing_key,
-            cert: generated_cert,
-        } = rcgen::generate_simple_self_signed(Vec::new()).unwrap();
+        let (generated_signing_key, generated_cert) = generate_key_and_cert().unwrap();
 
         private_key_pem = pem::parse(generated_signing_key.serialize_pem()).unwrap();
         cert_pem = pem::parse(generated_cert.pem()).unwrap();

@@ -1,17 +1,12 @@
-use std::str::FromStr;
+use std::{rc, str::FromStr};
 
 use aes::Aes128;
 use block_modes::{BlockMode, Ecb, block_padding::NoPadding};
 use pem::Pem;
-use rsa::{
-    Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
-    pkcs1::DecodeRsaPrivateKey,
-    pkcs1v15::SigningKey,
-    pkcs8::{DecodePrivateKey, DecodePublicKey},
-};
+use rcgen::{Certificate, CertificateParams, KeyPair, PKCS_RSA_SHA256, SigningKey};
+use rsa::{Pkcs1v15Sign, RsaPublicKey, pkcs8::DecodePublicKey};
 use sha2::Sha256;
 use x509_parser::{
-    der_parser::rusticata_macros::q,
     parse_x509_certificate,
     prelude::{FromDer, X509Certificate},
 };
@@ -119,18 +114,15 @@ fn verify_signature(
         .is_ok()
 }
 
-fn sign_data(private_key: &Pem, data: &[u8]) -> Vec<u8> {
-    let private_key: RsaPrivateKey = if private_key.tag() == "PRIVATE KEY" {
-        RsaPrivateKey::from_pkcs8_pem(&private_key.to_string()).unwrap()
-    } else if private_key.tag() == "RSA PRIVATE KEY" {
-        RsaPrivateKey::from_pkcs1_pem(&private_key.to_string()).unwrap()
-    } else {
-        panic!("invalid pem private key");
-    };
+fn sign_data(key_pair: &KeyPair, data: &[u8]) -> Vec<u8> {
+    key_pair.sign(data).unwrap()
+}
 
-    private_key
-        .sign(Pkcs1v15Sign::new::<Sha256>(), data)
-        .unwrap()
+pub fn generate_key_and_cert() -> Result<(KeyPair, Certificate), rcgen::Error> {
+    let generated_signing_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
+    let generated_cert = CertificateParams::new(Vec::new())?.self_signed(&generated_signing_key)?;
+
+    Ok((generated_signing_key, generated_cert))
 }
 
 pub enum PairResult {
@@ -149,10 +141,9 @@ pub async fn host_pair(
     server_version: ServerVersion,
     pin: PairPin,
 ) -> Result<PairResult, ApiError> {
-    // assert_eq!(client_private_key_pem.tag(), "PRIVATE KEY");
-    // assert_eq!(client_certificate_pem.tag(), "CERTIFICATE");
-
     let (_, client_cert) = X509Certificate::from_der(client_certificate_pem.contents()).unwrap();
+    let client_key_pair = KeyPair::from_pem(&client_private_key_pem.to_string()).unwrap();
+    // assert!(client_key_pair.algorithm() == &PKCS_RSA_SHA256);
 
     let client_cert_pem = client_certificate_pem.to_string();
 
@@ -224,15 +215,18 @@ pub async fn host_pair(
     challenge_response.extend_from_slice(&client_cert.signature_value.data);
     challenge_response.extend_from_slice(&client_secret);
 
-    let mut challenge_response_hash = [0u8; 32];
+    let mut challenge_response_hash = [0u8; HashAlgorithm::MAX_HASH_LEN];
     hash_size_uneq(
         hash_algorithm,
         &challenge_response,
         &mut challenge_response_hash,
     );
 
-    let encrypted_challenge_response_hash = encrypt_aes(&aes_key, &challenge_response_hash)
-        .expect("encrypt challenge_response_hash with aes");
+    let encrypted_challenge_response_hash = encrypt_aes(
+        &aes_key,
+        &challenge_response_hash[0..hash_algorithm.hash_len()],
+    )
+    .expect("encrypt challenge_response_hash with aes");
 
     let server_response2 = host_pair2(
         http_address,
@@ -276,19 +270,21 @@ pub async fn host_pair(
         &mut expected_response_hash,
     );
 
-    if &expected_response_hash[0..hash_algorithm.hash_len()] != server_response_hash {
+    let cmp1 = &expected_response_hash[0..hash_algorithm.hash_len()];
+    if cmp1 != server_response_hash {
         // TODO: unpair and error
+        println!("Error on:\n{cmp1:?}\n{server_response_hash:?}");
 
         // Probably wrong pin
-        // todo!()
+        todo!()
     }
 
     // Send the server our signed secret
     let mut client_pairing_secret = Vec::new();
     client_pairing_secret.extend_from_slice(&client_secret);
-    client_pairing_secret.extend_from_slice(&sign_data(client_private_key_pem, &client_secret));
+    client_pairing_secret.extend_from_slice(&sign_data(&client_key_pair, &client_secret));
 
-    host_pair3(
+    let server_response3 = host_pair3(
         http_address,
         client_info,
         ClientPairRequest3 {
@@ -299,6 +295,12 @@ pub async fn host_pair(
     .await
     .unwrap();
 
+    println!("{server_response3:#?}");
+    if !matches!(server_response3.paired, PairStatus::Paired) {
+        // TODO: unpair
+        todo!()
+    }
+
     // Required for us to show as paired
     let final_response = host_pair_final(
         http_address,
@@ -307,6 +309,7 @@ pub async fn host_pair(
     )
     .await
     .unwrap();
+    println!("{final_response:#?}");
 
     if !matches!(final_response.paired, PairStatus::Paired) {
         // TODO: unpair
