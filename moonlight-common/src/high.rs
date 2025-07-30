@@ -2,8 +2,6 @@
 //! The high level api of the moonlight wrapper
 //!
 
-use std::time::Duration;
-
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
 use tokio::task::block_in_place;
@@ -17,8 +15,8 @@ use crate::{
         SupportedVideoFormats,
     },
     network::{
-        ApiError, App, ClientInfo, ClientStreamRequest, HostInfo, PairStatus, ServerState,
-        ServerVersion, host_app_list, host_info, host_launch,
+        ApiError, App, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID, HostInfo, PairStatus,
+        ServerState, ServerVersion, host_app_list, host_info, host_launch,
     },
     pair::{
         PairPin,
@@ -56,7 +54,6 @@ fn tls_client_builder(
 
 pub struct MoonlightHost<PairStatus> {
     client_unique_id: String,
-    client_uuid: Uuid,
     client: Client,
     address: String,
     http_port: u16,
@@ -88,14 +85,10 @@ impl From<Unpaired> for MaybePaired {
 }
 
 impl MoonlightHost<Unknown> {
-    pub fn new(address: String, http_port: u16, client: Option<ClientInfo>) -> Self {
-        #[allow(clippy::unwrap_or_default)]
-        let client = client.unwrap_or(ClientInfo::default());
-
+    pub fn new(address: String, http_port: u16, unique_id: Option<String>) -> Self {
         Self {
             client: default_client_builder().build().expect("reqwest client"),
-            client_unique_id: client.unique_id.to_string(),
-            client_uuid: client.uuid(),
+            client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
             address,
             http_port,
             info: None,
@@ -132,7 +125,7 @@ impl<Pair> MoonlightHost<Pair> {
     pub fn client_info(&'_ self) -> ClientInfo<'_> {
         ClientInfo {
             unique_id: &self.client_unique_id,
-            // uuid: self.client_uuid,
+            uuid: Uuid::new_v4(),
         }
     }
 
@@ -199,7 +192,6 @@ impl<Pair> MoonlightHost<Pair> {
         MoonlightHost {
             client: self.client,
             client_unique_id: self.client_unique_id,
-            client_uuid: self.client_uuid,
             address: self.address,
             http_port: self.http_port,
             info: self.info,
@@ -240,7 +232,6 @@ impl<Pair> MoonlightHost<Pair> {
             PairStatus::NotPaired => Ok(MoonlightHost {
                 client,
                 client_unique_id: self.client_unique_id,
-                client_uuid: self.client_uuid,
                 address: self.address,
                 http_port: self.http_port,
                 info: Some(info),
@@ -249,7 +240,6 @@ impl<Pair> MoonlightHost<Pair> {
             PairStatus::Paired => Ok(MoonlightHost {
                 client,
                 client_unique_id: self.client_unique_id,
-                client_uuid: self.client_uuid,
                 address: self.address,
                 http_port: self.http_port,
                 info: Some(info),
@@ -274,7 +264,6 @@ where
         MoonlightHost {
             client: self.client,
             client_unique_id: self.client_unique_id,
-            client_uuid: self.client_uuid,
             address: self.address,
             http_port: self.http_port,
             info: self.info,
@@ -290,7 +279,6 @@ impl MoonlightHost<MaybePaired> {
             MaybePaired::Paired(paired) => Ok(MoonlightHost {
                 client: self.client,
                 client_unique_id: self.client_unique_id,
-                client_uuid: self.client_uuid,
                 address: self.address,
                 http_port: self.http_port,
                 info: self.info,
@@ -299,7 +287,6 @@ impl MoonlightHost<MaybePaired> {
             MaybePaired::Unpaired(paired) => Err(MoonlightHost {
                 client: self.client,
                 client_unique_id: self.client_unique_id,
-                client_uuid: self.client_uuid,
                 address: self.address,
                 http_port: self.http_port,
                 info: self.info,
@@ -346,7 +333,6 @@ impl MoonlightHost<Unpaired> {
                 .build()
                 .unwrap(),
             client_unique_id: self.client_unique_id,
-            client_uuid: self.client_uuid,
             address: self.address,
             http_port: self.http_port,
             info: self.info,

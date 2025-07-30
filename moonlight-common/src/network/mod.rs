@@ -38,25 +38,21 @@ pub enum ApiError {
     Utf8Error(#[from] FromUtf8Error),
 }
 
+pub const DEFAULT_UNIQUE_ID: &str = "0123456789ABCDEF";
+
 #[derive(Debug, Clone, Copy)]
 pub struct ClientInfo<'a> {
     /// It's recommended to use the same (default) UID for all Moonlight clients so we can quit games started by other Moonlight clients.
     pub unique_id: &'a str,
-    // uuid: Uuid,
+    pub uuid: Uuid,
 }
 
 impl Default for ClientInfo<'static> {
     fn default() -> Self {
         Self {
-            unique_id: "0123456789ABCDEF",
-            // uuid: Uuid::new_v4(),
+            unique_id: DEFAULT_UNIQUE_ID,
+            uuid: Uuid::new_v4(),
         }
-    }
-}
-
-impl ClientInfo<'_> {
-    pub fn uuid(&self) -> Uuid {
-        Uuid::new_v4()
     }
 }
 
@@ -65,9 +61,7 @@ impl ClientInfo<'_> {
         params.append_pair("uniqueid", self.unique_id);
 
         let mut uuid_str_bytes = [0; Hyphenated::LENGTH];
-        self.uuid()
-            .as_hyphenated()
-            .encode_lower(&mut uuid_str_bytes);
+        self.uuid.as_hyphenated().encode_lower(&mut uuid_str_bytes);
         let uuid_str = str::from_utf8(&uuid_str_bytes).expect("uuid string");
 
         params.append_pair("uuid", uuid_str);
