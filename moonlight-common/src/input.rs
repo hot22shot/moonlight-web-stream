@@ -1,0 +1,18 @@
+use moonlight_common_sys::limelight::{
+    LI_TOUCH_EVENT_BUTTON_ONLY, LI_TOUCH_EVENT_CANCEL, LI_TOUCH_EVENT_CANCEL_ALL,
+    LI_TOUCH_EVENT_DOWN, LI_TOUCH_EVENT_HOVER, LI_TOUCH_EVENT_HOVER_LEAVE, LI_TOUCH_EVENT_MOVE,
+    LI_TOUCH_EVENT_UP,
+};
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum TouchEventType {
+    Hover = LI_TOUCH_EVENT_HOVER,
+    Down = LI_TOUCH_EVENT_DOWN,
+    Up = LI_TOUCH_EVENT_UP,
+    Move = LI_TOUCH_EVENT_MOVE,
+    Cancel = LI_TOUCH_EVENT_CANCEL,
+    ButtonOnly = LI_TOUCH_EVENT_BUTTON_ONLY,
+    HoverLeave = LI_TOUCH_EVENT_HOVER_LEAVE,
+    CancelAll = LI_TOUCH_EVENT_CANCEL_ALL,
+}

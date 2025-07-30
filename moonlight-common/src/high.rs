@@ -10,10 +10,6 @@ use uuid::Uuid;
 use crate::{
     Error, MoonlightInstance,
     crypto::MoonlightCrypto,
-    data::{
-        ColorRange, Colorspace, EncryptionFlags, ServerInfo, StreamConfiguration, StreamingConfig,
-        SupportedVideoFormats,
-    },
     network::{
         ApiError, App, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID, HostAppListResponse,
         HostInfo, PairStatus, ServerState, ServerVersion, host_app_list, host_info, host_launch,
@@ -22,7 +18,11 @@ use crate::{
         PairPin,
         high::{ClientAuth, PairError, PairSuccess, host_pair},
     },
-    stream::MoonlightStream,
+    stream::{
+        ColorRange, Colorspace, EncryptionFlags, MoonlightStream, ServerInfo, StreamConfiguration,
+        StreamingConfig,
+    },
+    video::SupportedVideoFormats,
 };
 
 fn default_client_builder() -> ClientBuilder {

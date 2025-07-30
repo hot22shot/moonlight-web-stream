@@ -1,18 +1,98 @@
 use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc};
 
+use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
-    _SERVER_INFORMATION, _STREAM_CONFIGURATION, LI_ERR_UNSUPPORTED, LI_FF_CONTROLLER_TOUCH_EVENTS,
+    _SERVER_INFORMATION, _STREAM_CONFIGURATION, COLOR_RANGE_FULL, COLOR_RANGE_LIMITED,
+    COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL, ENCFLG_AUDIO,
+    ENCFLG_NONE, ENCFLG_VIDEO, LI_ERR_UNSUPPORTED, LI_FF_CONTROLLER_TOUCH_EVENTS,
     LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
     LiInitializeAudioCallbacks, LiInitializeConnectionCallbacks, LiInitializeVideoCallbacks,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
     LiSendTouchEvent, LiStartConnection, LiStopConnection, PSERVER_INFORMATION,
-    PSTREAM_CONFIGURATION,
+    PSTREAM_CONFIGURATION, STREAM_CFG_AUTO, STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
 };
 
 use crate::{
-    Error, Handle,
-    data::{ServerInfo, StreamConfiguration, TouchEventType},
+    Error, Handle, input::TouchEventType, network::ServerVersion, video::SupportedVideoFormats,
 };
+
+pub struct ServerInfo<'a> {
+    pub address: &'a str,
+    pub app_version: ServerVersion,
+    pub gfe_version: &'a str,
+    pub rtsp_session_url: &'a str,
+    // TODO: enum?
+    pub server_codec_mode_support: i32,
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum StreamingConfig {
+    Local = STREAM_CFG_LOCAL,
+    Remote = STREAM_CFG_REMOTE,
+    Auto = STREAM_CFG_AUTO,
+}
+
+impl StreamingConfig {
+    pub(crate) fn raw(self) -> i32 {
+        self as i32
+    }
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum Colorspace {
+    Rec601 = COLORSPACE_REC_601,
+    Rec709 = COLORSPACE_REC_709,
+    Rec2020 = COLORSPACE_REC_2020,
+}
+
+impl Colorspace {
+    pub(crate) fn raw(self) -> i32 {
+        self as i32
+    }
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum ColorRange {
+    Limited = COLOR_RANGE_LIMITED,
+    Full = COLOR_RANGE_FULL,
+}
+
+impl ColorRange {
+    pub(crate) fn raw(self) -> i32 {
+        self as i32
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct EncryptionFlags: u32 {
+        const AUDIO = ENCFLG_AUDIO;
+        const VIDEO  = ENCFLG_VIDEO;
+
+        const NONE = ENCFLG_NONE;
+        const ALL = ENCFLG_ALL;
+    }
+}
+
+pub struct StreamConfiguration {
+    pub width: i32,
+    pub height: i32,
+    pub fps: i32,
+    pub bitrate: i32,
+    pub packet_size: i32,
+    pub streaming_remotely: StreamingConfig,
+    pub audio_configuration: i32,
+    pub supported_video_formats: SupportedVideoFormats,
+    pub client_refresh_rate_x100: i32,
+    pub color_space: Colorspace,
+    pub color_range: ColorRange,
+    pub encryption_flags: EncryptionFlags,
+    pub remote_input_aes_key: [u8; 16],
+    pub remote_input_aes_iv: [u8; 16],
+}
 
 #[derive(Debug, Clone)]
 pub struct HostFeatures {
@@ -67,11 +147,11 @@ impl MoonlightStream {
                 packetSize: stream_config.packet_size,
                 streamingRemotely: stream_config.streaming_remotely.raw(),
                 audioConfiguration: stream_config.audio_configuration,
-                supportedVideoFormats: stream_config.supported_video_formats.raw(),
+                supportedVideoFormats: stream_config.supported_video_formats.bits() as i32,
                 clientRefreshRateX100: stream_config.client_refresh_rate_x100,
-                colorSpace: stream_config.color_space.raw(),
-                colorRange: stream_config.color_range.raw(),
-                encryptionFlags: stream_config.encryption_flags.raw(),
+                colorSpace: stream_config.color_space as u32 as i32,
+                colorRange: stream_config.color_range as u32 as i32,
+                encryptionFlags: stream_config.encryption_flags.bits() as i32,
                 remoteInputAesKey: transmute::<[u8; 16], [i8; 16]>(
                     stream_config.remote_input_aes_key,
                 ),
@@ -241,7 +321,7 @@ impl MoonlightStream {
     ) -> Result<(), Error> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendTouchEvent(
-                event_type.raw(),
+                event_type as u32 as u8,
                 pointer_id,
                 x,
                 y,

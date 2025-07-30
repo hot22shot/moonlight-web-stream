@@ -178,7 +178,6 @@ pub enum PairError {
     Failed,
 }
 
-// TODO: call unpair on error?
 pub async fn host_pair(
     crypto: &MoonlightCrypto,
     client: &Client,

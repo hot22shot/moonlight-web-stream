@@ -9,10 +9,7 @@ use std::{
 use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
 use thiserror::Error;
 
-use crate::{
-    data::{ServerInfo, StreamConfiguration},
-    stream::MoonlightStream,
-};
+use crate::stream::{MoonlightStream, ServerInfo, StreamConfiguration};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -34,14 +31,16 @@ pub enum Error {
 }
 
 pub mod audio;
-#[cfg(feature = "crypto")]
-pub mod crypto;
-pub mod data;
-#[cfg(feature = "network")]
-pub mod network;
+pub mod input;
 pub mod pair;
+pub mod stage;
 pub mod stream;
 pub mod video;
+
+#[cfg(feature = "crypto")]
+pub mod crypto;
+#[cfg(feature = "network")]
+pub mod network;
 
 #[cfg(feature = "high")]
 pub mod high;

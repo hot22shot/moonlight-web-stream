@@ -1,8 +1,8 @@
 use moonlight_common::{
     MoonlightInstance,
-    data::{ColorRange, Colorspace},
     high::MoonlightHost,
     pair::high::{ClientAuth, generate_new_client},
+    stream::{ColorRange, Colorspace},
 };
 use tokio::{
     fs::{read_to_string, try_exists, write},
