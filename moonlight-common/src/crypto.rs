@@ -74,9 +74,9 @@ impl HashAlgorithm {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CipherFlags {
-    reset: bool,
-    finish: bool,
-    pad_to_block_size: bool,
+    pub reset: bool,
+    pub finish: bool,
+    pub pad_to_block_size: bool,
 }
 
 impl CipherFlags {

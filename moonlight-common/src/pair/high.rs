@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use aes::Aes128;
-use block_modes::{BlockMode, Ecb, block_padding::NoPadding};
+use block_modes::{BlockMode, BlockModeError, Ecb, block_padding::NoPadding};
 use pem::{Pem, PemError};
 use rcgen::{Certificate, CertificateParams, KeyPair, PKCS_RSA_SHA256};
 use rsa::{
@@ -72,28 +72,24 @@ fn generate_aes_key(algorithm: HashAlgorithm, salt: [u8; SALT_LENGTH], pin: Pair
 
 type Aes128Ecb = Ecb<Aes128, NoPadding>;
 
-pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    let cipher = Aes128Ecb::new_from_slices(key, &[])
-        .map_err(|e| format!("Error initializing ECB cipher: {e:?}"))?;
+pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let cipher = Aes128Ecb::new_from_slices(key, &[]).expect("valid iv key (the key is &[])");
 
     // Clone plaintext into a mutable buffer
     let mut buf = plaintext.to_vec();
     // Encrypt in place, specifying the full plaintext length
     cipher
         .encrypt(&mut buf, plaintext.len())
-        .map_err(|e| format!("Encryption failed: {e:?}"))?;
+        .expect("no required padding for encryption");
 
-    Ok(buf)
+    buf
 }
 
-pub fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
-    let cipher = Aes128Ecb::new_from_slices(key, &[])
-        .map_err(|e| format!("Error initializing ECB cipher: {e:?}"))?;
+pub fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, PairError> {
+    let cipher = Aes128Ecb::new_from_slices(key, &[]).expect("a valid iv key (the key is &[])");
 
     let mut buf = ciphertext.to_vec();
-    cipher
-        .decrypt(&mut buf)
-        .map_err(|e| format!("Decryption failed: {e:?}"))?;
+    cipher.decrypt(&mut buf)?;
 
     Ok(buf)
 }
@@ -105,7 +101,8 @@ fn verify_signature(
 ) -> bool {
     const HASH_ALGO: HashAlgorithm = HashAlgorithm::Sha256;
 
-    let public_key = RsaPublicKey::from_public_key_der(server_cert.public_key().raw).unwrap();
+    let public_key = RsaPublicKey::from_public_key_der(server_cert.public_key().raw)
+        .expect("a valid server certificate public key");
 
     let mut hashed = [0u8; HashAlgorithm::MAX_HASH_LEN];
     hash(HASH_ALGO, server_secret, &mut hashed);
@@ -122,14 +119,15 @@ fn verify_signature(
 fn sign_data(key_pair: &KeyPair, data: &[u8]) -> Vec<u8> {
     const HASH_ALGO: HashAlgorithm = HashAlgorithm::Sha256;
 
-    let private_key = RsaPrivateKey::from_pkcs8_der(key_pair.serialized_der()).unwrap();
+    let private_key = RsaPrivateKey::from_pkcs8_der(key_pair.serialized_der())
+        .expect("a valid pkcs8 private key");
 
     let mut hashed = [0u8; HashAlgorithm::MAX_HASH_LEN];
     hash(HASH_ALGO, data, &mut hashed);
 
     private_key
         .sign(Pkcs1v15Sign::new::<Sha256>(), &hashed)
-        .unwrap()
+        .expect("sign the data")
 }
 
 pub fn generate_key_and_cert() -> Result<(KeyPair, Certificate), rcgen::Error> {
@@ -156,6 +154,8 @@ pub enum PairError {
     #[error("incorrect private key: make sure it's a PKCS_RSA_SHA256 key")]
     IncorrectPrivateKey,
     // Server
+    #[error("{0}")]
+    Decrypt(#[from] BlockModeError),
     #[error("incorrect server certificate pem: {0}")]
     ServerCertificatePem(PemError),
     #[error("incorrect server certificate: {0}")]
@@ -222,7 +222,7 @@ pub async fn host_pair(
     let mut challenge = [0u8; CHALLENGE_LENGTH];
     crypto.generate_random(&mut challenge);
 
-    let encrypted_challenge = encrypt_aes(&aes_key, &challenge).unwrap();
+    let encrypted_challenge = encrypt_aes(&aes_key, &challenge);
 
     let server_response2 = host_pair2(
         http_address,
@@ -240,7 +240,7 @@ pub async fn host_pair(
         return Err(PairError::Failed);
     }
 
-    let response = decrypt_aes(&aes_key, &server_response2.encrypted_response).unwrap();
+    let response = decrypt_aes(&aes_key, &server_response2.encrypted_response)?;
 
     let server_response_hash = &response[0..hash_algorithm.hash_len()];
     let server_challenge =
@@ -264,8 +264,7 @@ pub async fn host_pair(
     let encrypted_challenge_response_hash = encrypt_aes(
         &aes_key,
         &challenge_response_hash[0..hash_algorithm.hash_len()],
-    )
-    .expect("encrypt challenge_response_hash with aes");
+    );
 
     let server_response3 = host_pair3(
         http_address,
