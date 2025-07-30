@@ -15,8 +15,8 @@ use crate::{
         SupportedVideoFormats,
     },
     network::{
-        ApiError, App, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID, HostInfo, PairStatus,
-        ServerState, ServerVersion, host_app_list, host_info, host_launch,
+        ApiError, App, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID, HostAppListResponse,
+        HostInfo, PairStatus, ServerState, ServerVersion, host_app_list, host_info, host_launch,
     },
     pair::{
         PairPin,
@@ -41,14 +41,16 @@ fn tls_client_builder(
     client_pem.push('\n');
     client_pem.push_str(&auth.certificate.to_string());
 
-    let identity = Identity::from_pem(client_pem.as_bytes())?;
+    let identity = Identity::from_pkcs8_pem(
+        auth.certificate.to_string().as_bytes(),
+        auth.key_pair.to_string().as_bytes(),
+    )?;
 
     Ok(default_client_builder()
-        .use_rustls_tls()
+        .use_native_tls()
         .tls_built_in_root_certs(false)
         .add_root_certificate(server_cert)
         .identity(identity)
-        .danger_accept_invalid_certs(true)
         .danger_accept_invalid_hostnames(true))
 }
 
@@ -66,7 +68,7 @@ pub struct Unpaired;
 pub struct Paired {
     client_auth: ClientAuth,
     server_certificate: Pem,
-    app_list: Option<Vec<App>>,
+    app_list: Option<HostAppListResponse>,
 }
 pub enum MaybePaired {
     Unpaired(Unpaired),
@@ -199,15 +201,11 @@ impl<Pair> MoonlightHost<Pair> {
         }
     }
 
-    // TODO: add auth Option(ServerPem, ClientAuth)
     pub async fn pair_state(
         mut self,
-        auth: Option<&ClientAuth>,
-        server_certificate: Option<&Pem>,
+        auth: Option<(&ClientAuth, &Pem)>,
     ) -> Result<MoonlightHost<MaybePaired>, (Self, ApiError)> {
-        let client = if let Some(auth) = auth
-            && let Some(server_certificate) = server_certificate
-        {
+        let client = if let Some((auth, server_certificate)) = auth {
             tls_client_builder(auth, server_certificate)
                 .unwrap()
                 .build()
@@ -237,21 +235,23 @@ impl<Pair> MoonlightHost<Pair> {
                 info: Some(info),
                 paired: MaybePaired::Unpaired(Unpaired),
             }),
-            PairStatus::Paired => Ok(MoonlightHost {
-                client,
-                client_unique_id: self.client_unique_id,
-                address: self.address,
-                http_port: self.http_port,
-                info: Some(info),
-                paired: Paired {
-                    client_auth: auth.expect("client auth when paired").clone(),
-                    server_certificate: server_certificate
-                        .expect("server cert when paired")
-                        .clone(),
-                    app_list: None,
-                }
-                .into(),
-            }),
+            PairStatus::Paired => {
+                let (client_auth, server_certificate) =
+                    auth.expect("valid private key and certificates");
+                Ok(MoonlightHost {
+                    client,
+                    client_unique_id: self.client_unique_id,
+                    address: self.address,
+                    http_port: self.http_port,
+                    info: Some(info),
+                    paired: Paired {
+                        client_auth: client_auth.clone(),
+                        server_certificate: server_certificate.clone(),
+                        app_list: None,
+                    }
+                    .into(),
+                })
+            }
         }
     }
 }
@@ -360,10 +360,18 @@ impl MoonlightHost<Paired> {
     }
 
     pub async fn app_list(&mut self) -> Result<&[App], ApiError> {
-        let https_address = self.https_address().await?;
-        let app_list = host_app_list(&self.client, &https_address, self.client_info()).await?;
+        if self.paired.app_list.is_none() {
+            let https_address = self.https_address().await?;
 
-        todo!()
+            self.paired.app_list =
+                Some(host_app_list(&self.client, &https_address, self.client_info()).await?);
+        }
+
+        let Some(app_list) = &self.paired.app_list else {
+            unreachable!()
+        };
+
+        Ok(&app_list.apps)
     }
 
     // TODO: add a fn to create / correct streaming info: e.g. width, height, fps
@@ -371,6 +379,7 @@ impl MoonlightHost<Paired> {
     pub async fn start_stream(
         &mut self,
         instance: &MoonlightInstance,
+        crypto: &MoonlightCrypto,
         app_id: u32,
         width: u32,
         height: u32,
@@ -380,6 +389,12 @@ impl MoonlightHost<Paired> {
     ) -> Result<MoonlightStream, StreamError> {
         let http_address = self.http_address();
         let https_address = self.https_address().await?;
+
+        let mut aes_key = [0u8; 16];
+        crypto.generate_random(&mut aes_key);
+
+        let mut aes_iv = [0u8; 16];
+        crypto.generate_random(&mut aes_iv);
 
         let launch_response = host_launch(
             instance,
@@ -391,8 +406,8 @@ impl MoonlightHost<Paired> {
                 mode_width: width,
                 mode_height: height,
                 mode_fps: fps,
-                ri_key: [0u8; 16],
-                ri_key_id: [0u8; 16],
+                ri_key: aes_key,
+                ri_key_id: aes_iv,
             },
         )
         .await?;
@@ -424,9 +439,8 @@ impl MoonlightHost<Paired> {
                 color_space,
                 color_range,
                 encryption_flags: EncryptionFlags::all(),
-                // TODO: aquire them from paired member field
-                remote_input_aes_key: [0u8; 16usize],
-                remote_input_aes_iv: [0u8; 16usize],
+                remote_input_aes_key: aes_key,
+                remote_input_aes_iv: aes_iv,
             };
 
             instance.start_connection(server_info, stream_config)

@@ -168,8 +168,8 @@ pub struct StreamConfiguration {
     pub color_space: Colorspace,
     pub color_range: ColorRange,
     pub encryption_flags: EncryptionFlags,
-    pub remote_input_aes_key: [u8; 16usize],
-    pub remote_input_aes_iv: [u8; 16usize],
+    pub remote_input_aes_key: [u8; 16],
+    pub remote_input_aes_iv: [u8; 16],
 }
 
 #[derive(Debug, Clone, Copy)]

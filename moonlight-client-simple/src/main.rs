@@ -37,7 +37,7 @@ async fn main() {
         // Load already valid pairing information
         let key_contents = read_to_string(key_file).await.unwrap();
         let crt_contents = read_to_string(crt_file).await.unwrap();
-        let server_crt_contents = read_to_string(crt_file).await.unwrap();
+        let server_crt_contents = read_to_string(server_crt_file).await.unwrap();
 
         let auth = ClientAuth {
             key_pair: pem::parse(key_contents).unwrap(),
@@ -47,7 +47,7 @@ async fn main() {
 
         // Get the current pair state
         let host = host
-            .pair_state(Some(&auth), Some(&server_certificate))
+            .pair_state(Some((&auth, &server_certificate)))
             .await
             .map_err(|(_, err)| err)
             .unwrap();
@@ -59,6 +59,7 @@ async fn main() {
             ),
         }
     } else {
+        // Generate new client
         let auth = generate_new_client().unwrap();
 
         // Generate pin for pairing
@@ -86,15 +87,26 @@ async fn main() {
         host
     };
 
-    let game_list = host.app_list().await.unwrap();
+    let apps = host.app_list().await.unwrap();
 
-    todo!();
+    println!("The host has {} apps:", apps.len());
+    for app in apps {
+        println!("- {app:?}");
+    }
+
+    assert!(!apps.is_empty(), "The host needs at least one app!");
+
+    let app = &apps[0];
+    let app_id = app.id;
+
+    println!("Connecting to the first app: {app:?}");
 
     // Start the stream (only 1 stream per program is allowed)
     let stream = host
         .start_stream(
             &moonlight,
-            0,
+            &crypto,
+            app_id,
             1000,
             1000,
             60,

@@ -94,13 +94,13 @@ impl MoonlightStream {
                 0,
             );
 
-            *connection_guard = true;
-
-            drop(connection_guard);
-
             if result != 0 {
                 todo!()
             }
+
+            *connection_guard = true;
+
+            drop(connection_guard);
 
             Ok(Self { handle })
         }

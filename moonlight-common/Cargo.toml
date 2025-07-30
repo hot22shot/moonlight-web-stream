@@ -50,7 +50,7 @@ high = [
     "dep:nom",
     "dep:pem",
     "dep:rcgen",
-    "reqwest/rustls-tls",
+    "reqwest/native-tls",
 ]
 
 # Crypto

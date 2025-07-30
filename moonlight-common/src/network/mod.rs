@@ -17,7 +17,7 @@ pub enum ApiError {
     #[error("the response is invalid xml")]
     ParseXmlError(#[from] Error),
     #[error("the returned xml doc has a non 200 status code")]
-    InvalidXmlStatusCode,
+    InvalidXmlStatusCode { message: Option<String> },
     #[error("the returned xml doc doesn't have the root node")]
     XmlRootNotFound,
     #[error("the text contents of an xml node aren't present")]
@@ -82,6 +82,27 @@ where
     let content = node.text().ok_or(ApiError::XmlTextNotFound(name))?;
 
     Ok(content)
+}
+
+fn xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>, ApiError> {
+    let root = doc
+        .root()
+        .children()
+        .find(|node| node.tag_name().name() == "root")
+        .ok_or(ApiError::XmlRootNotFound)?;
+
+    let status_code = root
+        .attribute("status_code")
+        .ok_or(ApiError::DetailNotFound("status_code"))?
+        .parse::<u32>()?;
+
+    if status_code / 100 == 4 {
+        return Err(ApiError::InvalidXmlStatusCode {
+            message: root.attribute("status_message").map(str::to_string),
+        });
+    }
+
+    Ok(root)
 }
 
 #[derive(Debug, Error, Clone)]
@@ -218,11 +239,7 @@ pub async fn host_info(
     let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
-        .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+    let root = xml_root_node(&doc)?;
 
     let state_string = xml_child_text(root, "state")?.to_string();
 
@@ -304,11 +321,7 @@ pub async fn host_pair1(
     let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
-        .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+    let root = xml_root_node(&doc)?;
 
     let paired = xml_child_paired(root, "paired")?;
 
@@ -357,11 +370,7 @@ pub async fn host_pair2(
     let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
-        .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+    let root = xml_root_node(&doc)?;
 
     let paired = xml_child_paired(root, "paired")?;
 
@@ -404,11 +413,7 @@ pub async fn host_pair3(
     let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
-        .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+    let root = xml_root_node(&doc)?;
 
     let paired = xml_child_paired(root, "paired")?;
 
@@ -450,11 +455,7 @@ pub async fn host_pair4(
     let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
-        .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+    let root = xml_root_node(&doc)?;
 
     let paired = xml_child_paired(root, "paired")?;
 
@@ -488,11 +489,7 @@ pub async fn host_pair5(
     let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
-        .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+    let root = xml_root_node(&doc)?;
 
     let paired = xml_child_paired(root, "paired")?;
 
@@ -533,15 +530,30 @@ pub async fn host_app_list(
     let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
+    let root = xml_root_node(&doc)?;
+
+    let apps = root
         .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+        .filter(|node| node.tag_name().name() == "App")
+        .map(|app_node| {
+            let title = xml_child_text(app_node, "AppTitle")?.to_string();
 
-    println!("{root:?}");
+            let id = xml_child_text(app_node, "ID")?.parse()?;
 
-    todo!()
+            let is_hdr_supported = xml_child_text(app_node, "IsHdrSupported")
+                .unwrap_or("0")
+                .parse::<u32>()?
+                == 1;
+
+            Ok(App {
+                id,
+                title,
+                is_hdr_supported,
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+
+    Ok(HostAppListResponse { apps })
 }
 
 #[derive(Debug, Clone)]
@@ -571,11 +583,7 @@ pub async fn host_launch(
         inner_launch_host(instance, client, https_address, "launch", info, request).await?;
 
     let doc = Document::parse(&response)?;
-    let root = doc
-        .root()
-        .children()
-        .find(|node| node.tag_name().name() == "root")
-        .ok_or(ApiError::XmlRootNotFound)?;
+    let root = xml_root_node(&doc)?;
 
     Ok(HostLaunchResponse {
         game_session: xml_child_text(root, "gamesession")?.parse()?,
