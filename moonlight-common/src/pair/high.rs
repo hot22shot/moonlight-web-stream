@@ -3,7 +3,8 @@ use std::str::FromStr;
 use aes::Aes128;
 use block_modes::{BlockMode, BlockModeError, Ecb, block_padding::NoPadding};
 use pem::{Pem, PemError};
-use rcgen::{Certificate, CertificateParams, KeyPair, PKCS_RSA_SHA256};
+use rcgen::{CertificateParams, KeyPair, PKCS_RSA_SHA256};
+use reqwest::Client;
 use rsa::{
     Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
     pkcs8::{DecodePrivateKey, DecodePublicKey},
@@ -130,16 +131,23 @@ fn sign_data(key_pair: &KeyPair, data: &[u8]) -> Vec<u8> {
         .expect("sign the data")
 }
 
-pub fn generate_key_and_cert() -> Result<(KeyPair, Certificate), rcgen::Error> {
+pub struct ClientAuth {
+    pub key_pair: Pem,
+    pub certificate: Pem,
+}
+
+pub fn generate_new_client() -> Result<ClientAuth, rcgen::Error> {
     let generated_signing_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
     let generated_cert = CertificateParams::new(Vec::new())?.self_signed(&generated_signing_key)?;
 
-    Ok((generated_signing_key, generated_cert))
+    Ok(ClientAuth {
+        key_pair: pem::parse(generated_signing_key.serialize_pem()).expect("valid private key"),
+        certificate: pem::parse(generated_cert.pem()).expect("valid certificate"),
+    })
 }
 
-pub enum PairResult {
-    NotPaired,
-    Paired { server_certificate: Pem },
+pub struct PairSuccess {
+    pub server_certificate: Pem,
 }
 
 #[derive(Debug, Error)]
@@ -172,6 +180,7 @@ pub enum PairError {
 // TODO: call unpair on error?
 pub async fn host_pair(
     crypto: &MoonlightCrypto,
+    client: &Client,
     http_address: &str,
     client_info: ClientInfo<'_>,
     client_private_key_pem: &Pem,
@@ -179,7 +188,7 @@ pub async fn host_pair(
     device_name: &str,
     server_version: ServerVersion,
     pin: PairPin,
-) -> Result<PairResult, PairError> {
+) -> Result<PairSuccess, PairError> {
     let (_, client_cert) = X509Certificate::from_der(client_certificate_pem.contents())
         .map_err(PairError::ClientCertificateError)?;
     let client_key_pair = KeyPair::from_pem(&client_private_key_pem.to_string())
@@ -197,6 +206,7 @@ pub async fn host_pair(
     let aes_key = generate_aes_key(hash_algorithm, salt, pin);
 
     let server_response1 = host_pair1(
+        client,
         http_address,
         client_info,
         ClientPairRequest1 {
@@ -225,6 +235,7 @@ pub async fn host_pair(
     let encrypted_challenge = encrypt_aes(&aes_key, &challenge);
 
     let server_response2 = host_pair2(
+        client,
         http_address,
         client_info,
         ClientPairRequest2 {
@@ -235,7 +246,7 @@ pub async fn host_pair(
     .await?;
 
     if !matches!(server_response2.paired, PairStatus::Paired) {
-        host_unpair(http_address, client_info).await?;
+        host_unpair(client, http_address, client_info).await?;
 
         return Err(PairError::Failed);
     }
@@ -267,6 +278,7 @@ pub async fn host_pair(
     );
 
     let server_response3 = host_pair3(
+        client,
         http_address,
         client_info,
         ClientPairRequest3 {
@@ -277,7 +289,7 @@ pub async fn host_pair(
     .await?;
 
     if !matches!(server_response3.paired, PairStatus::Paired) {
-        host_unpair(http_address, client_info).await?;
+        host_unpair(client, http_address, client_info).await?;
 
         return Err(PairError::Failed);
     }
@@ -289,7 +301,7 @@ pub async fn host_pair(
     server_signature.extend_from_slice(&server_response3.server_pairing_secret[16..]);
 
     if !verify_signature(&server_secret, &server_signature, &server_cert) {
-        host_unpair(http_address, client_info).await?;
+        host_unpair(client, http_address, client_info).await?;
 
         // MITM likely
         return Err(PairError::Failed);
@@ -309,7 +321,7 @@ pub async fn host_pair(
 
     let expected_response_hash = &expected_response_hash[0..hash_algorithm.hash_len()];
     if expected_response_hash != server_response_hash {
-        host_unpair(http_address, client_info).await?;
+        host_unpair(client, http_address, client_info).await?;
 
         // Probably wrong pin
         return Err(PairError::IncorrectPin);
@@ -321,6 +333,7 @@ pub async fn host_pair(
     client_pairing_secret.extend_from_slice(&sign_data(&client_key_pair, &client_secret));
 
     let server_response4 = host_pair4(
+        client,
         http_address,
         client_info,
         ClientPairRequest4 {
@@ -331,13 +344,14 @@ pub async fn host_pair(
     .await?;
 
     if !matches!(server_response4.paired, PairStatus::Paired) {
-        host_unpair(http_address, client_info).await?;
+        host_unpair(client, http_address, client_info).await?;
 
         return Err(PairError::Failed);
     }
 
     // Required for us to show as paired
     let server_response5 = host_pair5(
+        client,
         http_address,
         client_info,
         ClientPairRequest5 { device_name },
@@ -345,12 +359,12 @@ pub async fn host_pair(
     .await?;
 
     if !matches!(server_response5.paired, PairStatus::Paired) {
-        host_unpair(http_address, client_info).await?;
+        host_unpair(client, http_address, client_info).await?;
 
         return Err(PairError::Failed);
     }
 
-    Ok(PairResult::Paired {
+    Ok(PairSuccess {
         server_certificate: server_cert_pem,
     })
 }

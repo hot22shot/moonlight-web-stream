@@ -1,6 +1,6 @@
 use std::{fmt::Display, num::ParseIntError, str::FromStr, string::FromUtf8Error};
 
-use reqwest::Url;
+use reqwest::{Client, Url};
 use roxmltree::{Document, Error, Node};
 use thiserror::Error;
 use url::{ParseError, UrlQuery, form_urlencoded::Serializer};
@@ -213,14 +213,15 @@ pub struct HostInfo {
     pub state: ServerState,
 }
 
-pub async fn host_get_info(
+pub async fn host_info(
+    client: &Client,
     use_https: bool,
     address: &str,
     info: Option<ClientInfo<'_>>,
 ) -> Result<HostInfo, ApiError> {
     let url = build_url(use_https, address, "serverinfo", info)?;
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -285,6 +286,7 @@ pub struct HostPairResponse1 {
 }
 
 pub async fn host_pair1(
+    client: &Client,
     http_address: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest1<'_>,
@@ -305,7 +307,7 @@ pub async fn host_pair1(
     query_params.append_pair("clientcert", &client_cert_pem_str);
     drop(query_params);
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -342,6 +344,7 @@ pub struct HostPairResponse2 {
 }
 
 pub async fn host_pair2(
+    client: &Client,
     http_address: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest2<'_>,
@@ -357,7 +360,7 @@ pub async fn host_pair2(
     query_params.append_pair("clientchallenge", &encrypted_challenge_str);
     drop(query_params);
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -388,6 +391,7 @@ pub struct HostPairResponse3 {
 }
 
 pub async fn host_pair3(
+    client: &Client,
     http_address: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest3<'_>,
@@ -403,7 +407,7 @@ pub async fn host_pair3(
     query_params.append_pair("serverchallengeresp", &encrypted_challenge_str);
     drop(query_params);
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -433,6 +437,7 @@ pub struct HostPairResponse4 {
 }
 
 pub async fn host_pair4(
+    client: &Client,
     http_address: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest4<'_>,
@@ -448,7 +453,7 @@ pub async fn host_pair4(
     query_params.append_pair("clientpairingsecret", &client_pairing_secret_str);
     drop(query_params);
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -471,6 +476,7 @@ pub struct ServerPairResponse5 {
 }
 
 pub async fn host_pair5(
+    client: &Client,
     http_address: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest5<'_>,
@@ -485,7 +491,7 @@ pub async fn host_pair5(
 
     drop(query_params);
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -499,10 +505,14 @@ pub async fn host_pair5(
     Ok(ServerPairResponse5 { paired })
 }
 
-pub async fn host_unpair(http_address: &str, info: ClientInfo<'_>) -> Result<(), ApiError> {
+pub async fn host_unpair(
+    client: &Client,
+    http_address: &str,
+    info: ClientInfo<'_>,
+) -> Result<(), ApiError> {
     let url = build_url(false, http_address, "unpair", Some(info))?;
 
-    reqwest::get(url).await?.text().await?;
+    client.get(url).send().await?.text().await?;
 
     Ok(())
 }
@@ -511,6 +521,7 @@ pub async fn host_unpair(http_address: &str, info: ClientInfo<'_>) -> Result<(),
 pub struct HostAppListResponse {}
 
 pub async fn host_get_apps(
+    client: &Client,
     https_address: &str,
     info: ClientInfo<'_>,
 ) -> Result<HostAppListResponse, ApiError> {
@@ -520,7 +531,7 @@ pub async fn host_get_apps(
     info.add_query_params(&mut query_params);
     drop(query_params);
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -550,11 +561,13 @@ pub struct HostLaunchResponse {
 
 pub async fn host_launch(
     instance: &MoonlightInstance,
+    client: &Client,
     https_address: &str,
     info: ClientInfo<'_>,
     request: ClientStreamRequest,
 ) -> Result<HostLaunchResponse, ApiError> {
-    let response = inner_launch_host(instance, https_address, "launch", info, request).await?;
+    let response =
+        inner_launch_host(instance, client, https_address, "launch", info, request).await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -577,11 +590,13 @@ pub struct HostResumeResponse {
 
 pub async fn host_resume(
     instance: &MoonlightInstance,
+    client: &Client,
     https_address: &str,
     info: ClientInfo<'_>,
     request: ClientStreamRequest,
 ) -> Result<HostResumeResponse, ApiError> {
-    let response = inner_launch_host(instance, https_address, "resume", info, request).await?;
+    let response =
+        inner_launch_host(instance, client, https_address, "resume", info, request).await?;
 
     let doc = Document::parse(&response)?;
     let root = doc
@@ -598,6 +613,7 @@ pub async fn host_resume(
 
 async fn inner_launch_host(
     instance: &MoonlightInstance,
+    client: &Client,
     https_address: &str,
     verb: &str,
     info: ClientInfo<'_>,
@@ -633,7 +649,7 @@ async fn inner_launch_host(
     query_params.append_pair("gcpersist", "todo"); // TODO
     drop(query_params);
 
-    let response = reqwest::get(url).await?.text().await?;
+    let response = client.get(url).send().await?.text().await?;
 
     Ok(response)
 }

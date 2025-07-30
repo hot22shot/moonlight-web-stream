@@ -2,8 +2,9 @@ use moonlight_common::{
     MoonlightInstance,
     data::{ColorRange, Colorspace},
     high::MoonlightHost,
-    pair::high::generate_key_and_cert,
+    pair::high::{ClientAuth, generate_new_client},
 };
+use rcgen::{Certificate, KeyPair};
 use tokio::{
     fs::{read_to_string, try_exists, write},
     task::spawn_blocking,
@@ -14,7 +15,7 @@ async fn main() {
     // Configuration
     let host_ip = "localhost";
     let host_http_port = 47989;
-    let device_name = "roth";
+    let device_name = "TestDevice";
 
     // Configuration Authentication / Pairing
     let key_file = "client.key";
@@ -29,35 +30,32 @@ async fn main() {
     let host = MoonlightHost::new(host_ip.to_string(), host_http_port, None);
 
     // Load or Create a key pair and certificate
-    let private_key_pem;
-    let cert_pem;
+    let auth;
 
     if let Ok(true) = try_exists(key_file).await
         && let Ok(true) = try_exists(crt_file).await
     {
         // Load already valid pairing information
         let key_contents = read_to_string(key_file).await.unwrap();
-        private_key_pem = pem::parse(key_contents).unwrap();
-
         let crt_contents = read_to_string(crt_file).await.unwrap();
-        cert_pem = pem::parse(crt_contents).unwrap();
+
+        auth = ClientAuth {
+            key_pair: pem::parse(key_contents).unwrap(),
+            certificate: pem::parse(crt_contents).unwrap(),
+        };
     } else {
-        // Generate new private key and certificate
-        let (generated_signing_key, generated_cert) = generate_key_and_cert().unwrap();
-
-        private_key_pem = pem::parse(generated_signing_key.serialize_pem()).unwrap();
-        cert_pem = pem::parse(generated_cert.pem()).unwrap();
-
-        // TODO: REMOVE
-        write(key_file, private_key_pem.to_string()).await.unwrap();
-        write(crt_file, cert_pem.to_string()).await.unwrap();
+        auth = generate_new_client().unwrap();
     }
 
-    assert_eq!(private_key_pem.tag(), "PRIVATE KEY");
-    assert_eq!(cert_pem.tag(), "CERTIFICATE");
+    assert_eq!(auth.key_pair.tag(), "PRIVATE KEY");
+    assert_eq!(auth.certificate.tag(), "CERTIFICATE");
 
     // Get the current pair state
-    let host = host.pair_state().await.map_err(|(_, err)| err).unwrap();
+    let host = host
+        .pair_state(Some(&auth))
+        .await
+        .map_err(|(_, err)| err)
+        .unwrap();
 
     // See if we're already paired
     let mut host = match host.into_paired() {
@@ -65,30 +63,24 @@ async fn main() {
         Ok(host) => host,
         // The host is unpaired
         Err(host) => {
+            unreachable!(); // TODO: <--- remove
+
             // Generate pin for pairing
             let pin = crypto.generate_pin();
 
             println!("Pin: {pin}, Device Name: {device_name}");
 
             // Pair to the host
-            host.pair(
-                &crypto,
-                &private_key_pem,
-                &cert_pem,
-                device_name.to_string(),
-                pin,
-            )
-            .await
-            .map_err(|(_, err)| err)
-            .unwrap()
+            host.pair(&crypto, &auth, device_name.to_string(), pin)
+                .await
+                .map_err(|(_, err)| err)
+                .unwrap()
         }
     };
 
     // Save the pair information
-    write(key_file, private_key_pem.to_string()).await.unwrap();
-    write(crt_file, cert_pem.to_string()).await.unwrap();
-
-    todo!();
+    write(key_file, auth.key_pair.to_string()).await.unwrap();
+    write(crt_file, auth.certificate.to_string()).await.unwrap();
 
     // Start the stream (only 1 stream per program is allowed)
     let stream = host

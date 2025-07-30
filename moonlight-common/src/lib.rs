@@ -31,10 +31,6 @@ pub enum Error {
     InstanceAlreadyExists,
     #[error("the client is not paired")]
     NotPaired,
-    // TODO: i don't like marking this as non_exhaustive
-    #[cfg(feature = "network")]
-    #[error("{0}")]
-    Api(#[from] network::ApiError),
 }
 
 pub mod audio;
