@@ -9,7 +9,10 @@ use std::{
 use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
 use thiserror::Error;
 
-use crate::stream::{MoonlightStream, ServerInfo, StreamConfiguration};
+use crate::{
+    stream::{MoonlightStream, ServerInfo, StreamConfiguration},
+    video::{DecodeResult, SupportedVideoFormats, VideoCapabilities, VideoDecoder, VideoFormat},
+};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -108,8 +111,14 @@ impl MoonlightInstance {
         &self,
         server_info: ServerInfo,
         stream_config: StreamConfiguration,
+        video_decoder: impl VideoDecoder + Send + 'static,
     ) -> Result<MoonlightStream, Error> {
-        MoonlightStream::start(self.handle.clone(), server_info, stream_config)
+        MoonlightStream::start(
+            self.handle.clone(),
+            server_info,
+            stream_config,
+            video_decoder,
+        )
     }
 
     pub fn interrupt_connection(&self) {
@@ -121,5 +130,40 @@ impl MoonlightInstance {
     #[cfg(feature = "crypto")]
     pub fn crypto(&self) -> crypto::MoonlightCrypto {
         crypto::MoonlightCrypto::new(self)
+    }
+}
+
+pub struct NullHandler;
+
+impl VideoDecoder for NullHandler {
+    fn setup(
+        &mut self,
+        format: VideoFormat,
+        width: u32,
+        height: u32,
+        redraw_rate: u32,
+        flags: (),
+    ) -> i32 {
+        let _ = (format, width, height, redraw_rate, flags);
+
+        0
+    }
+
+    fn start(&mut self) {}
+
+    fn submit_decode_unit(&mut self, unit: video::VideoDecodeUnit<'_>) -> DecodeResult {
+        let _ = unit;
+
+        DecodeResult::Ok
+    }
+
+    fn stop(&mut self) {}
+
+    fn supported_formats(&self) -> SupportedVideoFormats {
+        SupportedVideoFormats::all()
+    }
+
+    fn capabilities(&self) -> VideoCapabilities {
+        VideoCapabilities::empty()
     }
 }

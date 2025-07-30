@@ -7,6 +7,10 @@ edition = "2024"
 moonlight-common-sys = { workspace = true }
 
 bitflags = "2.9.1"
+num = "0.4"
+num-derive = "0.4"
+num-traits = "0.2"
+
 thiserror = "2.0.12"
 
 # Network

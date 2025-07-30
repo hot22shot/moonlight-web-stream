@@ -8,12 +8,17 @@ use moonlight_common_sys::limelight::{
     LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
     LiInitializeAudioCallbacks, LiInitializeConnectionCallbacks, LiInitializeVideoCallbacks,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
-    LiSendTouchEvent, LiStartConnection, LiStopConnection, PSERVER_INFORMATION,
-    PSTREAM_CONFIGURATION, STREAM_CFG_AUTO, STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
+    LiSendTouchEvent, LiStartConnection, LiStopConnection, PDECODER_RENDERER_CALLBACKS,
+    PSERVER_INFORMATION, PSTREAM_CONFIGURATION, STREAM_CFG_AUTO, STREAM_CFG_LOCAL,
+    STREAM_CFG_REMOTE,
 };
+use num_derive::FromPrimitive;
 
 use crate::{
-    Error, Handle, input::TouchEventType, network::ServerVersion, video::SupportedVideoFormats,
+    Error, Handle,
+    input::TouchEventType,
+    network::ServerVersion,
+    video::{self, SupportedVideoFormats, VideoDecoder},
 };
 
 pub struct ServerInfo<'a> {
@@ -40,30 +45,18 @@ impl StreamingConfig {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
 pub enum Colorspace {
     Rec601 = COLORSPACE_REC_601,
     Rec709 = COLORSPACE_REC_709,
     Rec2020 = COLORSPACE_REC_2020,
 }
 
-impl Colorspace {
-    pub(crate) fn raw(self) -> i32 {
-        self as i32
-    }
-}
-
 #[repr(u32)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
 pub enum ColorRange {
     Limited = COLOR_RANGE_LIMITED,
     Full = COLOR_RANGE_FULL,
-}
-
-impl ColorRange {
-    pub(crate) fn raw(self) -> i32 {
-        self as i32
-    }
 }
 
 bitflags! {
@@ -115,6 +108,7 @@ impl MoonlightStream {
         handle: Arc<Handle>,
         server_info: ServerInfo,
         stream_config: StreamConfiguration,
+        video_decoder: impl VideoDecoder + Send + 'static,
     ) -> Result<Self, Error> {
         unsafe {
             let mut connection_guard = handle
@@ -160,13 +154,16 @@ impl MoonlightStream {
                 ),
             };
 
+            video::new_global(video_decoder).expect("a renderer is still in use");
+            let mut video_callbacks = video::raw_callbacks();
+
             // # Safety
             // LiStartConnection is not thread safe so we are using the connection_guard mutex
             let result = LiStartConnection(
                 &mut server_info_raw as PSERVER_INFORMATION,
                 &mut stream_config as PSTREAM_CONFIGURATION,
                 null_mut(),
-                null_mut(),
+                &mut video_callbacks as PDECODER_RENDERER_CALLBACKS,
                 null_mut(),
                 null_mut(),
                 0,
@@ -354,14 +351,17 @@ impl Drop for MoonlightStream {
 
             LiStopConnection();
 
+            // Null out all the callbacks
+            LiInitializeAudioCallbacks(null_mut());
+
+            LiInitializeVideoCallbacks(null_mut());
+            video::clear_global();
+
+            LiInitializeConnectionCallbacks(null_mut());
+
             *connection_guard = false;
 
             drop(connection_guard);
-
-            // Null out all the callbacks
-            LiInitializeAudioCallbacks(null_mut());
-            LiInitializeVideoCallbacks(null_mut());
-            LiInitializeConnectionCallbacks(null_mut());
         }
     }
 }

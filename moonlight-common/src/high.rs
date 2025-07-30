@@ -22,7 +22,7 @@ use crate::{
         ColorRange, Colorspace, EncryptionFlags, MoonlightStream, ServerInfo, StreamConfiguration,
         StreamingConfig,
     },
-    video::SupportedVideoFormats,
+    video::{SupportedVideoFormats, VideoDecoder},
 };
 
 fn default_client_builder() -> ClientBuilder {
@@ -386,6 +386,7 @@ impl MoonlightHost<Paired> {
         fps: u32,
         color_space: Colorspace,
         color_range: ColorRange,
+        video_decoder: impl VideoDecoder + Send + 'static,
     ) -> Result<MoonlightStream, StreamError> {
         let http_address = self.http_address();
         let https_address = self.https_address().await?;
@@ -434,7 +435,7 @@ impl MoonlightHost<Paired> {
                 packet_size: 1024,
                 streaming_remotely: StreamingConfig::Remote,
                 audio_configuration: 0,
-                supported_video_formats: SupportedVideoFormats::default(),
+                supported_video_formats: video_decoder.supported_formats(),
                 client_refresh_rate_x100: 60,
                 color_space,
                 color_range,
@@ -443,7 +444,7 @@ impl MoonlightHost<Paired> {
                 remote_input_aes_iv: aes_iv,
             };
 
-            instance.start_connection(server_info, stream_config)
+            instance.start_connection(server_info, stream_config, video_decoder)
         })?;
 
         Ok(connection)
