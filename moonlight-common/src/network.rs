@@ -272,23 +272,23 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientPairRequest<'a> {
+pub struct ClientPairRequest1<'a> {
     pub device_name: &'a str,
     pub salt: [u8; SALT_LENGTH],
     pub client_cert_pem: &'a [u8],
 }
 
 #[derive(Debug, Clone)]
-pub struct HostPairResponse {
+pub struct HostPairResponse1 {
     pub paired: PairStatus,
     pub cert: Option<String>,
 }
 
-pub async fn host_pair_initiate(
+pub async fn host_pair1(
     http_address: &str,
     info: ClientInfo<'_>,
-    request: ClientPairRequest<'_>,
-) -> Result<HostPairResponse, ApiError> {
+    request: ClientPairRequest1<'_>,
+) -> Result<HostPairResponse1, ApiError> {
     let mut url = build_url(false, http_address, "pair", Some(info))?;
 
     let mut query_params = url.query_pairs_mut();
@@ -326,27 +326,26 @@ pub async fn host_pair_initiate(
         Err(err) => return Err(err),
     };
 
-    Ok(HostPairResponse { paired, cert })
+    Ok(HostPairResponse1 { paired, cert })
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientPairRequest1<'a> {
+pub struct ClientPairRequest2<'a> {
     pub device_name: &'a str,
     pub encrypted_challenge: &'a [u8],
 }
 
 #[derive(Debug, Clone)]
-pub struct ServerPairResponse1 {
+pub struct HostPairResponse2 {
     pub paired: PairStatus,
     pub encrypted_response: Vec<u8>,
 }
 
-// TODO: use cert? https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L223C8-L224C40
-pub async fn host_pair1(
+pub async fn host_pair2(
     http_address: &str,
     info: ClientInfo<'_>,
-    request: ClientPairRequest1<'_>,
-) -> Result<ServerPairResponse1, ApiError> {
+    request: ClientPairRequest2<'_>,
+) -> Result<HostPairResponse2, ApiError> {
     let mut url = build_url(false, http_address, "pair", Some(info))?;
 
     let mut query_params = url.query_pairs_mut();
@@ -372,27 +371,27 @@ pub async fn host_pair1(
     let challenge_response_str = xml_child_text(root, "challengeresponse")?;
     let challenge_response = hex::decode(challenge_response_str)?;
 
-    Ok(ServerPairResponse1 {
+    Ok(HostPairResponse2 {
         paired,
         encrypted_response: challenge_response,
     })
 }
 
-pub struct ClientPairRequest2<'a> {
+pub struct ClientPairRequest3<'a> {
     pub device_name: &'a str,
     pub encrypted_challenge_response_hash: &'a [u8],
 }
 #[derive(Debug, Clone)]
-pub struct ServerPairResponse2 {
+pub struct HostPairResponse3 {
     pub paired: PairStatus,
     pub server_pairing_secret: Vec<u8>,
 }
 
-pub async fn host_pair2(
+pub async fn host_pair3(
     http_address: &str,
     info: ClientInfo<'_>,
-    request: ClientPairRequest2<'_>,
-) -> Result<ServerPairResponse2, ApiError> {
+    request: ClientPairRequest3<'_>,
+) -> Result<HostPairResponse3, ApiError> {
     let mut url = build_url(false, http_address, "pair", Some(info))?;
 
     let mut query_params = url.query_pairs_mut();
@@ -418,26 +417,26 @@ pub async fn host_pair2(
     let pairing_secret_str = xml_child_text(root, "pairingsecret")?;
     let pairing_secret = hex::decode(pairing_secret_str)?;
 
-    Ok(ServerPairResponse2 {
+    Ok(HostPairResponse3 {
         paired,
         server_pairing_secret: pairing_secret,
     })
 }
 
-pub struct ClientPairRequest3<'a> {
+pub struct ClientPairRequest4<'a> {
     pub device_name: &'a str,
     pub client_pairing_secret: &'a [u8],
 }
 #[derive(Debug, Clone)]
-pub struct ServerPairResponse3 {
+pub struct HostPairResponse4 {
     pub paired: PairStatus,
 }
 
-pub async fn host_pair3(
+pub async fn host_pair4(
     http_address: &str,
     info: ClientInfo<'_>,
-    request: ClientPairRequest3<'_>,
-) -> Result<ServerPairResponse3, ApiError> {
+    request: ClientPairRequest4<'_>,
+) -> Result<HostPairResponse4, ApiError> {
     let mut url = build_url(false, http_address, "pair", Some(info))?;
 
     let mut query_params = url.query_pairs_mut();
@@ -460,22 +459,22 @@ pub async fn host_pair3(
 
     let paired = xml_child_paired(root, "paired")?;
 
-    Ok(ServerPairResponse3 { paired })
+    Ok(HostPairResponse4 { paired })
 }
 
-pub struct ClientPairRequestFinal<'a> {
+pub struct ClientPairRequest5<'a> {
     pub device_name: &'a str,
 }
 #[derive(Debug, Clone)]
-pub struct ServerPairResponseFinal {
+pub struct ServerPairResponse5 {
     pub paired: PairStatus,
 }
 
-pub async fn host_pair_final(
+pub async fn host_pair5(
     http_address: &str,
     info: ClientInfo<'_>,
-    request: ClientPairRequestFinal<'_>,
-) -> Result<ServerPairResponseFinal, ApiError> {
+    request: ClientPairRequest5<'_>,
+) -> Result<ServerPairResponse5, ApiError> {
     let mut url = build_url(false, http_address, "pair", Some(info))?;
 
     let mut query_params = url.query_pairs_mut();
@@ -497,7 +496,7 @@ pub async fn host_pair_final(
 
     let paired = xml_child_paired(root, "paired")?;
 
-    Ok(ServerPairResponseFinal { paired })
+    Ok(ServerPairResponse5 { paired })
 }
 
 pub async fn host_unpair(http_address: &str, info: ClientInfo<'_>) -> Result<(), ApiError> {

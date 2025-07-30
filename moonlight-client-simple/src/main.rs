@@ -88,6 +88,8 @@ async fn main() {
     write(key_file, private_key_pem.to_string()).await.unwrap();
     write(crt_file, cert_pem.to_string()).await.unwrap();
 
+    todo!();
+
     // Start the stream (only 1 stream per program is allowed)
     let stream = host
         .start_stream(

@@ -12,4 +12,4 @@ moonlight-common-sys = { path = "./moonlight-common-sys" }
 
 [workspace.lints.clippy]
 too_many_arguments = "allow"
-# unwrap_used = "warn"
+unwrap_used = "warn"

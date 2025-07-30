@@ -235,7 +235,8 @@ impl MoonlightHost<Unpaired> {
         )
         .await
         {
-            Err(err) => return Err((self, err.into())),
+            // Err(err) => return Err((self, err)),
+            Err(err) => todo!(),
             Ok(value) => value,
         };
 

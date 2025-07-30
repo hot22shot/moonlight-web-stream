@@ -1,26 +1,27 @@
-use std::{rc, str::FromStr};
+use std::str::FromStr;
 
 use aes::Aes128;
 use block_modes::{BlockMode, Ecb, block_padding::NoPadding};
-use pem::Pem;
-use rcgen::{Certificate, CertificateParams, KeyPair, PKCS_RSA_SHA256, SigningKey};
+use pem::{Pem, PemError};
+use rcgen::{Certificate, CertificateParams, KeyPair, PKCS_RSA_SHA256};
 use rsa::{
     Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
     pkcs8::{DecodePrivateKey, DecodePublicKey},
 };
 use sha2::Sha256;
+use thiserror::Error;
 use x509_parser::{
+    error::X509Error,
     parse_x509_certificate,
-    pem::parse_x509_pem,
     prelude::{FromDer, X509Certificate},
 };
 
 use crate::{
     crypto::{HashAlgorithm, MoonlightCrypto},
     network::{
-        ApiError, ClientInfo, ClientPairRequest, ClientPairRequest1, ClientPairRequest2,
-        ClientPairRequest3, ClientPairRequestFinal, PairStatus, ServerVersion, host_pair_final,
-        host_pair_initiate, host_pair1, host_pair2, host_pair3,
+        ApiError, ClientInfo, ClientPairRequest1, ClientPairRequest2, ClientPairRequest3,
+        ClientPairRequest4, ClientPairRequest5, PairStatus, ServerVersion, host_pair1, host_pair2,
+        host_pair3, host_pair4, host_pair5, host_unpair,
     },
     pair::{CHALLENGE_LENGTH, PairPin, SALT_LENGTH},
 };
@@ -89,9 +90,7 @@ pub fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes128Ecb::new_from_slices(key, &[])
         .map_err(|e| format!("Error initializing ECB cipher: {e:?}"))?;
 
-    // Clone ciphertext to mutable buffer for in-place decryption
     let mut buf = ciphertext.to_vec();
-    // Decrypt entire buffer (no padding removal needed for NoPadding)
     cipher
         .decrypt(&mut buf)
         .map_err(|e| format!("Decryption failed: {e:?}"))?;
@@ -145,6 +144,31 @@ pub enum PairResult {
     Paired { server_certificate: Pem },
 }
 
+#[derive(Debug, Error)]
+pub enum PairError {
+    #[error("{0}")]
+    Api(#[from] ApiError),
+    // Client
+    #[error("incorrect client certificate: {0}")]
+    ClientPrivateKeyPem(rcgen::Error),
+    #[error("incorrect client certificate: {0}")]
+    ClientCertificateError(nom::Err<X509Error>),
+    #[error("incorrect private key: make sure it's a PKCS_RSA_SHA256 key")]
+    IncorrectPrivateKey,
+    // Server
+    #[error("incorrect server certificate pem: {0}")]
+    ServerCertificatePem(PemError),
+    #[error("incorrect server certificate: {0}")]
+    ServerCertificateParse(nom::Err<X509Error>),
+    // Pairing failures
+    #[error("the pin was wrong")]
+    IncorrectPin,
+    #[error("there's another pairing procedure currently")]
+    AlreadyInProgress,
+    #[error("pairing failed")]
+    Failed,
+}
+
 // TODO: call unpair on error?
 pub async fn host_pair(
     crypto: &MoonlightCrypto,
@@ -155,10 +179,15 @@ pub async fn host_pair(
     device_name: &str,
     server_version: ServerVersion,
     pin: PairPin,
-) -> Result<PairResult, ApiError> {
-    let (_, client_cert) = X509Certificate::from_der(client_certificate_pem.contents()).unwrap();
-    let client_key_pair = KeyPair::from_pem(&client_private_key_pem.to_string()).unwrap();
-    // assert!(client_key_pair.algorithm() == &PKCS_RSA_SHA256);
+) -> Result<PairResult, PairError> {
+    let (_, client_cert) = X509Certificate::from_der(client_certificate_pem.contents())
+        .map_err(PairError::ClientCertificateError)?;
+    let client_key_pair = KeyPair::from_pem(&client_private_key_pem.to_string())
+        .map_err(PairError::ClientPrivateKeyPem)?;
+
+    if client_key_pair.algorithm() != &PKCS_RSA_SHA256 {
+        return Err(PairError::IncorrectPrivateKey);
+    }
 
     let client_cert_pem = client_certificate_pem.to_string();
 
@@ -167,61 +196,56 @@ pub async fn host_pair(
     let salt = crypto.generate_salt();
     let aes_key = generate_aes_key(hash_algorithm, salt, pin);
 
-    let pair_response = host_pair_initiate(
+    let server_response1 = host_pair1(
         http_address,
         client_info,
-        ClientPairRequest {
+        ClientPairRequest1 {
             device_name,
             salt,
             client_cert_pem: client_cert_pem.as_bytes(),
         },
     )
-    .await
-    .unwrap();
-    println!("{pair_response:#?}");
+    .await?;
 
-    if !matches!(pair_response.paired, PairStatus::Paired) {
-        panic!("Please try again and pair the client using the given values");
+    if !matches!(server_response1.paired, PairStatus::Paired) {
+        return Err(PairError::Failed);
     }
-    let Some(server_cert_str) = pair_response.cert else {
-        panic!("Paired whilst another device was pairing!");
+    let Some(server_cert_str) = server_response1.cert else {
+        return Err(PairError::AlreadyInProgress);
     };
 
-    let server_cert_pem = Pem::from_str(&server_cert_str).unwrap();
-    let (_, server_cert) = parse_x509_certificate(server_cert_pem.contents()).unwrap();
+    let server_cert_pem =
+        Pem::from_str(&server_cert_str).map_err(PairError::ServerCertificatePem)?;
+    let (_, server_cert) = parse_x509_certificate(server_cert_pem.contents())
+        .map_err(PairError::ServerCertificateParse)?;
 
-    // TODO: set cert?
-
-    println!("-- Sending Challenge");
     let mut challenge = [0u8; CHALLENGE_LENGTH];
     crypto.generate_random(&mut challenge);
 
     let encrypted_challenge = encrypt_aes(&aes_key, &challenge).unwrap();
 
-    let challenge_response = host_pair1(
+    let server_response2 = host_pair2(
         http_address,
         client_info,
-        ClientPairRequest1 {
+        ClientPairRequest2 {
             device_name,
             encrypted_challenge: &encrypted_challenge,
         },
     )
-    .await
-    .unwrap();
-    println!("{challenge_response:#?}");
+    .await?;
 
-    if !matches!(challenge_response.paired, PairStatus::Paired) {
-        // TODO: unpair
-        todo!()
+    if !matches!(server_response2.paired, PairStatus::Paired) {
+        host_unpair(http_address, client_info).await?;
+
+        return Err(PairError::Failed);
     }
 
-    let response = decrypt_aes(&aes_key, &challenge_response.encrypted_response).unwrap();
+    let response = decrypt_aes(&aes_key, &server_response2.encrypted_response).unwrap();
 
     let server_response_hash = &response[0..hash_algorithm.hash_len()];
     let server_challenge =
         &response[hash_algorithm.hash_len()..hash_algorithm.hash_len() + CHALLENGE_LENGTH];
 
-    println!("-- Challenge Response");
     let mut client_secret = [0u8; 16];
     crypto.generate_random(&mut client_secret);
 
@@ -243,34 +267,33 @@ pub async fn host_pair(
     )
     .expect("encrypt challenge_response_hash with aes");
 
-    let server_response2 = host_pair2(
+    let server_response3 = host_pair3(
         http_address,
         client_info,
-        ClientPairRequest2 {
+        ClientPairRequest3 {
             device_name,
             encrypted_challenge_response_hash: &encrypted_challenge_response_hash,
         },
     )
-    .await
-    .unwrap();
-    println!("{server_response2:#?}");
+    .await?;
 
-    if !matches!(server_response2.paired, PairStatus::Paired) {
-        // TODO: unpair
-        todo!()
+    if !matches!(server_response3.paired, PairStatus::Paired) {
+        host_unpair(http_address, client_info).await?;
+
+        return Err(PairError::Failed);
     }
 
     let mut server_secret = [0u8; 16];
-    server_secret.copy_from_slice(&server_response2.server_pairing_secret[0..16]);
+    server_secret.copy_from_slice(&server_response3.server_pairing_secret[0..16]);
 
     let mut server_signature = Vec::new();
-    server_signature.extend_from_slice(&server_response2.server_pairing_secret[16..]);
+    server_signature.extend_from_slice(&server_response3.server_pairing_secret[16..]);
 
     if !verify_signature(&server_secret, &server_signature, &server_cert) {
-        // TODO: unpair
+        host_unpair(http_address, client_info).await?;
 
         // MITM likely
-        todo!()
+        return Err(PairError::Failed);
     }
 
     let mut expected_response = Vec::new();
@@ -285,13 +308,12 @@ pub async fn host_pair(
         &mut expected_response_hash,
     );
 
-    let cmp1 = &expected_response_hash[0..hash_algorithm.hash_len()];
-    if cmp1 != server_response_hash {
-        // TODO: unpair and error
-        println!("Error on:\n{cmp1:?}\n{server_response_hash:?}");
+    let expected_response_hash = &expected_response_hash[0..hash_algorithm.hash_len()];
+    if expected_response_hash != server_response_hash {
+        host_unpair(http_address, client_info).await?;
 
         // Probably wrong pin
-        todo!()
+        return Err(PairError::IncorrectPin);
     }
 
     // Send the server our signed secret
@@ -299,36 +321,34 @@ pub async fn host_pair(
     client_pairing_secret.extend_from_slice(&client_secret);
     client_pairing_secret.extend_from_slice(&sign_data(&client_key_pair, &client_secret));
 
-    let server_response3 = host_pair3(
+    let server_response4 = host_pair4(
         http_address,
         client_info,
-        ClientPairRequest3 {
+        ClientPairRequest4 {
             device_name,
             client_pairing_secret: &client_pairing_secret,
         },
     )
-    .await
-    .unwrap();
+    .await?;
 
-    println!("{server_response3:#?}");
-    if !matches!(server_response3.paired, PairStatus::Paired) {
-        // TODO: unpair
-        todo!()
+    if !matches!(server_response4.paired, PairStatus::Paired) {
+        host_unpair(http_address, client_info).await?;
+
+        return Err(PairError::Failed);
     }
 
     // Required for us to show as paired
-    let final_response = host_pair_final(
+    let server_response5 = host_pair5(
         http_address,
         client_info,
-        ClientPairRequestFinal { device_name },
+        ClientPairRequest5 { device_name },
     )
-    .await
-    .unwrap();
-    println!("{final_response:#?}");
+    .await?;
 
-    if !matches!(final_response.paired, PairStatus::Paired) {
-        // TODO: unpair
-        todo!()
+    if !matches!(server_response5.paired, PairStatus::Paired) {
+        host_unpair(http_address, client_info).await?;
+
+        return Err(PairError::Failed);
     }
 
     Ok(PairResult::Paired {
