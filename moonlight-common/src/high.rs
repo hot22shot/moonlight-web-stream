@@ -62,7 +62,7 @@ impl MoonlightHost<Unknown> {
 
         Self {
             client_unique_id: client.unique_id.to_string(),
-            client_uuid: client.uuid,
+            client_uuid: client.uuid(),
             address,
             http_port,
             info: None,
@@ -78,17 +78,8 @@ impl<PairStatus> MoonlightHost<PairStatus> {
 
     async fn host_info(&mut self) -> Result<&HostInfo, Error> {
         if self.info.is_none() {
-            self.info = Some(
-                host_get_info(
-                    false,
-                    &self.http_address(),
-                    Some(ClientInfo {
-                        unique_id: &self.client_unique_id,
-                        uuid: self.client_uuid,
-                    }),
-                )
-                .await?,
-            );
+            self.info =
+                Some(host_get_info(false, &self.http_address(), Some(self.client_info())).await?);
         }
 
         let Some(info) = &self.info else {
@@ -101,7 +92,7 @@ impl<PairStatus> MoonlightHost<PairStatus> {
     pub fn client_info(&'_ self) -> ClientInfo<'_> {
         ClientInfo {
             unique_id: &self.client_unique_id,
-            uuid: self.client_uuid,
+            // uuid: self.client_uuid,
         }
     }
 

@@ -4,10 +4,14 @@ use aes::Aes128;
 use block_modes::{BlockMode, Ecb, block_padding::NoPadding};
 use pem::Pem;
 use rcgen::{Certificate, CertificateParams, KeyPair, PKCS_RSA_SHA256, SigningKey};
-use rsa::{Pkcs1v15Sign, RsaPublicKey, pkcs8::DecodePublicKey};
+use rsa::{
+    Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
+    pkcs8::{DecodePrivateKey, DecodePublicKey},
+};
 use sha2::Sha256;
 use x509_parser::{
     parse_x509_certificate,
+    pem::parse_x509_pem,
     prelude::{FromDer, X509Certificate},
 };
 
@@ -67,28 +71,30 @@ fn generate_aes_key(algorithm: HashAlgorithm, salt: [u8; SALT_LENGTH], pin: Pair
 
 type Aes128Ecb = Ecb<Aes128, NoPadding>;
 
-fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
-    let cipher = Aes128Ecb::new_from_slices(key, &[]).unwrap();
-
-    // Decrypt in place, so clone ciphertext to mutable vec
-    let mut buffer = ciphertext.to_vec();
-
-    // Decrypt and remove padding (NoPadding means no removal)
-    cipher
-        .decrypt(&mut buffer)
-        .map_err(|e| format!("Decryption failed: {e:?}"))?;
-
-    Ok(buffer)
-}
-
-fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes128Ecb::new_from_slices(key, &[])
         .map_err(|e| format!("Error initializing ECB cipher: {e:?}"))?;
 
+    // Clone plaintext into a mutable buffer
     let mut buf = plaintext.to_vec();
+    // Encrypt in place, specifying the full plaintext length
     cipher
-        .encrypt(&mut buf, 0)
+        .encrypt(&mut buf, plaintext.len())
         .map_err(|e| format!("Encryption failed: {e:?}"))?;
+
+    Ok(buf)
+}
+
+pub fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+    let cipher = Aes128Ecb::new_from_slices(key, &[])
+        .map_err(|e| format!("Error initializing ECB cipher: {e:?}"))?;
+
+    // Clone ciphertext to mutable buffer for in-place decryption
+    let mut buf = ciphertext.to_vec();
+    // Decrypt entire buffer (no padding removal needed for NoPadding)
+    cipher
+        .decrypt(&mut buf)
+        .map_err(|e| format!("Decryption failed: {e:?}"))?;
 
     Ok(buf)
 }
@@ -115,7 +121,16 @@ fn verify_signature(
 }
 
 fn sign_data(key_pair: &KeyPair, data: &[u8]) -> Vec<u8> {
-    key_pair.sign(data).unwrap()
+    const HASH_ALGO: HashAlgorithm = HashAlgorithm::Sha256;
+
+    let private_key = RsaPrivateKey::from_pkcs8_der(key_pair.serialized_der()).unwrap();
+
+    let mut hashed = [0u8; HashAlgorithm::MAX_HASH_LEN];
+    hash(HASH_ALGO, data, &mut hashed);
+
+    private_key
+        .sign(Pkcs1v15Sign::new::<Sha256>(), &hashed)
+        .unwrap()
 }
 
 pub fn generate_key_and_cert() -> Result<(KeyPair, Certificate), rcgen::Error> {
@@ -148,7 +163,7 @@ pub async fn host_pair(
     let client_cert_pem = client_certificate_pem.to_string();
 
     let hash_algorithm = crypto.hash_algorithm_for_server(server_version);
-    // TODO: read already paired information
+
     let salt = crypto.generate_salt();
     let aes_key = generate_aes_key(hash_algorithm, salt, pin);
 

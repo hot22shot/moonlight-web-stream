@@ -4,7 +4,6 @@ use moonlight_common::{
     high::MoonlightHost,
     pair::high::generate_key_and_cert,
 };
-use rcgen::{CertificateParams, KeyPair, PKCS_RSA_SHA256};
 use tokio::{
     fs::{read_to_string, try_exists, write},
     task::spawn_blocking,
@@ -15,7 +14,7 @@ async fn main() {
     // Configuration
     let host_ip = "localhost";
     let host_http_port = 47989;
-    let device_name = "TestDevice";
+    let device_name = "roth";
 
     // Configuration Authentication / Pairing
     let key_file = "client.key";
@@ -48,6 +47,10 @@ async fn main() {
 
         private_key_pem = pem::parse(generated_signing_key.serialize_pem()).unwrap();
         cert_pem = pem::parse(generated_cert.pem()).unwrap();
+
+        // TODO: REMOVE
+        write(key_file, private_key_pem.to_string()).await.unwrap();
+        write(crt_file, cert_pem.to_string()).await.unwrap();
     }
 
     assert_eq!(private_key_pem.tag(), "PRIVATE KEY");

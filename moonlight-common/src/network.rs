@@ -42,15 +42,21 @@ pub enum ApiError {
 pub struct ClientInfo<'a> {
     /// It's recommended to use the same (default) UID for all Moonlight clients so we can quit games started by other Moonlight clients.
     pub unique_id: &'a str,
-    pub uuid: Uuid,
+    // uuid: Uuid,
 }
 
 impl Default for ClientInfo<'static> {
     fn default() -> Self {
         Self {
             unique_id: "0123456789ABCDEF",
-            uuid: Uuid::new_v4(),
+            // uuid: Uuid::new_v4(),
         }
+    }
+}
+
+impl ClientInfo<'_> {
+    pub fn uuid(&self) -> Uuid {
+        Uuid::new_v4()
     }
 }
 
@@ -59,7 +65,9 @@ impl ClientInfo<'_> {
         params.append_pair("uniqueid", self.unique_id);
 
         let mut uuid_str_bytes = [0; Hyphenated::LENGTH];
-        self.uuid.as_hyphenated().encode_upper(&mut uuid_str_bytes);
+        self.uuid()
+            .as_hyphenated()
+            .encode_lower(&mut uuid_str_bytes);
         let uuid_str = str::from_utf8(&uuid_str_bytes).expect("uuid string");
 
         params.append_pair("uuid", uuid_str);
@@ -290,14 +298,10 @@ pub async fn host_pair_initiate(
     // https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L207
     query_params.append_pair("phrase", "getservercert");
 
-    let mut salt_str_bytes = [0u8; SALT_LENGTH * 2];
-    hex::encode_to_slice(request.salt, &mut salt_str_bytes).expect("encode salt as hex");
-    query_params.append_pair(
-        "salt",
-        str::from_utf8(&salt_str_bytes).expect("salt string as utf8"),
-    );
+    let salt_str = hex::encode_upper(request.salt);
+    query_params.append_pair("salt", &salt_str);
 
-    let client_cert_pem_str = hex::encode(request.client_cert_pem);
+    let client_cert_pem_str = hex::encode_upper(request.client_cert_pem);
     query_params.append_pair("clientcert", &client_cert_pem_str);
     drop(query_params);
 
@@ -350,16 +354,8 @@ pub async fn host_pair1(
     query_params.append_pair("devicename", request.device_name);
     query_params.append_pair("updateState", "1");
 
-    let mut encrypted_challenge_str_bytes = vec![0u8; request.encrypted_challenge.len() * 2];
-    hex::encode_to_slice(
-        request.encrypted_challenge,
-        &mut encrypted_challenge_str_bytes,
-    )
-    .expect("encode encrypted challenge as hex");
-    query_params.append_pair(
-        "clientchallenge",
-        str::from_utf8(&encrypted_challenge_str_bytes).expect("encrypted challenge string as utf8"),
-    );
+    let encrypted_challenge_str = hex::encode_upper(request.encrypted_challenge);
+    query_params.append_pair("clientchallenge", &encrypted_challenge_str);
     drop(query_params);
 
     let response = reqwest::get(url).await?.text().await?;
@@ -374,8 +370,7 @@ pub async fn host_pair1(
     let paired = xml_child_paired(root, "paired")?;
 
     let challenge_response_str = xml_child_text(root, "challengeresponse")?;
-    let mut challenge_response = vec![0u8; challenge_response_str.len() / 2];
-    hex::decode_to_slice(challenge_response_str, &mut challenge_response)?;
+    let challenge_response = hex::decode(challenge_response_str)?;
 
     Ok(ServerPairResponse1 {
         paired,
@@ -405,17 +400,8 @@ pub async fn host_pair2(
     query_params.append_pair("devicename", request.device_name);
     query_params.append_pair("updateState", "1");
 
-    let mut encrypted_challenge_str_bytes =
-        vec![0u8; request.encrypted_challenge_response_hash.len() * 2];
-    hex::encode_to_slice(
-        request.encrypted_challenge_response_hash,
-        &mut encrypted_challenge_str_bytes,
-    )
-    .expect("encode encrypted challenge as hex");
-    query_params.append_pair(
-        "serverchallengeresp",
-        str::from_utf8(&encrypted_challenge_str_bytes).expect("encrypted challenge string as utf8"),
-    );
+    let encrypted_challenge_str = hex::encode_upper(request.encrypted_challenge_response_hash);
+    query_params.append_pair("serverchallengeresp", &encrypted_challenge_str);
     drop(query_params);
 
     let response = reqwest::get(url).await?.text().await?;
@@ -459,17 +445,8 @@ pub async fn host_pair3(
     query_params.append_pair("devicename", request.device_name);
     query_params.append_pair("updateState", "1");
 
-    let mut client_pairing_secret_str_bytes = vec![0u8; request.client_pairing_secret.len() * 2];
-    hex::encode_to_slice(
-        request.client_pairing_secret,
-        &mut client_pairing_secret_str_bytes,
-    )
-    .expect("encode encrypted challenge as hex");
-    query_params.append_pair(
-        "clientpairingsecret",
-        str::from_utf8(&client_pairing_secret_str_bytes)
-            .expect("client pairing secret string as utf8"),
-    );
+    let client_pairing_secret_str = hex::encode_upper(request.client_pairing_secret);
+    query_params.append_pair("clientpairingsecret", &client_pairing_secret_str);
     drop(query_params);
 
     let response = reqwest::get(url).await?.text().await?;
