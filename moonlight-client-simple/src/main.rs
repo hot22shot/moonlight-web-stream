@@ -4,7 +4,6 @@ use moonlight_common::{
     high::MoonlightHost,
     pair::high::{ClientAuth, generate_new_client},
 };
-use rcgen::{Certificate, KeyPair};
 use tokio::{
     fs::{read_to_string, try_exists, write},
     task::spawn_blocking,
@@ -13,13 +12,14 @@ use tokio::{
 #[tokio::main]
 async fn main() {
     // Configuration
-    let host_ip = "localhost";
+    let host_ip = "127.0.0.1";
     let host_http_port = 47989;
     let device_name = "TestDevice";
 
     // Configuration Authentication / Pairing
     let key_file = "client.key";
     let crt_file = "client.crt";
+    let server_crt_file = "server.crt";
 
     // Initialize Moonlight
     let moonlight = MoonlightInstance::global().unwrap();
@@ -29,58 +29,66 @@ async fn main() {
     // - client_info = None -> Generates a client
     let host = MoonlightHost::new(host_ip.to_string(), host_http_port, None);
 
-    // Load or Create a key pair and certificate
-    let auth;
-
-    if let Ok(true) = try_exists(key_file).await
+    // Pair to the Host using Generated / Loaded Client Private Key, Certificate and Server Certificate
+    let mut host = if let Ok(true) = try_exists(key_file).await
         && let Ok(true) = try_exists(crt_file).await
+        && let Ok(true) = try_exists(server_crt_file).await
     {
         // Load already valid pairing information
         let key_contents = read_to_string(key_file).await.unwrap();
         let crt_contents = read_to_string(crt_file).await.unwrap();
+        let server_crt_contents = read_to_string(crt_file).await.unwrap();
 
-        auth = ClientAuth {
+        let auth = ClientAuth {
             key_pair: pem::parse(key_contents).unwrap(),
             certificate: pem::parse(crt_contents).unwrap(),
         };
-    } else {
-        auth = generate_new_client().unwrap();
-    }
+        let server_certificate = pem::parse(server_crt_contents).unwrap();
 
-    assert_eq!(auth.key_pair.tag(), "PRIVATE KEY");
-    assert_eq!(auth.certificate.tag(), "CERTIFICATE");
+        // Get the current pair state
+        let host = host
+            .pair_state(Some(&auth), Some(&server_certificate))
+            .await
+            .map_err(|(_, err)| err)
+            .unwrap();
 
-    // Get the current pair state
-    let host = host
-        .pair_state(Some(&auth))
-        .await
-        .map_err(|(_, err)| err)
-        .unwrap();
-
-    // See if we're already paired
-    let mut host = match host.into_paired() {
-        // The host is paired
-        Ok(host) => host,
-        // The host is unpaired
-        Err(host) => {
-            unreachable!(); // TODO: <--- remove
-
-            // Generate pin for pairing
-            let pin = crypto.generate_pin();
-
-            println!("Pin: {pin}, Device Name: {device_name}");
-
-            // Pair to the host
-            host.pair(&crypto, &auth, device_name.to_string(), pin)
-                .await
-                .map_err(|(_, err)| err)
-                .unwrap()
+        match host.try_into_paired() {
+            Ok(host) => host,
+            Err(_) => panic!(
+                "host not paired even though we've already generated private key and certificates: Delete them to repair"
+            ),
         }
+    } else {
+        let auth = generate_new_client().unwrap();
+
+        // Generate pin for pairing
+        let pin = crypto.generate_pin();
+
+        println!("Pin: {pin}, Device Name: {device_name}");
+
+        // Pair to the host
+        let host = host
+            .into_unpaired()
+            .pair(&crypto, &auth, device_name.to_string(), pin)
+            .await
+            .map_err(|(_, err)| err)
+            .unwrap();
+
+        let server_certificate = host.server_certificate().clone();
+
+        // Save the pair information
+        write(key_file, auth.key_pair.to_string()).await.unwrap();
+        write(crt_file, auth.certificate.to_string()).await.unwrap();
+        write(server_crt_file, server_certificate.to_string())
+            .await
+            .unwrap();
+
+        host
     };
 
-    // Save the pair information
-    write(key_file, auth.key_pair.to_string()).await.unwrap();
-    write(crt_file, auth.certificate.to_string()).await.unwrap();
+    let game_list = host.app_list().await.unwrap();
+
+    todo!();
 
     // Start the stream (only 1 stream per program is allowed)
     let stream = host

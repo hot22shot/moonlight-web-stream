@@ -518,18 +518,23 @@ pub async fn host_unpair(
 }
 
 #[derive(Debug, Clone)]
-pub struct HostAppListResponse {}
+pub struct App {
+    pub id: u32,
+    pub title: String,
+    pub is_hdr_supported: bool,
+}
 
-pub async fn host_get_apps(
+#[derive(Debug, Clone)]
+pub struct HostAppListResponse {
+    pub apps: Vec<App>,
+}
+
+pub async fn host_app_list(
     client: &Client,
     https_address: &str,
     info: ClientInfo<'_>,
 ) -> Result<HostAppListResponse, ApiError> {
-    let mut url = build_url(true, https_address, "applist", Some(info))?;
-
-    let mut query_params = url.query_pairs_mut();
-    info.add_query_params(&mut query_params);
-    drop(query_params);
+    let url = build_url(true, https_address, "applist", Some(info))?;
 
     let response = client.get(url).send().await?.text().await?;
 
@@ -539,6 +544,8 @@ pub async fn host_get_apps(
         .children()
         .find(|node| node.tag_name().name() == "root")
         .ok_or(ApiError::XmlRootNotFound)?;
+
+    println!("{root:?}");
 
     todo!()
 }

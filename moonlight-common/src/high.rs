@@ -2,8 +2,10 @@
 //! The high level api of the moonlight wrapper
 //!
 
+use std::time::Duration;
+
 use pem::Pem;
-use reqwest::{Certificate, Client};
+use reqwest::{Certificate, Client, ClientBuilder, Identity};
 use tokio::task::block_in_place;
 use uuid::Uuid;
 
@@ -15,8 +17,8 @@ use crate::{
         SupportedVideoFormats,
     },
     network::{
-        ApiError, ClientInfo, ClientStreamRequest, HostInfo, PairStatus, ServerState,
-        ServerVersion, host_info, host_launch,
+        ApiError, App, ClientInfo, ClientStreamRequest, HostInfo, PairStatus, ServerState,
+        ServerVersion, host_app_list, host_info, host_launch,
     },
     pair::{
         PairPin,
@@ -24,6 +26,33 @@ use crate::{
     },
     stream::MoonlightStream,
 };
+
+fn default_client_builder() -> ClientBuilder {
+    ClientBuilder::new()
+    // .connect_timeout(Duration::from_secs(5))
+    // .timeout(Duration::from_secs(7))
+}
+fn tls_client_builder(
+    auth: &ClientAuth,
+    server_certificate: &Pem,
+) -> Result<ClientBuilder, ApiError> {
+    let server_cert = Certificate::from_pem(server_certificate.to_string().as_bytes())?;
+
+    let mut client_pem = String::new();
+    client_pem.push_str(&auth.key_pair.to_string());
+    client_pem.push('\n');
+    client_pem.push_str(&auth.certificate.to_string());
+
+    let identity = Identity::from_pem(client_pem.as_bytes())?;
+
+    Ok(default_client_builder()
+        .use_rustls_tls()
+        .tls_built_in_root_certs(false)
+        .add_root_certificate(server_cert)
+        .identity(identity)
+        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true))
+}
 
 pub struct MoonlightHost<PairStatus> {
     client_unique_id: String,
@@ -38,17 +67,18 @@ pub struct MoonlightHost<PairStatus> {
 pub struct Unknown;
 pub struct Unpaired;
 pub struct Paired {
-    device_name: String,
+    client_auth: ClientAuth,
     server_certificate: Pem,
+    app_list: Option<Vec<App>>,
 }
 pub enum MaybePaired {
     Unpaired(Unpaired),
-    Paired(Paired),
+    Paired(Box<Paired>),
 }
 
 impl From<Paired> for MaybePaired {
     fn from(value: Paired) -> Self {
-        Self::Paired(value)
+        Self::Paired(Box::new(value))
     }
 }
 impl From<Unpaired> for MaybePaired {
@@ -63,7 +93,7 @@ impl MoonlightHost<Unknown> {
         let client = client.unwrap_or(ClientInfo::default());
 
         Self {
-            client: Client::new(),
+            client: default_client_builder().build().expect("reqwest client"),
             client_unique_id: client.unique_id.to_string(),
             client_uuid: client.uuid(),
             address,
@@ -176,16 +206,18 @@ impl<Pair> MoonlightHost<Pair> {
             paired: Unpaired,
         }
     }
-    // TODO: add some values to make it possible to either be paired or unpaired
+
+    // TODO: add auth Option(ServerPem, ClientAuth)
     pub async fn pair_state(
         mut self,
         auth: Option<&ClientAuth>,
+        server_certificate: Option<&Pem>,
     ) -> Result<MoonlightHost<MaybePaired>, (Self, ApiError)> {
-        let client = if let Some(auth) = auth {
-            let client_cert = Certificate::from_der(&auth.certificate.contents()).unwrap();
-
-            Client::builder()
-                .add_root_certificate(client_cert)
+        let client = if let Some(auth) = auth
+            && let Some(server_certificate) = server_certificate
+        {
+            tls_client_builder(auth, server_certificate)
+                .unwrap()
                 .build()
                 .unwrap()
         } else {
@@ -198,13 +230,15 @@ impl<Pair> MoonlightHost<Pair> {
         };
 
         let info = match host_info(&client, true, &https_address, Some(self.client_info())).await {
-            Err(err) => return Err((self, err)),
+            Err(err) => {
+                return Err((self, err));
+            }
             Ok(value) => value,
         };
 
         match info.pair_status {
             PairStatus::NotPaired => Ok(MoonlightHost {
-                client: self.client,
+                client,
                 client_unique_id: self.client_unique_id,
                 client_uuid: self.client_uuid,
                 address: self.address,
@@ -213,16 +247,20 @@ impl<Pair> MoonlightHost<Pair> {
                 paired: MaybePaired::Unpaired(Unpaired),
             }),
             PairStatus::Paired => Ok(MoonlightHost {
-                client: self.client,
+                client,
                 client_unique_id: self.client_unique_id,
                 client_uuid: self.client_uuid,
                 address: self.address,
                 http_port: self.http_port,
                 info: Some(info),
-                paired: MaybePaired::Paired(Paired {
-                    device_name: todo!(),
-                    server_certificate: todo!(),
-                }),
+                paired: Paired {
+                    client_auth: auth.expect("client auth when paired").clone(),
+                    server_certificate: server_certificate
+                        .expect("server cert when paired")
+                        .clone(),
+                    app_list: None,
+                }
+                .into(),
             }),
         }
     }
@@ -247,7 +285,7 @@ where
 
 impl MoonlightHost<MaybePaired> {
     #[allow(clippy::result_large_err)]
-    pub fn into_paired(self) -> Result<MoonlightHost<Paired>, MoonlightHost<Unpaired>> {
+    pub fn try_into_paired(self) -> Result<MoonlightHost<Paired>, MoonlightHost<Unpaired>> {
         match self.paired {
             MaybePaired::Paired(paired) => Ok(MoonlightHost {
                 client: self.client,
@@ -256,7 +294,7 @@ impl MoonlightHost<MaybePaired> {
                 address: self.address,
                 http_port: self.http_port,
                 info: self.info,
-                paired,
+                paired: *paired,
             }),
             MaybePaired::Unpaired(paired) => Err(MoonlightHost {
                 client: self.client,
@@ -303,7 +341,10 @@ impl MoonlightHost<Unpaired> {
         };
 
         Ok(MoonlightHost {
-            client: self.client,
+            client: tls_client_builder(auth, &server_certificate)
+                .unwrap()
+                .build()
+                .unwrap(),
             client_unique_id: self.client_unique_id,
             client_uuid: self.client_uuid,
             address: self.address,
@@ -311,8 +352,9 @@ impl MoonlightHost<Unpaired> {
             info: self.info,
             // TODO: other info which is required
             paired: Paired {
-                device_name,
                 server_certificate,
+                client_auth: auth.clone(),
+                app_list: None,
             },
         })
     }
@@ -327,6 +369,17 @@ pub enum StreamError {
 }
 
 impl MoonlightHost<Paired> {
+    pub fn server_certificate(&self) -> &Pem {
+        &self.paired.server_certificate
+    }
+
+    pub async fn app_list(&mut self) -> Result<&[App], ApiError> {
+        let https_address = self.https_address().await?;
+        let app_list = host_app_list(&self.client, &https_address, self.client_info()).await?;
+
+        todo!()
+    }
+
     // TODO: add a fn to create / correct streaming info: e.g. width, height, fps
 
     pub async fn start_stream(
@@ -394,9 +447,5 @@ impl MoonlightHost<Paired> {
         })?;
 
         Ok(connection)
-    }
-
-    pub fn pair_device_name(&self) -> &str {
-        &self.paired.device_name
     }
 }

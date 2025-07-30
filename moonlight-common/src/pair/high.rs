@@ -131,6 +131,7 @@ fn sign_data(key_pair: &KeyPair, data: &[u8]) -> Vec<u8> {
         .expect("sign the data")
 }
 
+#[derive(Clone)]
 pub struct ClientAuth {
     pub key_pair: Pem,
     pub certificate: Pem,
