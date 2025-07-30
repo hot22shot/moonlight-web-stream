@@ -1,5 +1,6 @@
 use std::{ptr::null_mut, sync::Arc};
 
+use bitflags::bitflags;
 use moonlight_common_sys::crypto::{
     ALGORITHM_AES_CBC, ALGORITHM_AES_GCM, CIPHER_FLAG_FINISH, CIPHER_FLAG_PAD_TO_BLOCK_SIZE,
     CIPHER_FLAG_RESET_IV, PPLT_CRYPTO_CONTEXT, PltCreateCryptoContext, PltDecryptMessage,
@@ -8,7 +9,7 @@ use moonlight_common_sys::crypto::{
 use thiserror::Error;
 
 use crate::{
-    Handle, MoonlightInstance, flag_if,
+    Handle, MoonlightInstance,
     network::ServerVersion,
     pair::{PairPin, SALT_LENGTH},
 };
@@ -40,19 +41,11 @@ pub const AES_BLOCK_SIZE: usize = 16;
 #[error("error with moonlight crypto")]
 pub struct CryptoError;
 
+#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CryptoAlgorithm {
-    AesCbc,
-    AesGcm,
-}
-
-impl CryptoAlgorithm {
-    fn raw(&self) -> i32 {
-        match self {
-            Self::AesCbc => ALGORITHM_AES_CBC as i32,
-            Self::AesGcm => ALGORITHM_AES_GCM as i32,
-        }
-    }
+    AesCbc = ALGORITHM_AES_CBC,
+    AesGcm = ALGORITHM_AES_GCM,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,27 +65,12 @@ impl HashAlgorithm {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CipherFlags {
-    pub reset: bool,
-    pub finish: bool,
-    pub pad_to_block_size: bool,
-}
-
-impl CipherFlags {
-    fn raw(&self) -> i32 {
-        let mut flags = 0x0;
-
-        // TODO: others
-        flag_if(&mut flags, CIPHER_FLAG_RESET_IV, self.reset);
-        flag_if(&mut flags, CIPHER_FLAG_FINISH, self.finish);
-        flag_if(
-            &mut flags,
-            CIPHER_FLAG_PAD_TO_BLOCK_SIZE,
-            self.pad_to_block_size,
-        );
-
-        flags as i32
+bitflags! {
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct CipherFlags: u32 {
+        const RESET = CIPHER_FLAG_RESET_IV;
+        const FINISH = CIPHER_FLAG_FINISH;
+        const PAD_TO_BLOCK_SIZE = CIPHER_FLAG_PAD_TO_BLOCK_SIZE;
     }
 }
 
@@ -156,7 +134,7 @@ impl MoonlightCrypto {
     ) -> Result<usize, CryptoError> {
         let mut expected_output_len = input.len();
 
-        if flags.pad_to_block_size {
+        if flags.contains(CipherFlags::PAD_TO_BLOCK_SIZE) {
             expected_output_len = ((input.len() / AES_BLOCK_SIZE) + 1) * AES_BLOCK_SIZE;
         } else {
             // Without padding, input must be block-aligned
@@ -184,8 +162,8 @@ impl MoonlightCrypto {
         unsafe {
             if !PltEncryptMessage(
                 context.context,
-                algorithm.raw(),
-                flags.raw(),
+                algorithm as u32 as i32,
+                flags.bits() as i32,
                 key.as_ptr() as *mut _,
                 key.len() as i32,
                 iv.as_ptr() as *mut _,
@@ -219,7 +197,7 @@ impl MoonlightCrypto {
     ) -> Result<usize, CryptoError> {
         // CBC with padding: decrypted output could be up to input size
         // (padding is removed after decryption, but we don’t know how much in advance)
-        let expected_max_output_len = if flags.pad_to_block_size {
+        let expected_max_output_len = if flags.contains(CipherFlags::PAD_TO_BLOCK_SIZE) {
             // Output could be input.len(), as padding will be stripped at the end
             input.len()
         } else {
@@ -253,8 +231,8 @@ impl MoonlightCrypto {
         unsafe {
             if !PltDecryptMessage(
                 context.context,
-                algorithm.raw(),
-                flags.raw(),
+                algorithm as u32 as i32,
+                flags.bits() as i32,
                 key.as_ptr() as *mut _,
                 key.len() as i32,
                 iv.as_ptr() as *mut _,
