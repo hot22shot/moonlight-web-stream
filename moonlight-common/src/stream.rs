@@ -397,12 +397,13 @@ impl Drop for MoonlightStream {
             LiStopConnection();
 
             // Null out all the callbacks
-            LiInitializeAudioCallbacks(null_mut());
+            LiInitializeConnectionCallbacks(null_mut());
 
             LiInitializeVideoCallbacks(null_mut());
             video::clear_global();
 
-            LiInitializeConnectionCallbacks(null_mut());
+            LiInitializeAudioCallbacks(null_mut());
+            audio::clear_global();
 
             *connection_guard = false;
 
