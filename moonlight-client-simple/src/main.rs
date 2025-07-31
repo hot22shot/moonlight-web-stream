@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use moonlight_common::{
-    MoonlightInstance, NullHandler,
+    MoonlightInstance,
+    debug::{DebugHandler, NullHandler},
     high::MoonlightHost,
     pair::high::{ClientAuth, generate_new_client},
     stream::{ColorRange, Colorspace},
@@ -7,6 +10,7 @@ use moonlight_common::{
 use tokio::{
     fs::{read_to_string, try_exists, write},
     task::spawn_blocking,
+    time::sleep,
 };
 
 #[tokio::main]
@@ -112,12 +116,16 @@ async fn main() {
             60,
             Colorspace::Rec2020,
             ColorRange::Full,
-            NullHandler,
+            DebugHandler,
             NullHandler,
             NullHandler,
         )
         .await
         .unwrap();
+    println!("Finished Connection");
+
+    sleep(Duration::from_secs(5)).await;
+    println!("Closing Connection");
 
     // Stop the stream (drop will also just close the stream)
     spawn_blocking(move || {

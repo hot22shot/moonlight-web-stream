@@ -9,7 +9,6 @@ use moonlight_common_sys::limelight::{
     COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL, ENCFLG_AUDIO,
     ENCFLG_NONE, ENCFLG_VIDEO, LI_ERR_UNSUPPORTED, LI_FF_CONTROLLER_TOUCH_EVENTS,
     LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
-    LiInitializeAudioCallbacks, LiInitializeConnectionCallbacks, LiInitializeVideoCallbacks,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
     LiSendTouchEvent, LiStartConnection, LiStopConnection, PAUDIO_RENDERER_CALLBACKS,
     PCONNECTION_LISTENER_CALLBACKS, PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION,
@@ -412,14 +411,9 @@ impl Drop for MoonlightStream {
 
             LiStopConnection();
 
-            // Null out all the callbacks
-            LiInitializeConnectionCallbacks(null_mut());
+            // Clear Connection Callbacks
             connection::clear_global();
-
-            LiInitializeVideoCallbacks(null_mut());
             video::clear_global();
-
-            LiInitializeAudioCallbacks(null_mut());
             audio::clear_global();
 
             *connection_guard = false;

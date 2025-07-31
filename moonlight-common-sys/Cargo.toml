@@ -9,20 +9,12 @@ windows-sys = { version = "0.60.2", features = [
 ], optional = true }
 
 [features]
-default = [
-    "windows-symbol-fix",
-    "link-openssl",
-    "link-enet",
-    "build-moonlight_common_c",
-]
+default = ["link-openssl", "link-enet", "build-moonlight_common_c"]
 
 crypto = []
 
 generate-bindings = ["dep:bindgen"]
 
-# Moonlight on windows requires the symbols __imp_timeBeginPeriod and __imp_timeEndPeriod.
-# This feature will export them using the windows-sys crate
-windows-symbol-fix = ["dep:windows-sys"]
 
 link-openssl = []
 link-enet = []

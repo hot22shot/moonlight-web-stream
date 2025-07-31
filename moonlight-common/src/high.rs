@@ -108,15 +108,7 @@ impl<Pair> MoonlightHost<Pair> {
 
     async fn host_info(&mut self) -> Result<&HostInfo, ApiError> {
         if self.info.is_none() {
-            self.info = Some(
-                host_info(
-                    &self.client,
-                    false,
-                    &self.http_address(),
-                    Some(self.client_info()),
-                )
-                .await?,
-            );
+            self.reload_host_info().await?;
         }
 
         let Some(info) = &self.info else {
@@ -124,6 +116,19 @@ impl<Pair> MoonlightHost<Pair> {
         };
 
         Ok(info)
+    }
+    pub async fn reload_host_info(&mut self) -> Result<(), ApiError> {
+        self.info = Some(
+            host_info(
+                &self.client,
+                false,
+                &self.http_address(),
+                Some(self.client_info()),
+            )
+            .await?,
+        );
+
+        Ok(())
     }
 
     pub fn client_info(&'_ self) -> ClientInfo<'_> {
@@ -396,7 +401,7 @@ impl MoonlightHost<Paired> {
         video_decoder: impl VideoDecoder + Send + 'static,
         audio_decoder: impl AudioDecoder + Send + 'static,
     ) -> Result<MoonlightStream, StreamError> {
-        let http_address = self.http_address();
+        let address = self.address.clone();
         let https_address = self.https_address().await?;
 
         let mut aes_key = [0u8; 16];
@@ -445,7 +450,7 @@ impl MoonlightHost<Paired> {
 
         let connection = block_in_place(|| {
             let server_info = ServerInfo {
-                address: &http_address,
+                address: &address,
                 app_version,
                 gfe_version,
                 rtsp_session_url: &rtsp_session_url,

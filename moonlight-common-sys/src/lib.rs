@@ -15,7 +15,3 @@ mod crypto {
 }
 #[cfg(all(not(feature = "generate-bindings"), feature = "crypto"))]
 pub mod crypto;
-
-#[cfg(all(target_os = "windows", feature = "windows-symbol-fix"))]
-#[allow(clippy::missing_safety_doc)]
-mod windows_fix;
