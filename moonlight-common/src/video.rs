@@ -3,17 +3,14 @@ use std::{ffi::c_void, slice, sync::Mutex};
 use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
     self, _DECODER_RENDERER_CALLBACKS, BUFFER_TYPE_PICDATA, BUFFER_TYPE_PPS, BUFFER_TYPE_SPS,
-    BUFFER_TYPE_VPS, CAPABILITY_DIRECT_SUBMIT, CAPABILITY_PULL_RENDERER,
-    CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1, CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC,
-    CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC, CAPABILITY_SLOW_OPUS_DECODER,
-    CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION, DR_NEED_IDR, DR_OK, FRAME_TYPE_IDR,
-    FRAME_TYPE_PFRAME, PDECODE_UNIT, VIDEO_FORMAT_MASK_10BIT, VIDEO_FORMAT_MASK_AV1,
-    VIDEO_FORMAT_MASK_H264, VIDEO_FORMAT_MASK_H265, VIDEO_FORMAT_MASK_YUV444,
+    BUFFER_TYPE_VPS, DR_NEED_IDR, DR_OK, FRAME_TYPE_IDR, FRAME_TYPE_PFRAME, PDECODE_UNIT,
+    VIDEO_FORMAT_MASK_10BIT, VIDEO_FORMAT_MASK_AV1, VIDEO_FORMAT_MASK_H264, VIDEO_FORMAT_MASK_H265,
+    VIDEO_FORMAT_MASK_YUV444,
 };
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
 
-use crate::stream::Colorspace;
+use crate::stream::{Capabilities, Colorspace};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, Default)]
@@ -122,19 +119,6 @@ pub struct VideoDataBuffer<'a> {
     pub data: &'a [u8],
 }
 
-bitflags! {
-    #[derive(Debug, Clone, Copy, Default)]
-    pub struct VideoCapabilities: u32 {
-        const DIRECT_SUBMIT = CAPABILITY_DIRECT_SUBMIT;
-        const REFERENCE_FRAME_INVALIDATION_AV1 = CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1;
-        const REFERENCE_FRAME_INVALIDATION_HEVC = CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC;
-        const REFERENCE_FRAME_INVALIDATION_AVC = CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC;
-        const SUPPORTS_ARBITRARY_SOUND_DURATION = CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION;
-        const PULL_RENDERER = CAPABILITY_PULL_RENDERER;
-        const SLOW_OPUS_DECODER = CAPABILITY_SLOW_OPUS_DECODER;
-    }
-}
-
 #[repr(i32)]
 #[derive(Debug, Clone, Copy)]
 pub enum DecodeResult {
@@ -166,7 +150,7 @@ pub trait VideoDecoder {
     fn stop(&mut self);
 
     fn supported_formats(&self) -> SupportedVideoFormats;
-    fn capabilities(&self) -> VideoCapabilities;
+    fn capabilities(&self) -> Capabilities;
 }
 
 static GLOBAL_VIDEO_DECODER: Mutex<Option<Box<dyn VideoDecoder + Send + 'static>>> =

@@ -2,20 +2,24 @@ use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc};
 
 use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
-    _SERVER_INFORMATION, _STREAM_CONFIGURATION, COLOR_RANGE_FULL, COLOR_RANGE_LIMITED,
+    _SERVER_INFORMATION, _STREAM_CONFIGURATION, CAPABILITY_DIRECT_SUBMIT, CAPABILITY_PULL_RENDERER,
+    CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1, CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC,
+    CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC, CAPABILITY_SLOW_OPUS_DECODER,
+    CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION, COLOR_RANGE_FULL, COLOR_RANGE_LIMITED,
     COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL, ENCFLG_AUDIO,
     ENCFLG_NONE, ENCFLG_VIDEO, LI_ERR_UNSUPPORTED, LI_FF_CONTROLLER_TOUCH_EVENTS,
     LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
     LiInitializeAudioCallbacks, LiInitializeConnectionCallbacks, LiInitializeVideoCallbacks,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
-    LiSendTouchEvent, LiStartConnection, LiStopConnection, PDECODER_RENDERER_CALLBACKS,
-    PSERVER_INFORMATION, PSTREAM_CONFIGURATION, STREAM_CFG_AUTO, STREAM_CFG_LOCAL,
-    STREAM_CFG_REMOTE,
+    LiSendTouchEvent, LiStartConnection, LiStopConnection, PAUDIO_RENDERER_CALLBACKS,
+    PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION, PSTREAM_CONFIGURATION, STREAM_CFG_AUTO,
+    STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
 };
 use num_derive::FromPrimitive;
 
 use crate::{
     Error, Handle,
+    audio::{self, AudioDecoder},
     input::TouchEventType,
     network::ServerVersion,
     video::{self, SupportedVideoFormats, VideoDecoder},
@@ -71,19 +75,56 @@ bitflags! {
 }
 
 pub struct StreamConfiguration {
+    /// Dimensions in pixels of the desired video stream
     pub width: i32,
+    /// Dimensions in pixels of the desired video stream
     pub height: i32,
+    /// FPS of the desired video stream
     pub fps: i32,
+    /// Bitrate of the desired video stream (audio adds another ~1 Mbps). This
+    /// includes error correction data, so the actual encoder bitrate will be
+    /// about 20% lower when using the standard 20% FEC configuration.
     pub bitrate: i32,
+    /// Max video packet size in bytes (use 1024 if unsure). If STREAM_CFG_AUTO
+    /// determines the stream is remote (see below), it will cap this value at
+    /// 1024 to avoid MTU-related issues like packet loss and fragmentation.
     pub packet_size: i32,
+    /// Determines whether to enable remote (over the Internet)
+    /// streaming optimizations. If unsure, set to STREAM_CFG_AUTO.
+    /// STREAM_CFG_AUTO uses a heuristic (whether the target address is
+    /// in the RFC 1918 address blocks) to decide whether the stream
+    /// is remote or not.
     pub streaming_remotely: StreamingConfig,
+    /// Specifies the channel configuration of the audio stream.
+    /// See AUDIO_CONFIGURATION constants and MAKE_AUDIO_CONFIGURATION() below.
     pub audio_configuration: i32,
+    /// Specifies the mask of supported video formats.
+    /// See VIDEO_FORMAT constants below.
     pub supported_video_formats: SupportedVideoFormats,
+    /// If specified, the client's display refresh rate x 100. For example,
+    /// 59.94 Hz would be specified as 5994. This is used by recent versions
+    /// of GFE for enhanced frame pacing.
     pub client_refresh_rate_x100: i32,
+    /// If specified, sets the encoder colorspace to the provided COLORSPACE_*
+    /// option (listed above). If not set, the encoder will default to Rec 601.
     pub color_space: Colorspace,
+    /// If specified, sets the encoder color range to the provided COLOR_RANGE_*
+    /// option (listed above). If not set, the encoder will default to Limited.
     pub color_range: ColorRange,
+    /// Specifies the data streams where encryption may be enabled if supported
+    /// by the host PC. Ideally, you would pass ENCFLG_ALL to encrypt everything
+    /// that we support encrypting. However, lower performance hardware may not
+    /// be able to support encrypting heavy stuff like video or audio data, so
+    /// that encryption may be disabled here. Remote input encryption is always
+    /// enabled.
     pub encryption_flags: EncryptionFlags,
+    /// AES encryption data for the remote input stream. This must be
+    /// the same as what was passed as rikey and rikeyid
+    /// in /launch and /resume requests.
     pub remote_input_aes_key: [u8; 16],
+    /// AES encryption data for the remote input stream. This must be
+    /// the same as what was passed as rikey and rikeyid
+    /// in /launch and /resume requests.
     pub remote_input_aes_iv: [u8; 16],
 }
 
@@ -109,6 +150,7 @@ impl MoonlightStream {
         server_info: ServerInfo,
         stream_config: StreamConfiguration,
         video_decoder: impl VideoDecoder + Send + 'static,
+        audio_decoder: impl AudioDecoder + Send + 'static,
     ) -> Result<Self, Error> {
         unsafe {
             let mut connection_guard = handle
@@ -154,8 +196,11 @@ impl MoonlightStream {
                 ),
             };
 
-            video::new_global(video_decoder).expect("a renderer is still in use");
+            video::new_global(video_decoder).expect("a video decoder is still in use");
             let mut video_callbacks = video::raw_callbacks();
+
+            audio::new_global(audio_decoder).expect("a audio decoder is still in use");
+            let mut audio_callbacks = audio::raw_callbacks();
 
             // # Safety
             // LiStartConnection is not thread safe so we are using the connection_guard mutex
@@ -164,7 +209,7 @@ impl MoonlightStream {
                 &mut stream_config as PSTREAM_CONFIGURATION,
                 null_mut(),
                 &mut video_callbacks as PDECODER_RENDERER_CALLBACKS,
-                null_mut(),
+                &mut audio_callbacks as PAUDIO_RENDERER_CALLBACKS,
                 null_mut(),
                 0,
                 null_mut(),
@@ -363,5 +408,18 @@ impl Drop for MoonlightStream {
 
             drop(connection_guard);
         }
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct Capabilities: u32 {
+        const DIRECT_SUBMIT = CAPABILITY_DIRECT_SUBMIT;
+        const REFERENCE_FRAME_INVALIDATION_AV1 = CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1;
+        const REFERENCE_FRAME_INVALIDATION_HEVC = CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC;
+        const REFERENCE_FRAME_INVALIDATION_AVC = CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC;
+        const SUPPORTS_ARBITRARY_SOUND_DURATION = CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION;
+        const PULL_RENDERER = CAPABILITY_PULL_RENDERER;
+        const SLOW_OPUS_DECODER = CAPABILITY_SLOW_OPUS_DECODER;
     }
 }

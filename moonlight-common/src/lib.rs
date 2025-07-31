@@ -10,8 +10,9 @@ use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterrupt
 use thiserror::Error;
 
 use crate::{
-    stream::{MoonlightStream, ServerInfo, StreamConfiguration},
-    video::{DecodeResult, SupportedVideoFormats, VideoCapabilities, VideoDecoder, VideoFormat},
+    audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
+    stream::{Capabilities, MoonlightStream, ServerInfo, StreamConfiguration},
+    video::{DecodeResult, SupportedVideoFormats, VideoDecoder, VideoFormat},
 };
 
 #[derive(Debug, Error)]
@@ -106,12 +107,14 @@ impl MoonlightInstance {
         server_info: ServerInfo,
         stream_config: StreamConfiguration,
         video_decoder: impl VideoDecoder + Send + 'static,
+        audio_decoder: impl AudioDecoder + Send + 'static,
     ) -> Result<MoonlightStream, Error> {
         MoonlightStream::start(
             self.handle.clone(),
             server_info,
             stream_config,
             video_decoder,
+            audio_decoder,
         )
     }
 
@@ -127,9 +130,9 @@ impl MoonlightInstance {
     }
 }
 
-pub struct NullHandler;
+pub struct NullDecoder;
 
-impl VideoDecoder for NullHandler {
+impl VideoDecoder for NullDecoder {
     fn setup(
         &mut self,
         format: VideoFormat,
@@ -157,7 +160,31 @@ impl VideoDecoder for NullHandler {
         SupportedVideoFormats::all()
     }
 
-    fn capabilities(&self) -> VideoCapabilities {
-        VideoCapabilities::empty()
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::empty()
+    }
+}
+
+impl AudioDecoder for NullDecoder {
+    fn setup(
+        &mut self,
+        audio_config: AudioConfig,
+        stream_config: OpusMultistreamConfig,
+        ar_flags: (),
+    ) -> i32 {
+        let _ = (audio_config, stream_config, ar_flags);
+
+        0
+    }
+
+    fn start(&mut self) {}
+    fn decode_and_play_sample(&mut self, data: &[u8]) {
+        let _ = data;
+    }
+
+    fn stop(&mut self) {}
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::empty()
     }
 }

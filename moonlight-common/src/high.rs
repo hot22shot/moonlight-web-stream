@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     Error, MoonlightInstance,
+    audio::AudioDecoder,
     crypto::MoonlightCrypto,
     network::{
         ApiError, App, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID, HostAppListResponse,
@@ -387,6 +388,7 @@ impl MoonlightHost<Paired> {
         color_space: Colorspace,
         color_range: ColorRange,
         video_decoder: impl VideoDecoder + Send + 'static,
+        audio_decoder: impl AudioDecoder + Send + 'static,
     ) -> Result<MoonlightStream, StreamError> {
         let http_address = self.http_address();
         let https_address = self.https_address().await?;
@@ -433,7 +435,7 @@ impl MoonlightHost<Paired> {
                 fps: fps as i32,
                 bitrate: 10,
                 packet_size: 1024,
-                streaming_remotely: StreamingConfig::Remote,
+                streaming_remotely: StreamingConfig::Auto,
                 audio_configuration: 0,
                 supported_video_formats: video_decoder.supported_formats(),
                 client_refresh_rate_x100: 60,
@@ -444,7 +446,7 @@ impl MoonlightHost<Paired> {
                 remote_input_aes_iv: aes_iv,
             };
 
-            instance.start_connection(server_info, stream_config, video_decoder)
+            instance.start_connection(server_info, stream_config, video_decoder, audio_decoder)
         })?;
 
         Ok(connection)
