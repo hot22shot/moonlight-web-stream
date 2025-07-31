@@ -42,7 +42,6 @@ fn compile_moonlight() -> PathBuf {
     // builds into $OUT_DIR
     cmake::Config::new("moonlight-common-c")
         .define("BUILD_SHARED_LIBS", "OFF")
-        .profile("Release")
         .build()
 }
 
