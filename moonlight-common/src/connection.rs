@@ -11,6 +11,7 @@ use moonlight_common_sys::limelight::{
 };
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
+use printf_compat::{format, output};
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, FromPrimitive)]
@@ -81,12 +82,7 @@ pub trait ConnectionListener {
     fn connection_terminated(&mut self, error_code: i32);
 
     /// This callback is invoked to log debug message
-    fn log_message(&mut self, message: &str) {
-        let _ = message;
-
-        // Not yet implemented because of variadic cpp args
-        unimplemented!()
-    }
+    fn log_message(&mut self, message: &str);
 
     /// This callback is used to notify the client of a connection status change.
     /// Consider displaying an overlay for the user to notify them why their stream
@@ -210,15 +206,14 @@ unsafe extern "C" fn connection_status_update(status: i32) {
     });
 }
 
-// TODO: variadic args
-// unsafe extern "C" fn log_message(message: *const i8) {
-//     global_listener(|listener| unsafe {
-//         let c_str = CStr::from_ptr(message);
-//         let str = c_str.to_str().expect("valid utf8 string as log message");
-//
-//         listener.log_message(str);
-//     });
-// }
+unsafe extern "C" fn log_message(message: *const i8, mut args: ...) {
+    global_listener(|listener| unsafe {
+        let mut text = String::new();
+        format(message, args.as_va_list(), output::fmt_write(&mut text));
+
+        listener.log_message(&text);
+    });
+}
 
 unsafe extern "C" fn set_hdr_mode(hdr_enabled: bool) {
     global_listener(|listener| {
@@ -292,7 +287,7 @@ pub(crate) unsafe fn raw_callbacks() -> _CONNECTION_LISTENER_CALLBACKS {
         connectionStarted: Some(connection_started),
         connectionTerminated: Some(connection_terminated),
         // TODO: log message
-        logMessage: None,
+        logMessage: Some(log_message),
         rumble: Some(controller_rumble),
         connectionStatusUpdate: Some(connection_status_update),
         setHdrMode: Some(set_hdr_mode),

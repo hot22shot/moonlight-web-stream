@@ -1,3 +1,6 @@
+// Sadly moonlight log message requires variadic args
+#![feature(c_variadic)]
+
 use std::{
     ffi::{CStr, NulError},
     sync::{
@@ -212,6 +215,10 @@ impl ConnectionListener for NullHandler {
     }
     fn connection_terminated(&mut self, error_code: i32) {
         let _ = error_code;
+    }
+
+    fn log_message(&mut self, message: &str) {
+        println!("[Moonlight] {message}");
     }
 
     fn set_hdr_mode(&mut self, hdr_enabled: bool) {
