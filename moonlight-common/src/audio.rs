@@ -70,6 +70,7 @@ pub trait AudioDecoder {
     /// This callback provides Opus audio data to be decoded and played. sampleLength is in bytes.
     fn decode_and_play_sample(&mut self, data: &[u8]);
 
+    fn config(&self) -> AudioConfig;
     fn capabilities(&self) -> Capabilities;
 }
 

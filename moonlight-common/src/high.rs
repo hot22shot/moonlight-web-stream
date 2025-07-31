@@ -21,10 +21,10 @@ use crate::{
         high::{ClientAuth, PairError, PairSuccess, host_pair},
     },
     stream::{
-        ColorRange, Colorspace, EncryptionFlags, MoonlightStream, ServerInfo, StreamConfiguration,
-        StreamingConfig,
+        ColorRange, Colorspace, EncryptionFlags, MoonlightStream, ServerCodeModeSupport,
+        ServerInfo, StreamConfiguration, StreamingConfig,
     },
-    video::{SupportedVideoFormats, VideoDecoder},
+    video::VideoDecoder,
 };
 
 fn default_client_builder() -> ClientBuilder {
@@ -68,7 +68,6 @@ pub struct MoonlightHost<PairStatus> {
 pub struct Unknown;
 pub struct Unpaired;
 pub struct Paired {
-    client_auth: ClientAuth,
     server_certificate: Pem,
     app_list: Option<HostAppListResponse>,
 }
@@ -187,7 +186,7 @@ impl<Pair> MoonlightHost<Pair> {
         let info = self.host_info().await?;
         Ok(info.max_luma_pixels_hevc)
     }
-    pub async fn server_codec_mode_support(&mut self) -> Result<u32, ApiError> {
+    pub async fn server_codec_mode_support(&mut self) -> Result<ServerCodeModeSupport, ApiError> {
         let info = self.host_info().await?;
         Ok(info.server_codec_mode_support)
     }
@@ -208,10 +207,12 @@ impl<Pair> MoonlightHost<Pair> {
         auth: Option<(&ClientAuth, &Pem)>,
     ) -> Result<MoonlightHost<MaybePaired>, (Self, ApiError)> {
         let client = if let Some((auth, server_certificate)) = auth {
-            tls_client_builder(auth, server_certificate)
-                .unwrap()
-                .build()
-                .unwrap()
+            match tls_client_builder(auth, server_certificate)
+                .and_then(|client| client.build().map_err(ApiError::from))
+            {
+                Err(err) => return Err((self, err)),
+                Ok(client) => client,
+            }
         } else {
             self.client.clone()
         };
@@ -238,8 +239,8 @@ impl<Pair> MoonlightHost<Pair> {
                 paired: MaybePaired::Unpaired(Unpaired),
             }),
             PairStatus::Paired => {
-                let (client_auth, server_certificate) =
-                    auth.expect("valid private key and certificates");
+                let (_, server_certificate) = auth.expect("valid private key and certificates");
+
                 Ok(MoonlightHost {
                     client,
                     client_unique_id: self.client_unique_id,
@@ -247,7 +248,6 @@ impl<Pair> MoonlightHost<Pair> {
                     http_port: self.http_port,
                     info: Some(info),
                     paired: Paired {
-                        client_auth: client_auth.clone(),
                         server_certificate: server_certificate.clone(),
                         app_list: None,
                     }
@@ -329,11 +329,15 @@ impl MoonlightHost<Unpaired> {
             Ok(value) => value,
         };
 
+        let client = match tls_client_builder(auth, &server_certificate)
+            .and_then(|client| client.build().map_err(ApiError::from))
+        {
+            Err(err) => return Err((self, err.into())),
+            Ok(client) => client,
+        };
+
         Ok(MoonlightHost {
-            client: tls_client_builder(auth, &server_certificate)
-                .unwrap()
-                .build()
-                .unwrap(),
+            client,
             client_unique_id: self.client_unique_id,
             address: self.address,
             http_port: self.http_port,
@@ -341,7 +345,6 @@ impl MoonlightHost<Unpaired> {
             // TODO: other info which is required
             paired: Paired {
                 server_certificate,
-                client_auth: auth.clone(),
                 app_list: None,
             },
         })
@@ -398,8 +401,9 @@ impl MoonlightHost<Paired> {
         let mut aes_key = [0u8; 16];
         crypto.generate_random(&mut aes_key);
 
-        let mut aes_iv = [0u8; 16];
+        let mut aes_iv = [0u8; 4];
         crypto.generate_random(&mut aes_iv);
+        let aes_iv = i32::from_be_bytes(aes_iv);
 
         let launch_response = host_launch(
             instance,
@@ -427,7 +431,7 @@ impl MoonlightHost<Paired> {
                 app_version,
                 gfe_version,
                 rtsp_session_url: &launch_response.rtsp_session_url,
-                server_codec_mode_support: server_codec_mode_support as i32,
+                server_codec_mode_support,
             };
 
             // TODO: check if the width,height,fps,color_space,color_range are valid
@@ -438,9 +442,9 @@ impl MoonlightHost<Paired> {
                 bitrate: 10,
                 packet_size: 1024,
                 streaming_remotely: StreamingConfig::Auto,
-                audio_configuration: 0,
+                audio_configuration: audio_decoder.config().0 as i32,
                 supported_video_formats: video_decoder.supported_formats(),
-                client_refresh_rate_x100: 60,
+                client_refresh_rate_x100: (fps * 100) as i32,
                 color_space,
                 color_range,
                 encryption_flags: EncryptionFlags::all(),

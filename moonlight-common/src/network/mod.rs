@@ -1,4 +1,4 @@
-use std::{fmt::Display, num::ParseIntError, str::FromStr, string::FromUtf8Error};
+use std::{fmt::Display, io::Write as _, num::ParseIntError, str::FromStr, string::FromUtf8Error};
 
 use reqwest::{Client, Url};
 use roxmltree::{Document, Error, Node};
@@ -6,7 +6,7 @@ use thiserror::Error;
 use url::{ParseError, UrlQuery, form_urlencoded::Serializer};
 use uuid::{Uuid, fmt::Hyphenated};
 
-use crate::{MoonlightInstance, pair::SALT_LENGTH};
+use crate::{MoonlightInstance, pair::SALT_LENGTH, stream::ServerCodeModeSupport};
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -28,6 +28,8 @@ pub enum ApiError {
     ParseServerStateError(#[from] ParseServerStateError),
     #[error("{0}")]
     ParseServerVersionError(#[from] ParseServerVersionError),
+    #[error("parsing server codec mode support")]
+    ParseServerCodecModeSupport,
     #[error("{0}")]
     ParseIntError(#[from] ParseIntError),
     #[error("{0}")]
@@ -221,7 +223,7 @@ pub struct HostInfo {
     pub max_luma_pixels_hevc: u32,
     pub mac: String,
     pub local_ip: String,
-    pub server_codec_mode_support: u32,
+    pub server_codec_mode_support: ServerCodeModeSupport,
     pub pair_status: PairStatus,
     pub current_game: u32,
     pub state_string: String,
@@ -253,7 +255,10 @@ pub async fn host_info(
         max_luma_pixels_hevc: xml_child_text(root, "MaxLumaPixelsHEVC")?.parse()?,
         mac: xml_child_text(root, "mac")?.to_string(),
         local_ip: xml_child_text(root, "LocalIP")?.to_string(),
-        server_codec_mode_support: xml_child_text(root, "ServerCodecModeSupport")?.parse()?,
+        server_codec_mode_support: ServerCodeModeSupport::from_bits(
+            xml_child_text(root, "ServerCodecModeSupport")?.parse()?,
+        )
+        .ok_or(ApiError::ParseServerCodecModeSupport)?,
         pair_status: if xml_child_text(root, "PairStatus")?.parse::<u32>()? == 0 {
             PairStatus::NotPaired
         } else {
@@ -563,7 +568,7 @@ pub struct ClientStreamRequest {
     pub mode_height: u32,
     pub mode_fps: u32,
     pub ri_key: [u8; 16usize],
-    pub ri_key_id: [u8; 16],
+    pub ri_key_id: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -641,6 +646,11 @@ async fn inner_launch_host(
     }
 
     query_params.append_pair("appid", &request.app_id.to_string());
+    // TODO: implement this
+    // Using an FPS value over 60 causes SOPS to default to 720p60,
+    // so force it to 0 to ensure the correct resolution is set. We
+    // used to use 60 here but that locked the frame rate to 60 FPS
+    // on GFE 3.20.3. We don't need this hack for Sunshine.
     query_params.append_pair(
         "mode",
         &format!(
@@ -649,8 +659,21 @@ async fn inner_launch_host(
         ),
     );
     query_params.append_pair("additionalStates", "1");
-    query_params.append_pair("rikey", "todo"); // TODO
-    query_params.append_pair("rikeyid", "todo"); // TODO
+
+    let mut ri_key_str_bytes = [0u8; 16 * 2];
+    hex::encode_to_slice(request.ri_key, &mut ri_key_str_bytes).expect("encode ri key");
+    query_params.append_pair(
+        "rikey",
+        str::from_utf8(&ri_key_str_bytes).expect("valid ri key str"),
+    );
+
+    let mut ri_key_id_str_bytes = [0u8; 12];
+    write!(&mut ri_key_id_str_bytes[..], "{}", request.ri_key_id).expect("write ri key id");
+    query_params.append_pair(
+        "rikeyid",
+        str::from_utf8(&ri_key_id_str_bytes).expect("valid ri key id str"),
+    );
+
     query_params.append_pair("localAudioPlayMode", "todo"); // TODO
     query_params.append_pair("surroundAudioInfo", "todo"); // TODO
     query_params.append_pair("remoteControllersBitmap", "todo"); // TODO

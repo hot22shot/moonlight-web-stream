@@ -13,7 +13,9 @@ use moonlight_common_sys::limelight::{
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
     LiSendTouchEvent, LiStartConnection, LiStopConnection, PAUDIO_RENDERER_CALLBACKS,
     PCONNECTION_LISTENER_CALLBACKS, PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION,
-    PSTREAM_CONFIGURATION, STREAM_CFG_AUTO, STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
+    PSTREAM_CONFIGURATION, SCM_AV1_HIGH8_444, SCM_AV1_HIGH10_444, SCM_AV1_MAIN8, SCM_AV1_MAIN10,
+    SCM_H264, SCM_H264_HIGH8_444, SCM_HEVC, SCM_HEVC_MAIN10, SCM_HEVC_REXT8_444,
+    SCM_HEVC_REXT10_444, STREAM_CFG_AUTO, STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
 };
 use num_derive::FromPrimitive;
 
@@ -26,27 +28,36 @@ use crate::{
     video::{self, SupportedVideoFormats, VideoDecoder},
 };
 
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct ServerCodeModeSupport: u32 {
+        const H264            = SCM_H264;
+        const HEVC            = SCM_HEVC;
+        const HEVC_MAIN10     = SCM_HEVC_MAIN10;
+        const AV1_MAIN8       = SCM_AV1_MAIN8;
+        const AV1_MAIN10      = SCM_AV1_MAIN10;
+        const H264_HIGH8_444  = SCM_H264_HIGH8_444;
+        const HEVC_REXT8_444  = SCM_HEVC_REXT8_444;
+        const HEVC_REXT10_444 = SCM_HEVC_REXT10_444;
+        const AV1_HIGH8_444   = SCM_AV1_HIGH8_444;
+        const AV1_HIGH10_444  = SCM_AV1_HIGH10_444;
+    }
+}
+
 pub struct ServerInfo<'a> {
     pub address: &'a str,
     pub app_version: ServerVersion,
     pub gfe_version: &'a str,
     pub rtsp_session_url: &'a str,
-    // TODO: enum?
-    pub server_codec_mode_support: i32,
+    pub server_codec_mode_support: ServerCodeModeSupport,
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
 pub enum StreamingConfig {
     Local = STREAM_CFG_LOCAL,
     Remote = STREAM_CFG_REMOTE,
     Auto = STREAM_CFG_AUTO,
-}
-
-impl StreamingConfig {
-    pub(crate) fn raw(self) -> i32 {
-        self as i32
-    }
 }
 
 #[repr(u32)]
@@ -126,13 +137,15 @@ pub struct StreamConfiguration {
     /// AES encryption data for the remote input stream. This must be
     /// the same as what was passed as rikey and rikeyid
     /// in /launch and /resume requests.
-    pub remote_input_aes_iv: [u8; 16],
+    pub remote_input_aes_iv: i32,
 }
 
-#[derive(Debug, Clone)]
-pub struct HostFeatures {
-    pub pen_touch_events: bool,
-    pub controller_touch_events: bool,
+bitflags! {
+    #[derive(Debug, Clone)]
+    pub struct HostFeatures: u32 {
+        const PEN_TOUCH_EVENTS = LI_FF_PEN_TOUCH_EVENTS;
+        const CONTROLLER_TOUCH_EVENTS = LI_FF_CONTROLLER_TOUCH_EVENTS;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -174,8 +187,12 @@ impl MoonlightStream {
                 serverInfoAppVersion: app_version.as_ptr(),
                 serverInfoGfeVersion: gfe_version.as_ptr(),
                 rtspSessionUrl: rtsp_session_url.as_ptr(),
-                serverCodecModeSupport: server_info.server_codec_mode_support,
+                serverCodecModeSupport: server_info.server_codec_mode_support.bits() as i32,
             };
+
+            let mut remote_input_aes_iv = [0u8; 16];
+            remote_input_aes_iv[0..4]
+                .copy_from_slice(&stream_config.remote_input_aes_iv.to_be_bytes());
 
             let mut stream_config = _STREAM_CONFIGURATION {
                 width: stream_config.width,
@@ -183,7 +200,7 @@ impl MoonlightStream {
                 fps: stream_config.fps,
                 bitrate: stream_config.bitrate,
                 packetSize: stream_config.packet_size,
-                streamingRemotely: stream_config.streaming_remotely.raw(),
+                streamingRemotely: stream_config.streaming_remotely as u32 as i32,
                 audioConfiguration: stream_config.audio_configuration,
                 supportedVideoFormats: stream_config.supported_video_formats.bits() as i32,
                 clientRefreshRateX100: stream_config.client_refresh_rate_x100,
@@ -193,9 +210,7 @@ impl MoonlightStream {
                 remoteInputAesKey: transmute::<[u8; 16], [i8; 16]>(
                     stream_config.remote_input_aes_key,
                 ),
-                remoteInputAesIv: transmute::<[u8; 16], [i8; 16]>(
-                    stream_config.remote_input_aes_iv,
-                ),
+                remoteInputAesIv: transmute::<[u8; 16], [i8; 16]>(remote_input_aes_iv),
             };
 
             connection::new_global(connection_listener)
@@ -207,6 +222,8 @@ impl MoonlightStream {
 
             audio::new_global(audio_decoder).expect("a audio decoder is still in use");
             let mut audio_callbacks = audio::raw_callbacks();
+
+            // TODO: do the callbacks need to be stored?
 
             // # Safety
             // LiStartConnection is not thread safe so we are using the connection_guard mutex
@@ -223,7 +240,7 @@ impl MoonlightStream {
             );
 
             if result != 0 {
-                todo!()
+                return Err(Error::ConnectionFailed);
             }
 
             *connection_guard = true;
@@ -237,13 +254,7 @@ impl MoonlightStream {
     pub fn host_features(&self) -> HostFeatures {
         let features = unsafe { LiGetHostFeatureFlags() };
 
-        let pen_touch_events = (features & LI_FF_PEN_TOUCH_EVENTS) != 0;
-        let controller_touch_events = (features & LI_FF_CONTROLLER_TOUCH_EVENTS) != 0;
-
-        HostFeatures {
-            pen_touch_events,
-            controller_touch_events,
-        }
+        HostFeatures::from_bits(features).expect("valid host feature flags")
     }
 
     pub fn estimated_rtt_info(&self) -> Result<EstimatedRttInfo, Error> {
@@ -265,12 +276,11 @@ impl MoonlightStream {
         }
     }
 
-    // TODO: what are the ints for return values?
     fn send_event_error(error: i32) -> Option<Error> {
         match error {
             0 => None,
             LI_ERR_UNSUPPORTED => Some(Error::NotSupportedOnHost),
-            _ => Some(Error::EventSendError),
+            _ => Some(Error::EventSendError(error)),
         }
     }
 
