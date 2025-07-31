@@ -1,5 +1,5 @@
 use moonlight_common::{
-    MoonlightInstance, NullDecoder,
+    MoonlightInstance, NullHandler,
     high::MoonlightHost,
     pair::high::{ClientAuth, generate_new_client},
     stream::{ColorRange, Colorspace},
@@ -112,9 +112,9 @@ async fn main() {
             60,
             Colorspace::Rec2020,
             ColorRange::Full,
-            NullDecoder,
-            NullDecoder,
-            NullDecoder,
+            NullHandler,
+            NullHandler,
+            NullHandler,
         )
         .await
         .unwrap();

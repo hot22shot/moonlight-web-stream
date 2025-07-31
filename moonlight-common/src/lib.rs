@@ -133,9 +133,9 @@ impl MoonlightInstance {
     }
 }
 
-pub struct NullDecoder;
+pub struct NullHandler;
 
-impl VideoDecoder for NullDecoder {
+impl VideoDecoder for NullHandler {
     fn setup(
         &mut self,
         format: VideoFormat,
@@ -168,7 +168,7 @@ impl VideoDecoder for NullDecoder {
     }
 }
 
-impl AudioDecoder for NullDecoder {
+impl AudioDecoder for NullHandler {
     fn setup(
         &mut self,
         audio_config: AudioConfig,
@@ -192,7 +192,7 @@ impl AudioDecoder for NullDecoder {
     }
 }
 
-impl ConnectionListener for NullDecoder {
+impl ConnectionListener for NullHandler {
     fn stage_starting(&mut self, stage: Stage) {
         let _ = stage;
     }
