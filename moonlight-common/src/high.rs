@@ -15,6 +15,7 @@ use crate::{
     network::{
         ApiError, App, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID, HostAppListResponse,
         HostInfo, PairStatus, ServerState, ServerVersion, host_app_list, host_info, host_launch,
+        host_resume,
     },
     pair::{
         PairPin,
@@ -405,21 +406,38 @@ impl MoonlightHost<Paired> {
         crypto.generate_random(&mut aes_iv);
         let aes_iv = i32::from_be_bytes(aes_iv);
 
-        let launch_response = host_launch(
-            instance,
-            &self.client,
-            &https_address,
-            self.client_info(),
-            ClientStreamRequest {
-                app_id,
-                mode_width: width,
-                mode_height: height,
-                mode_fps: fps,
-                ri_key: aes_key,
-                ri_key_id: aes_iv,
-            },
-        )
-        .await?;
+        let request = ClientStreamRequest {
+            app_id,
+            mode_width: width,
+            mode_height: height,
+            mode_fps: fps,
+            ri_key: aes_key,
+            ri_key_id: aes_iv,
+        };
+
+        let rtsp_session_url = if self.current_game().await? == 0 {
+            let launch_response = host_launch(
+                instance,
+                &self.client,
+                &https_address,
+                self.client_info(),
+                request,
+            )
+            .await?;
+
+            launch_response.rtsp_session_url
+        } else {
+            let resume_response = host_resume(
+                instance,
+                &self.client,
+                &https_address,
+                self.client_info(),
+                request,
+            )
+            .await?;
+
+            resume_response.rtsp_session_url
+        };
 
         let app_version = self.version().await?;
         let server_codec_mode_support = self.server_codec_mode_support().await?;
@@ -430,7 +448,7 @@ impl MoonlightHost<Paired> {
                 address: &http_address,
                 app_version,
                 gfe_version,
-                rtsp_session_url: &launch_response.rtsp_session_url,
+                rtsp_session_url: &rtsp_session_url,
                 server_codec_mode_support,
             };
 
