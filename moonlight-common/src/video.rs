@@ -181,7 +181,7 @@ pub(crate) fn clear_global() {
 }
 
 #[allow(non_snake_case)]
-pub(crate) unsafe extern "C" fn setup(
+unsafe extern "C" fn setup(
     videoFormat: i32,
     width: i32,
     height: i32,
@@ -199,13 +199,13 @@ pub(crate) unsafe extern "C" fn setup(
         )
     })
 }
-pub(crate) unsafe extern "C" fn start() {
+unsafe extern "C" fn start() {
     global_decoder(|decoder| {
         decoder.start();
     })
 }
 
-pub(crate) unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> i32 {
+unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> i32 {
     let raw = unsafe { *decode_unit };
 
     // TODO: store this vec somewhere so we don't realloc every time
@@ -244,13 +244,13 @@ pub(crate) unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) ->
     global_decoder(|decoder| decoder.submit_decode_unit(unit) as i32)
 }
 
-pub(crate) unsafe extern "C" fn stop() {
+unsafe extern "C" fn stop() {
     global_decoder(|decoder| {
         decoder.stop();
     })
 }
 
-pub(crate) unsafe extern "C" fn cleanup() {
+unsafe extern "C" fn cleanup() {
     clear_global();
 }
 

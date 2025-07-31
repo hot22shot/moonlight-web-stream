@@ -78,19 +78,19 @@ static GLOBAL_AUDIO_DECODER: Mutex<Option<Box<dyn AudioDecoder + Send + 'static>
 
 fn global_decoder<R>(f: impl FnOnce(&mut dyn AudioDecoder) -> R) -> R {
     let lock = GLOBAL_AUDIO_DECODER.lock();
-    let mut lock = lock.expect("global video decoder");
+    let mut lock = lock.expect("global audio decoder");
 
-    let decoder = lock.as_mut().expect("global video decoder");
+    let decoder = lock.as_mut().expect("global audio decoder");
     f(decoder.as_mut())
 }
 
 pub(crate) fn new_global(decoder: impl AudioDecoder + Send + 'static) -> Result<(), ()> {
-    let mut global_video_decoder = GLOBAL_AUDIO_DECODER.lock().map_err(|_| ())?;
+    let mut global_audio_decoder = GLOBAL_AUDIO_DECODER.lock().map_err(|_| ())?;
 
-    if global_video_decoder.is_some() {
+    if global_audio_decoder.is_some() {
         return Err(());
     }
-    *global_video_decoder = Some(Box::new(decoder));
+    *global_audio_decoder = Some(Box::new(decoder));
 
     Ok(())
 }
@@ -101,7 +101,7 @@ pub(crate) fn clear_global() {
 }
 
 #[allow(non_snake_case)]
-pub(crate) unsafe extern "C" fn setup(
+unsafe extern "C" fn setup(
     audioConfiguration: i32,
     opusConfig: POPUS_MULTISTREAM_CONFIGURATION,
     _context: *mut c_void,
@@ -122,13 +122,13 @@ pub(crate) unsafe extern "C" fn setup(
         decoder.setup(audio_config, opus_config, ())
     })
 }
-pub(crate) unsafe extern "C" fn start() {
+unsafe extern "C" fn start() {
     global_decoder(|decoder| {
         decoder.start();
     })
 }
 
-pub(crate) unsafe extern "C" fn decode_and_play_sample(data: *mut i8, len: i32) {
+unsafe extern "C" fn decode_and_play_sample(data: *mut i8, len: i32) {
     global_decoder(|decoder| unsafe {
         let data = slice::from_raw_parts(data as *mut u8, len as usize);
 
@@ -136,13 +136,13 @@ pub(crate) unsafe extern "C" fn decode_and_play_sample(data: *mut i8, len: i32) 
     })
 }
 
-pub(crate) unsafe extern "C" fn stop() {
+unsafe extern "C" fn stop() {
     global_decoder(|decoder| {
         decoder.stop();
     })
 }
 
-pub(crate) unsafe extern "C" fn cleanup() {
+unsafe extern "C" fn cleanup() {
     clear_global();
 }
 

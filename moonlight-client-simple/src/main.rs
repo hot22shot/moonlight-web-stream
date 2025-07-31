@@ -114,6 +114,7 @@ async fn main() {
             ColorRange::Full,
             NullDecoder,
             NullDecoder,
+            NullDecoder,
         )
         .await
         .unwrap();

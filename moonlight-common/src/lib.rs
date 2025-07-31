@@ -11,6 +11,7 @@ use thiserror::Error;
 
 use crate::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
+    connection::{ConnectionListener, ConnectionStatus, Stage},
     stream::{Capabilities, MoonlightStream, ServerInfo, StreamConfiguration},
     video::{DecodeResult, SupportedVideoFormats, VideoDecoder, VideoFormat},
 };
@@ -35,9 +36,9 @@ pub enum Error {
 }
 
 pub mod audio;
+pub mod connection;
 pub mod input;
 pub mod pair;
-pub mod stage;
 pub mod stream;
 pub mod video;
 
@@ -106,6 +107,7 @@ impl MoonlightInstance {
         &self,
         server_info: ServerInfo,
         stream_config: StreamConfiguration,
+        connection_listener: impl ConnectionListener + Send + 'static,
         video_decoder: impl VideoDecoder + Send + 'static,
         audio_decoder: impl AudioDecoder + Send + 'static,
     ) -> Result<MoonlightStream, Error> {
@@ -113,6 +115,7 @@ impl MoonlightInstance {
             self.handle.clone(),
             server_info,
             stream_config,
+            connection_listener,
             video_decoder,
             audio_decoder,
         )
@@ -186,5 +189,75 @@ impl AudioDecoder for NullDecoder {
 
     fn capabilities(&self) -> Capabilities {
         Capabilities::empty()
+    }
+}
+
+impl ConnectionListener for NullDecoder {
+    fn stage_starting(&mut self, stage: Stage) {
+        let _ = stage;
+    }
+    fn stage_complete(&mut self, stage: Stage) {
+        let _ = stage;
+    }
+    fn stage_failed(&mut self, stage: Stage, error_code: i32) {
+        let _ = (stage, error_code);
+    }
+
+    fn connection_started(&mut self) {}
+    fn connection_status_update(&mut self, status: ConnectionStatus) {
+        let _ = status;
+    }
+    fn connection_terminated(&mut self, error_code: i32) {
+        let _ = error_code;
+    }
+
+    fn set_hdr_mode(&mut self, hdr_enabled: bool) {
+        let _ = hdr_enabled;
+    }
+
+    fn controller_rumble(
+        &mut self,
+        controller_number: u16,
+        low_frequency_motor: u16,
+        high_frequency_motor: u16,
+    ) {
+        let _ = (controller_number, low_frequency_motor, high_frequency_motor);
+    }
+    fn controller_rumble_triggers(
+        &mut self,
+        controller_number: u16,
+        left_trigger_motor: u16,
+        right_trigger_motor: u16,
+    ) {
+        let _ = (controller_number, left_trigger_motor, right_trigger_motor);
+    }
+    fn controller_set_adaptive_triggers(
+        &mut self,
+        controller_number: u16,
+        event_flags: u8,
+        type_left: u8,
+        type_right: u8,
+        left: &mut u8,
+        right: &mut u8,
+    ) {
+        let _ = (
+            controller_number,
+            event_flags,
+            type_left,
+            type_right,
+            left,
+            right,
+        );
+    }
+    fn controller_set_led(&mut self, controller_number: u16, r: u8, g: u8, b: u8) {
+        let _ = (controller_number, r, g, b);
+    }
+    fn controller_set_motion_event_state(
+        &mut self,
+        controller_number: u16,
+        motion_type: u8,
+        report_rate_hz: u16,
+    ) {
+        let _ = (controller_number, motion_type, report_rate_hz);
     }
 }

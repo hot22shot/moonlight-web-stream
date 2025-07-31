@@ -12,14 +12,15 @@ use moonlight_common_sys::limelight::{
     LiInitializeAudioCallbacks, LiInitializeConnectionCallbacks, LiInitializeVideoCallbacks,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
     LiSendTouchEvent, LiStartConnection, LiStopConnection, PAUDIO_RENDERER_CALLBACKS,
-    PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION, PSTREAM_CONFIGURATION, STREAM_CFG_AUTO,
-    STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
+    PCONNECTION_LISTENER_CALLBACKS, PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION,
+    PSTREAM_CONFIGURATION, STREAM_CFG_AUTO, STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
 };
 use num_derive::FromPrimitive;
 
 use crate::{
     Error, Handle,
     audio::{self, AudioDecoder},
+    connection::{self, ConnectionListener},
     input::TouchEventType,
     network::ServerVersion,
     video::{self, SupportedVideoFormats, VideoDecoder},
@@ -149,6 +150,7 @@ impl MoonlightStream {
         handle: Arc<Handle>,
         server_info: ServerInfo,
         stream_config: StreamConfiguration,
+        connection_listener: impl ConnectionListener + Send + 'static,
         video_decoder: impl VideoDecoder + Send + 'static,
         audio_decoder: impl AudioDecoder + Send + 'static,
     ) -> Result<Self, Error> {
@@ -196,6 +198,10 @@ impl MoonlightStream {
                 ),
             };
 
+            connection::new_global(connection_listener)
+                .expect("a connection listener is still in use");
+            let mut connection_callbacks = connection::raw_callbacks();
+
             video::new_global(video_decoder).expect("a video decoder is still in use");
             let mut video_callbacks = video::raw_callbacks();
 
@@ -207,7 +213,7 @@ impl MoonlightStream {
             let result = LiStartConnection(
                 &mut server_info_raw as PSERVER_INFORMATION,
                 &mut stream_config as PSTREAM_CONFIGURATION,
-                null_mut(),
+                &mut connection_callbacks as PCONNECTION_LISTENER_CALLBACKS,
                 &mut video_callbacks as PDECODER_RENDERER_CALLBACKS,
                 &mut audio_callbacks as PAUDIO_RENDERER_CALLBACKS,
                 null_mut(),
@@ -398,6 +404,7 @@ impl Drop for MoonlightStream {
 
             // Null out all the callbacks
             LiInitializeConnectionCallbacks(null_mut());
+            connection::clear_global();
 
             LiInitializeVideoCallbacks(null_mut());
             video::clear_global();
