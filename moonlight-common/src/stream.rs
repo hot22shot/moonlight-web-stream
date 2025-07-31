@@ -1,4 +1,4 @@
-use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc};
+use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc, time::Duration};
 
 use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
@@ -149,8 +149,8 @@ bitflags! {
 
 #[derive(Debug, Clone, Copy)]
 pub struct EstimatedRttInfo {
-    pub rtt: u32,
-    pub rtt_variance: u32,
+    pub rtt: Duration,
+    pub rtt_variance: Duration,
 }
 
 pub struct MoonlightStream {
@@ -259,19 +259,17 @@ impl MoonlightStream {
     pub fn estimated_rtt_info(&self) -> Result<EstimatedRttInfo, Error> {
         // TODO: look if we're connected on fail
         unsafe {
-            let mut output = EstimatedRttInfo {
-                rtt: 0,
-                rtt_variance: 0,
-            };
+            let mut rtt = 0u32;
+            let mut rtt_variance = 0u32;
 
-            if !LiGetEstimatedRttInfo(
-                &mut output.rtt as *mut _,
-                &mut output.rtt_variance as *mut _,
-            ) {
+            if !LiGetEstimatedRttInfo(&mut rtt as *mut _, &mut rtt_variance as *mut _) {
                 return Err(Error::ENetRequired);
             }
 
-            Ok(output)
+            Ok(EstimatedRttInfo {
+                rtt: Duration::from_millis(rtt as u64),
+                rtt_variance: Duration::from_millis(rtt_variance as u64),
+            })
         }
     }
 

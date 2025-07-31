@@ -13,6 +13,8 @@ use tokio::{
     time::sleep,
 };
 
+mod gstreamer;
+
 #[tokio::main]
 async fn main() {
     // Configuration
@@ -105,6 +107,9 @@ async fn main() {
 
     println!("Connecting to the first app: {app:?}");
 
+    // Creating gstreamer stuff
+    gstreamer::init();
+
     // Start the stream (only 1 stream per program is allowed)
     let stream = host
         .start_stream(
@@ -125,6 +130,8 @@ async fn main() {
     println!("Finished Connection");
 
     sleep(Duration::from_secs(5)).await;
+    println!("RTT Info: {:?}", stream.estimated_rtt_info());
+
     println!("Closing Connection");
 
     // Stop the stream (drop will also just close the stream)

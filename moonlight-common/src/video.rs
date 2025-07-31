@@ -153,6 +153,8 @@ pub trait VideoDecoder {
     fn capabilities(&self) -> Capabilities;
 }
 
+// TODO: Pull based renderers
+
 static GLOBAL_VIDEO_DECODER: Mutex<Option<Box<dyn VideoDecoder + Send + 'static>>> =
     Mutex::new(None);
 
