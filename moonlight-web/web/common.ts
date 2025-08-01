@@ -1,5 +1,6 @@
 import { GetHosts, UndetailedHost } from "./api_bindings.js";
-import { showErrorPopup, showMessage, showPrompt } from "./gui.js";
+import { showErrorPopup } from "./gui/error.js";
+import { showMessage, showPrompt } from "./gui/modal.js";
 
 export const ASSETS = {
     DEFAULT_HOST_IMAGE: "/resources/desktop_windows-48px.svg"

@@ -1,6 +1,8 @@
 import { UndetailedHost } from "./api_bindings.js";
-import { ASSETS, getApi, getHosts } from "./common.js";
-import { Component, ComponentHost, ListComponent, showErrorPopup } from "./gui.js";
+import { Api, ASSETS, getApi, getHosts } from "./common.js";
+import { Component, ComponentHost, ListComponent } from "./gui/component.js";
+import { setContextMenu } from "./gui/contextmenu.js";
+import { showErrorPopup } from "./gui/error.js";
 
 // TODO: error handler with popup
 
@@ -13,24 +15,71 @@ async function startApp() {
         return;
     }
 
+    const rootComponent = new HostList()
+    const root = new ComponentHost(rootElement, rootComponent)
 
-    const hosts = await getHosts(api)
-
-    const list = new ListComponent()
-
-    hosts.forEach(host => {
-        list.append(new Host(host.host_id, host))
-    })
-
-    const root = new ComponentHost(rootElement, list)
+    rootComponent.forceUpdate(api)
 }
 
 console.log("starting app")
 startApp()
 
+class HostList implements Component {
+    private list: ListComponent<Host>
+
+    constructor(hosts?: UndetailedHost) {
+        this.list = new ListComponent([], {
+            listElementClasses: ["host-list"]
+        })
+    }
+
+    async forceUpdate(api: Api) {
+        const hosts = await getHosts(api)
+
+        this.updateDisplay(hosts)
+    }
+
+    private updateDisplay(hosts: UndetailedHost[]) {
+        hosts.forEach(host => {
+            const hostComponent = this.list.get().find(listHost => listHost.getHostId() == host.host_id)
+
+            if (hostComponent) {
+                hostComponent.updateDisplay(host)
+            } else {
+                const newHost = new Host(host.host_id, host)
+                this.list.append(newHost)
+            }
+        })
+
+        // remove old hosts
+        for (let i = 0; i < this.list.get().length; i++) {
+            const hostComponent = this.list.get()[i]
+
+            const hostExists = hosts.findIndex(host => host.host_id == hostComponent.getHostId()) != -1
+            if (!hostExists) {
+                this.list.remove(i)
+                // decrement i because we'll add one in the loop
+                // however the removed element must be accounted
+                i--
+            }
+        }
+    }
+
+    getHost(hostId: number) { }
+
+    mount(parent: Element): void {
+        this.list.mount(parent)
+    }
+    unmount(parent: Element): void {
+        this.list.unmount(parent)
+    }
+}
+
 class Host implements Component {
     private hostId: number
     private host?: UndetailedHost
+
+    private divElement = document.createElement("div")
 
     private imageElement: HTMLImageElement = document.createElement("img")
     private nameElement: HTMLElement = document.createElement("p")
@@ -39,23 +88,44 @@ class Host implements Component {
         this.hostId = hostId
         this.host = host
 
+
+        // Configure image
+        this.imageElement.classList.add("host-image")
         this.imageElement.src = ASSETS.DEFAULT_HOST_IMAGE
+
+        // Configure name
+        this.nameElement.classList.add("host-name")
+
+        // Configure div
+        this.divElement.classList.add("host-background")
+        this.divElement.appendChild(this.imageElement)
+        this.divElement.appendChild(this.nameElement)
+        this.divElement.addEventListener("contextmenu", event => {
+            setContextMenu(event, {
+                elements: [{
+                    name: "test",
+                    callback: () => { console.log("test") }
+                }]
+            })
+        })
 
         this.updateDisplay()
     }
 
-    updateDisplay() {
+    getHostId(): number {
+        return this.hostId
+    }
+
+    updateDisplay(host?: UndetailedHost) {
         this.nameElement.innerText = this.host?.name ?? "! Unknown !"
 
         // TODO: update image
     }
 
     mount(parent: Element): void {
-        parent.appendChild(this.imageElement)
-        parent.appendChild(this.nameElement)
+        parent.appendChild(this.divElement)
     }
     unmount(parent: Element): void {
-        parent.removeChild(this.imageElement)
-        parent.removeChild(this.nameElement)
+        parent.removeChild(this.divElement)
     }
 }

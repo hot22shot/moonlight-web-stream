@@ -1,11 +1,12 @@
 body {
-    background-color: rgb(86, 92, 100);
+    background-color: rgb(48, 48, 48);
 }
 
+/** Modal */
 .modal-background {
     display: block;
     position: fixed;
-    z-index: 1;
+    z-index: 2;
     left: 0;
     top: 0;
     width: 100%;
@@ -15,7 +16,7 @@ body {
 }
 
 .modal-content {
-    background-color: #fefefe;
+    background-color: rgb(86, 92, 100);
     margin: 15% auto;
     padding: 20px;
     border: 1px solid #888;
@@ -23,5 +24,64 @@ body {
 }
 
 .modal-disabled {
-    display: none;
+    visibility: hidden;
+}
+
+/** Context Menu */
+
+.context-menu-background {
+    display: block;
+    position: fixed;
+    z-index: 1;
+    background-color: rgb(86, 92, 100);
+    /** animation */
+    scale: 1;
+    opacity: 1;
+    translate: 0 0;
+    transition: visibility 0s, opacity 0.05s linear, scale 0.05s linear, translate 0.05s linear;
+}
+
+.context-menu-list {
+    list-style-type: none;
+}
+
+.context-menu-disabled {
+    visibility: hidden;
+    /** animation */
+    opacity: 0;
+    scale: 0.7;
+    translate: -30% -30%;
+    transition: all 0.1s linear, opacity 0.1s ease-out;
+}
+
+/** Hosts */
+.host-list {
+    list-style-type: none;
+    display: flex;
+    flex-direction: row;
+}
+
+.host-background {
+    cursor: pointer;
+    margin: 0.2cm;
+    padding-top: 0.1cm;
+    padding-bottom: 0.5cm;
+    padding-left: 0.4cm;
+    padding-right: 0.4cm;
+}
+
+.host-background:hover {
+    transition: all 0.2s;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.host-image {
+    width: 6cm;
+    height: auto;
+}
+
+.host-name {
+    margin: 0;
+    font-size: 1.2cm;
+    text-align: center;
 }
