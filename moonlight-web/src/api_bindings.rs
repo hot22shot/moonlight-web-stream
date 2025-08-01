@@ -20,9 +20,27 @@ impl From<ServerState> for HostState {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub enum PairStatus {
+    NotPaired,
+    Paired,
+}
+
+impl From<moonlight_common::network::PairStatus> for PairStatus {
+    fn from(value: moonlight_common::network::PairStatus) -> Self {
+        use moonlight_common::network::PairStatus as MlPairStatus;
+        match value {
+            MlPairStatus::NotPaired => Self::NotPaired,
+            MlPairStatus::Paired => Self::Paired,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
 pub struct UndetailedHost {
     pub host_id: u32,
     pub name: String,
+    pub paired: PairStatus,
     pub server_state: HostState,
 }
 
@@ -31,6 +49,7 @@ pub struct UndetailedHost {
 pub struct DetailedHost {
     pub host_id: u32,
     pub name: String,
+    pub paired: PairStatus,
     pub server_state: HostState,
     pub https_port: u16,
     pub external_port: u16,

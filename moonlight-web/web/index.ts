@@ -84,6 +84,7 @@ class Host implements Component {
     private divElement = document.createElement("div")
 
     private imageElement: HTMLImageElement = document.createElement("img")
+    private imageOverlayElement: HTMLImageElement = document.createElement("img")
     private nameElement: HTMLElement = document.createElement("p")
 
     constructor(hostId: number, host?: UndetailedHost) {
@@ -93,7 +94,11 @@ class Host implements Component {
 
         // Configure image
         this.imageElement.classList.add("host-image")
-        this.imageElement.src = ASSETS.DEFAULT_HOST_IMAGE
+        this.imageElement.src = ASSETS.HOST_IMAGE
+
+        // Configure image overlay
+        this.imageOverlayElement.classList.add("host-image-overlay")
+        this.imageOverlayElement.src = ASSETS.HOST_OVERLAY_LOCK
 
         // Configure name
         this.nameElement.classList.add("host-name")
@@ -101,6 +106,7 @@ class Host implements Component {
         // Configure div
         this.divElement.classList.add("host-background")
         this.divElement.appendChild(this.imageElement)
+        this.divElement.appendChild(this.imageOverlayElement)
         this.divElement.appendChild(this.nameElement)
         this.divElement.addEventListener("contextmenu", event => {
             setContextMenu(event, {
@@ -121,7 +127,18 @@ class Host implements Component {
                         await showMessage(
                             `Web Id: ${host.host_id}\n` +
                             `Name: ${host.name}\n` +
-                            `State: ${host.server_state}`
+                            `Pair Status: ${host.paired}\n` +
+                            `State: ${host.server_state}\n` +
+                            `Https Port: ${host.https_port}\n` +
+                            `External Port: ${host.external_port}\n` +
+                            `Version: ${host.version}\n` +
+                            `Gfe Version: ${host.gfe_version}\n` +
+                            `Unique ID: ${host.unique_id}\n` +
+                            `MAC: ${host.mac}\n` +
+                            `Local IP: ${host.local_ip}\n` +
+                            `Current Game: ${host.current_game}\n` +
+                            `Max Luma Pixels Hevc: ${host.max_luma_pixels_hevc}\n` +
+                            `Server Codec Mode Support: ${host.server_codec_mode_support}`
                         )
                     }
                 }]

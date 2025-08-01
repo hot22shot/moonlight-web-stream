@@ -309,6 +309,13 @@ impl MoonlightHost<MaybePaired> {
             }),
         }
     }
+
+    pub fn is_paired(&self) -> PairStatus {
+        match &self.paired {
+            MaybePaired::Unpaired(_) => PairStatus::NotPaired,
+            MaybePaired::Paired(_) => PairStatus::NotPaired,
+        }
+    }
 }
 
 impl MoonlightHost<Unpaired> {

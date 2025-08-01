@@ -3,9 +3,11 @@ import { showErrorPopup } from "./gui/error.js";
 import { showMessage, showPrompt } from "./gui/modal.js";
 
 export const ASSETS = {
-    DEFAULT_HOST_IMAGE: "/resources/desktop_windows-48px.svg",
-    WARN_IMAGE: "/resources/baseline-error_outline-24px.svg",
-    ERROR_IMAGE: "/resources/baseline-warning-24px.svg"
+    HOST_IMAGE: "/resources/desktop_windows-48px.svg",
+    HOST_OVERLAY_NONE: "",
+    HOST_OVERLAY_LOCK: "/resources/baseline-lock-24px.svg",
+    WARN_IMAGE: "/resources/baseline-warning-24px.svg",
+    ERROR_IMAGE: "/resources/baseline-error_outline-24px.svg",
 }
 
 let currentApi: Api | null = null
@@ -95,7 +97,7 @@ export async function getHosts(api: Api): Promise<Array<UndetailedHost>> {
     return (response as GetHostsResponse).hosts
 }
 export async function getDetailedHost(api: Api, hostId: number): Promise<DetailedHost | null> {
-    const response = await fetchApi(api, `detailed_host?host_id=${hostId}`, "get")
+    const response = await fetchApi(api, `host?host_id=${hostId}`, "get")
 
     if (response == null) {
         return null

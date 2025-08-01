@@ -29,7 +29,8 @@ export class ComponentHost<T extends Component> {
 }
 
 export type ListComponentInit = {
-    listElementClasses?: string[]
+    listElementClasses?: string[],
+    componentDivClasses?: string[]
 }
 
 export class ListComponent<T extends Component> implements Component {
@@ -37,6 +38,7 @@ export class ListComponent<T extends Component> implements Component {
     private list: Array<T>
     private listElement: HTMLLIElement = document.createElement("li")
     private divElements: Array<HTMLDivElement> = []
+    private divClasses: string[]
 
     constructor(list?: Array<T>, init?: ListComponentInit) {
         this.list = list ?? []
@@ -47,12 +49,14 @@ export class ListComponent<T extends Component> implements Component {
         if (init?.listElementClasses) {
             this.listElement.classList.add(...init?.listElementClasses)
         }
+        this.divClasses = init?.componentDivClasses ?? []
     }
 
     private divAt(index: number): HTMLDivElement {
         let div = this.divElements[index]
         if (!div) {
             div = document.createElement("div")
+            div.classList.add(...this.divClasses)
 
             this.divElements[index] = div
         }
