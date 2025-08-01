@@ -1,6 +1,7 @@
 body {
     background-color: rgb(48, 48, 48);
-    font-size: 1.2rem;
+    font-size: 1.1rem;
+    font-family: sans-serif;
 }
 
 /** Modal */
@@ -140,6 +141,6 @@ body {
 
 .host-name {
     margin: 0;
-    font-size: 1.2cm;
+    font-size: 1.4cm;
     text-align: center;
 }
