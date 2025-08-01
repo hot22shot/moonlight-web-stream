@@ -10,7 +10,7 @@ use moonlight_common::{
 };
 
 use crate::{
-    api_bindings::{GetHosts, UndetailedHost},
+    api_bindings::{GetHostsResponse, UndetailedHost},
     data::RuntimeApiData,
 };
 
@@ -20,7 +20,7 @@ async fn authenticate() -> impl Responder {
 }
 
 #[get("/hosts")]
-async fn hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHosts>, HttpResponse> {
+async fn hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHostsResponse>, HttpResponse> {
     let Ok(hosts) = data.hosts.read() else {
         // TODO: warn
         return Either::Right(HttpResponse::InternalServerError().finish());
@@ -41,7 +41,7 @@ async fn hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHosts>, HttpRespons
         response_hosts.push(host);
     }
 
-    Either::Left(Json(GetHosts {
+    Either::Left(Json(GetHostsResponse {
         hosts: response_hosts,
     }))
 }

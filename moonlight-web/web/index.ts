@@ -1,5 +1,5 @@
-import { UndetailedHost } from "./api_bindings.js";
-import { Api, ASSETS, getApi, getHosts } from "./common.js";
+import { DetailedHost, UndetailedHost } from "./api_bindings.js";
+import { Api, ASSETS, getApi, getDetailedHost, getHosts } from "./common.js";
 import { Component, ComponentHost, ListComponent } from "./gui/component.js";
 import { setContextMenu } from "./gui/contextmenu.js";
 import { showErrorPopup } from "./gui/error.js";
@@ -78,7 +78,8 @@ class HostList implements Component {
 
 class Host implements Component {
     private hostId: number
-    private host?: UndetailedHost
+    private host: UndetailedHost | null = null
+    private detailedHost: DetailedHost | null = null
 
     private divElement = document.createElement("div")
 
@@ -87,7 +88,7 @@ class Host implements Component {
 
     constructor(hostId: number, host?: UndetailedHost) {
         this.hostId = hostId
-        this.host = host
+        this.host = host ?? null
 
 
         // Configure image
@@ -105,12 +106,22 @@ class Host implements Component {
             setContextMenu(event, {
                 elements: [{
                     name: "Show Details",
-                    callback: () => {
-                        // TODO: first fetch then show!
-                        showMessage(
-                            `Internal Id: ${host?.host_id}\n` +
-                            `Name: ${host?.name}\n` +
-                            `State: ${host?.server_state}`
+                    callback: async () => {
+                        let host = this.detailedHost;
+                        if (!host) {
+                            const api = await getApi()
+                            host = await getDetailedHost(api, this.hostId)
+                        }
+                        if (!host) {
+                            showErrorPopup(`failed to get details for host ${this.hostId}`)
+                            return;
+                        }
+                        this.detailedHost = host;
+
+                        await showMessage(
+                            `Web Id: ${host.host_id}\n` +
+                            `Name: ${host.name}\n` +
+                            `State: ${host.server_state}`
                         )
                     }
                 }]

@@ -20,12 +20,6 @@ impl From<ServerState> for HostState {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
-pub struct GetHosts {
-    pub hosts: Vec<UndetailedHost>,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = "../web/api_bindings.d.ts")]
 pub struct UndetailedHost {
     pub host_id: u32,
     pub name: String,
@@ -38,4 +32,32 @@ pub struct DetailedHost {
     pub host_id: u32,
     pub name: String,
     pub server_state: HostState,
+    pub https_port: u16,
+    pub external_port: u16,
+    pub version: String, // TODO: server version struct?
+    pub gfe_version: String,
+    pub unique_id: String,
+    pub mac: String,
+    pub local_ip: String,
+    pub current_game: u32,
+    pub max_luma_pixels_hevc: u32,
+    pub server_codec_mode_support: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct GetHostsResponse {
+    pub hosts: Vec<UndetailedHost>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct GetDetailedHostQuery {
+    pub host_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct GetDetailedHostResponse {
+    pub host: DetailedHost,
 }

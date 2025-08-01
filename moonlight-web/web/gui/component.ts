@@ -75,7 +75,7 @@ export class ListComponent<T extends Component> implements Component {
             this.listElement.appendChild(divElement)
 
             const element = this.list[i]
-            element.mount(this.listElement)
+            element.mount(divElement)
         }
     }
 

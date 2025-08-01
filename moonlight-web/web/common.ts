@@ -1,12 +1,20 @@
-import { GetHosts, UndetailedHost } from "./api_bindings.js";
+import { DetailedHost, GetDetailedHostResponse, GetHostsResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./gui/error.js";
 import { showMessage, showPrompt } from "./gui/modal.js";
 
 export const ASSETS = {
-    DEFAULT_HOST_IMAGE: "/resources/desktop_windows-48px.svg"
+    DEFAULT_HOST_IMAGE: "/resources/desktop_windows-48px.svg",
+    WARN_IMAGE: "/resources/baseline-error_outline-24px.svg",
+    ERROR_IMAGE: "/resources/baseline-warning-24px.svg"
 }
 
+let currentApi: Api | null = null
+
 export async function getApi(host_url?: string): Promise<Api> {
+    if (currentApi) {
+        return currentApi
+    }
+
     if (!host_url) {
         host_url = `${window.location.origin}/api`
     }
@@ -33,7 +41,9 @@ export async function getApi(host_url?: string): Promise<Api> {
         }
     }
 
-    return { host_url, credentials }
+    currentApi = { host_url, credentials }
+
+    return currentApi
 }
 
 export type Api = {
@@ -79,7 +89,17 @@ export async function getHosts(api: Api): Promise<Array<UndetailedHost>> {
 
     if (response == null) {
         showErrorPopup("failed to fetch hosts")
+        return []
     }
 
-    return (response as GetHosts).hosts
+    return (response as GetHostsResponse).hosts
+}
+export async function getDetailedHost(api: Api, hostId: number): Promise<DetailedHost | null> {
+    const response = await fetchApi(api, `detailed_host?host_id=${hostId}`, "get")
+
+    if (response == null) {
+        return null
+    }
+
+    return (response as GetDetailedHostResponse).host
 }
