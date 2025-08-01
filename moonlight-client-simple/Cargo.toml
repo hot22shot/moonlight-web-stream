@@ -11,3 +11,4 @@ rcgen = "0.14.3"
 pem = "3.0.5"
 
 gstreamer = "0.24.0"
+gstreamer-app = "0.24.0"

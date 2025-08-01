@@ -13,6 +13,8 @@ use tokio::{
     time::sleep,
 };
 
+use crate::gstreamer::GStreamerVideoHandler;
+
 mod gstreamer;
 
 #[tokio::main]
@@ -110,27 +112,30 @@ async fn main() {
     // Creating gstreamer stuff
     gstreamer::init();
 
+    let video_decoder = GStreamerVideoHandler::new().unwrap();
+
     // Start the stream (only 1 stream per program is allowed)
     let stream = host
         .start_stream(
             &moonlight,
             &crypto,
             app_id,
-            1000,
-            1000,
+            1920,
+            1080,
             60,
             Colorspace::Rec2020,
             ColorRange::Full,
+            40,
+            1024,
             DebugHandler,
-            NullHandler,
+            video_decoder,
             NullHandler,
         )
         .await
         .unwrap();
     println!("Finished Connection");
 
-    sleep(Duration::from_secs(5)).await;
-    println!("RTT Info: {:?}", stream.estimated_rtt_info());
+    sleep(Duration::from_secs(60)).await;
 
     println!("Closing Connection");
 
@@ -140,4 +145,7 @@ async fn main() {
     })
     .await
     .unwrap();
+    drop(host);
+
+    sleep(Duration::from_secs(2)).await;
 }
