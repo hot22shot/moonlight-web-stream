@@ -1,6 +1,2 @@
-import { TestRequest, TestResponse } from "./api"
 
-console.log("Hello World")
-
-const request: TestRequest = { hello: "" }
-const response: TestResponse = { hello: "" }
+const credentials = window.prompt("credentials")

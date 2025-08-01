@@ -6,5 +6,6 @@ pub fn web_service() -> impl HttpServiceFactory {
 
 #[get("/")]
 async fn index() -> impl Responder {
+    // TODO: host using dist or static
     HttpResponse::Ok().body(include_str!("../dist/index.html"))
 }
