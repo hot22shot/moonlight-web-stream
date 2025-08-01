@@ -24,7 +24,7 @@ export async function getApi(host_url?: string): Promise<Api> {
     let credentials = window.sessionStorage.getItem("credentials");
 
     while (credentials == null) {
-        const testCredentials = await showPrompt("enter credentials", { name: "api-credentials", type: "password" })
+        const testCredentials = await showPrompt("Enter Credentials", { name: "api-credentials", type: "password" })
 
         if (!testCredentials) {
             continue;
@@ -39,7 +39,7 @@ export async function getApi(host_url?: string): Promise<Api> {
 
             break;
         } else {
-            await showMessage("credentials are not valid")
+            await showMessage("Credentials are not Valid")
         }
     }
 

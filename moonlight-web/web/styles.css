@@ -14,10 +14,15 @@ body {
     height: 100%;
     overflow: auto;
     background-color: rgba(0, 0, 0, 0.4);
+    /** animation */
+    visibility: visible;
+    opacity: 1;
+    transition: visibility 0s, background 0.1s linear, opacity 0.1s linear;
 }
 
 .modal-content {
     background-color: rgb(86, 92, 100);
+
     margin: 15% auto;
     padding: 20px;
     border: 1px solid #888;
@@ -25,11 +30,14 @@ body {
 }
 
 .modal-disabled {
+    /** animation */
     visibility: hidden;
+    background-color: rgba(0, 0, 0, 0);
+    opacity: 0;
+    transition: all 0.1s linear;
 }
 
 /** Context Menu */
-
 .context-menu-background {
     display: block;
     position: fixed;
@@ -52,7 +60,7 @@ body {
     min-width: 110px;
     cursor: pointer;
     /** animation */
-    transition: all 0.2s;
+    transition: all 0.15s;
     background-color: rgba(255, 255, 255, 0);
 }
 

@@ -8,6 +8,7 @@ export interface Modal<Output> extends Component {
 let modalUsed = false
 let modalBackground = document.getElementById("modal-overlay")
 let modalParent = document.getElementById("modal-parent")
+let previousModal: Modal<unknown> | null = null
 
 export async function showModal<Output>(modal: Modal<Output>): Promise<Output | null> {
     if (modalParent == null) {
@@ -23,13 +24,17 @@ export async function showModal<Output>(modal: Modal<Output>): Promise<Output | 
         return null
     }
 
+    if (previousModal) {
+        previousModal.unmount(modalParent)
+    }
+    previousModal = modal
+
     modal.mount(modalParent)
     modalBackground?.classList.remove("modal-disabled")
 
     const output = await modal.onFinish()
 
     modalBackground?.classList.add("modal-disabled")
-    modal.unmount(modalParent)
 
     return output
 }

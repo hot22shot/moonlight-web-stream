@@ -141,6 +141,11 @@ class Host implements Component {
                             `Server Codec Mode Support: ${host.server_codec_mode_support}`
                         )
                     }
+                }, {
+                    name: "Remove Host",
+                    callback: async => {
+                        // TODO
+                    }
                 }]
             })
         })
