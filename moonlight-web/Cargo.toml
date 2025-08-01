@@ -1,0 +1,19 @@
+[package]
+name = "moonlight-web"
+version = "0.1.0"
+edition = "2024"
+license = { workspace = true }
+
+[dependencies]
+actix-web = "4.11.0"
+serde = { version = "1.0.219", features = ["derive"] }
+ts-rs = "11.0.1"
+
+[features]
+# TODO: remove this
+# default = ["include-web"]
+
+include-web = []
+
+[lints]
+workspace = true

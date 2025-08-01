@@ -4,7 +4,11 @@ members = [
     "moonlight-client-simple",
     "moonlight-common",
     "moonlight-common-sys",
+    "moonlight-web",
 ]
+
+[workspace.package]
+license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 moonlight-common = { path = "./moonlight-common" }

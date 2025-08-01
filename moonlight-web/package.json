@@ -1,0 +1,16 @@
+{
+  "name": "moonlight-web",
+  "version": "1.0.0",
+  "description": "",
+  "main": "web/index.ts",
+  "scripts": {
+    "build-web": "cargo test export_bindings && tsc && npm run copy-static",
+    "copy-static": "cpx \"web/**/*.{html,css}\" dist/"
+  },
+  "license": "GPL-3.0-or-later",
+  "private": "true",
+  "devDependencies": {
+    "cpx": "^1.5.0",
+    "typescript": "^5.9.2"
+  }
+}
