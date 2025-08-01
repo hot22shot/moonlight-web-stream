@@ -9,7 +9,6 @@ export type ContextMenuElement = {
 }
 
 export type ContextMenuInit = {
-    title?: string,
     elements?: ContextMenuElement[]
 }
 
@@ -61,6 +60,8 @@ class ContextMenuElementComponent implements Component {
 
     constructor(element: ContextMenuElement) {
         this.nameElement.innerText = element.name
+
+        this.nameElement.classList.add("context-menu-element")
         this.nameElement.addEventListener("click", event => {
             element.callback(event)
         })

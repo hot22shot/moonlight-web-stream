@@ -1,5 +1,6 @@
 body {
     background-color: rgb(48, 48, 48);
+    font-size: 1.2rem;
 }
 
 /** Modal */
@@ -43,6 +44,22 @@ body {
 
 .context-menu-list {
     list-style-type: none;
+}
+
+.context-menu-element {
+    margin: 0;
+    padding: 10px;
+    min-width: 110px;
+    cursor: pointer;
+    /** animation */
+    transition: all 0.2s;
+    background-color: rgba(255, 255, 255, 0);
+}
+
+.context-menu-element:hover {
+    /** animation */
+    transition: all 0.2s;
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
 .context-menu-disabled {

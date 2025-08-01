@@ -3,6 +3,7 @@ import { Api, ASSETS, getApi, getHosts } from "./common.js";
 import { Component, ComponentHost, ListComponent } from "./gui/component.js";
 import { setContextMenu } from "./gui/contextmenu.js";
 import { showErrorPopup } from "./gui/error.js";
+import { showMessage } from "./gui/modal.js";
 
 // TODO: error handler with popup
 
@@ -103,8 +104,15 @@ class Host implements Component {
         this.divElement.addEventListener("contextmenu", event => {
             setContextMenu(event, {
                 elements: [{
-                    name: "test",
-                    callback: () => { console.log("test") }
+                    name: "Show Details",
+                    callback: () => {
+                        // TODO: first fetch then show!
+                        showMessage(
+                            `Internal Id: ${host?.host_id}\n` +
+                            `Name: ${host?.name}\n` +
+                            `State: ${host?.server_state}`
+                        )
+                    }
                 }]
             })
         })
