@@ -27,6 +27,8 @@ use crate::{
     pair::{CHALLENGE_LENGTH, PairPin, SALT_LENGTH},
 };
 
+// TODO: maybe migrate this pairing process to openssl?
+
 fn hash(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
     use sha1::Digest;
 

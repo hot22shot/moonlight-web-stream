@@ -1698,8 +1698,11 @@ version = "0.1.0"
 dependencies = [
  "actix-files",
  "actix-web",
+ "moonlight-common",
+ "pem",
  "serde",
  "serde_json",
+ "slab",
  "ts-rs",
 ]
 

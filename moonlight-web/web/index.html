@@ -6,12 +6,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Moonlight Web</title>
+    <link rel="icon" href="resources/moonlight.svg" sizes="any" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css" />
     <script type="module" src="index.js" defer></script>
 </head>
 
 <body>
-    <h1>Hello World</h1>
+    <!-- Modal -->
+    <div id="modal-overlay" class="modal-background modal-disabled">
+        <!-- Modal Content -->
+        <div id="modal-parent" class="modal-content">
+        </div>
+    </div>
+
+    <div id="root"></div>
 
 </body>
 

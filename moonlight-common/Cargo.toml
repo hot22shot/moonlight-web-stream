@@ -27,6 +27,7 @@ hex = { version = "0.4.3", optional = true }
 # High
 tokio = { version = "1.46.1", default-features = false, features = [
     "rt",
+    "rt-multi-thread",
 ], optional = true }
 sha2 = { version = "0.10.9", features = ["oid"], optional = true }
 sha1 = { version = "0.10.6", optional = true }

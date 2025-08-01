@@ -5,16 +5,23 @@ use std::{
 };
 
 use actix_web::{
-    App, HttpServer,
+    App, HttpServer, middleware,
     web::{Data, scope},
 };
+use moonlight_common::MoonlightInstance;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{api::api_service, auth::AuthGuard, web::web_service};
+use crate::{
+    api::api_service,
+    auth::auth_middleware,
+    data::{ApiData, RuntimeApiData},
+    web::web_service,
+};
 
 mod api;
 mod api_bindings;
 mod auth;
+mod data;
 mod web;
 
 #[actix_web::main]
@@ -30,10 +37,23 @@ async fn main() -> std::io::Result<()> {
     }
     let config = Data::new(config);
 
+    let data = read_or_default::<ApiData>(&config.data_path);
+    let data = RuntimeApiData::load(
+        data,
+        MoonlightInstance::global().expect("failed to initialize moonlight"),
+    )
+    .await;
+    let data = Data::new(data);
+
     HttpServer::new(move || {
         App::new()
             .app_data(config.clone())
-            .service(scope("/api").guard(AuthGuard).service(api_service()))
+            .service(
+                scope("/api")
+                    .app_data(data.clone())
+                    .wrap(middleware::from_fn(auth_middleware))
+                    .service(api_service()),
+            )
             .service(web_service())
     })
     .bind((address, port))?
@@ -66,12 +86,19 @@ where
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     credentials: String,
+    #[serde(default = "data_path_default")]
+    data_path: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             credentials: "default".to_string(),
+            data_path: data_path_default(),
         }
     }
+}
+
+fn data_path_default() -> String {
+    "server/data.json".to_string()
 }

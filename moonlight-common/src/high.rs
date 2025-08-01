@@ -102,7 +102,14 @@ impl MoonlightHost<Unknown> {
 }
 
 impl<Pair> MoonlightHost<Pair> {
-    fn http_address(&self) -> String {
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+    pub fn http_port(&self) -> u16 {
+        self.http_port
+    }
+
+    pub fn http_address(&self) -> String {
         format!("{}:{}", self.address, self.http_port)
     }
 

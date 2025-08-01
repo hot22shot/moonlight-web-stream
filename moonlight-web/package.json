@@ -4,8 +4,8 @@
   "description": "",
   "main": "web/index.ts",
   "scripts": {
-    "build-web": "cargo test export_bindings && tsc && npm run copy-static",
-    "copy-static": "cpx \"web/**/*.{html,css}\" dist/"
+    "build": "cargo test export_bindings && tsc && npm run copy-static",
+    "copy-static": "cpx \"web/**/*.{html,css,svg,png}\" dist/"
   },
   "license": "GPL-3.0-or-later",
   "private": "true",
