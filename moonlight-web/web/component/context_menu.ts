@@ -21,6 +21,7 @@ let contextMenuMounted = false
 
 export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
     event.preventDefault()
+    event.stopPropagation()
 
     if (contextMenuElement == null) {
         showErrorPopup("cannot find the context menu element")
