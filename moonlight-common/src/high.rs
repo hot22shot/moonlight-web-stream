@@ -30,10 +30,15 @@ use crate::{
     video::VideoDecoder,
 };
 
-fn default_client_builder() -> ClientBuilder {
-    ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(7))
+fn default_client_builder(timeout: bool) -> ClientBuilder {
+    let mut builder = ClientBuilder::new();
+    if timeout {
+        builder = builder
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(7));
+    }
+
+    builder
 }
 fn tls_client_builder(
     auth: &ClientAuth,
@@ -51,7 +56,7 @@ fn tls_client_builder(
         auth.key_pair.to_string().as_bytes(),
     )?;
 
-    Ok(default_client_builder()
+    Ok(default_client_builder(true)
         .use_native_tls()
         .tls_built_in_root_certs(false)
         .add_root_certificate(server_cert)
@@ -96,7 +101,9 @@ impl From<Unpaired> for MaybePaired {
 impl MoonlightHost<Unknown> {
     pub fn new(address: String, http_port: u16, unique_id: Option<String>) -> Self {
         Self {
-            client: default_client_builder().build().expect("reqwest client"),
+            client: default_client_builder(true)
+                .build()
+                .expect("reqwest client"),
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
             address,
             http_port,
@@ -371,9 +378,14 @@ impl MoonlightHost<Unpaired> {
             Ok(value) => value,
         };
 
+        let client = match default_client_builder(false).build() {
+            Ok(client) => client,
+            Err(err) => return Err((self, ApiError::from(err).into())),
+        };
+
         let PairSuccess { server_certificate } = match host_pair(
             crypto,
-            &self.client,
+            &client,
             &http_address,
             self.client_info(),
             &auth.key_pair,
