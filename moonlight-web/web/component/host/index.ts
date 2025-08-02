@@ -1,124 +1,10 @@
-import { DetailedHost, PutHostRequest, UndetailedHost } from "./api_bindings.js"
-import { Api, ASSETS, deleteHost, getApi, getHost, getHosts, postPair } from "./common.js"
-import { Component, ComponentEvent, ListComponent } from "./gui/component.js"
-import { setContextMenu } from "./gui/context_menu.js"
-import { showErrorPopup } from "./gui/error.js"
-import { FormModal, showMessage } from "./gui/modal.js"
-
-export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
-    return (host as DetailedHost).https_port !== undefined
-}
-
-export class AddHostModal extends FormModal<PutHostRequest> {
-
-    private addressElement: HTMLInputElement = document.createElement("input")
-    private httpPortElement: HTMLInputElement = document.createElement("input")
-
-    constructor() {
-        super()
-
-        this.addressElement.type = "text"
-
-        this.httpPortElement.type = "text"
-        this.httpPortElement.inputMode = "numeric"
-    }
-
-    reset(): void {
-        this.addressElement.value = ""
-        this.httpPortElement.value = ""
-    }
-    submit(): PutHostRequest | null {
-        const address = this.addressElement.value
-        const httpPort = this.httpPortElement.valueAsNumber
-
-        return {
-            address,
-            http_port: httpPort
-        }
-    }
-
-    mountForm(form: HTMLFormElement): void {
-        form.appendChild(this.addressElement)
-        form.appendChild(this.httpPortElement)
-    }
-}
-
-export class HostList implements Component {
-    private api: Api
-
-    private list: ListComponent<Host>
-
-    constructor(api: Api) {
-        this.api = api
-
-        this.list = new ListComponent([], {
-            listElementClasses: ["host-list"],
-            componentDivClasses: ["host-element"]
-        })
-    }
-
-    async forceFetch() {
-        const hosts = await getHosts(this.api)
-
-        this.updateCache(hosts)
-    }
-
-    private updateCache(hosts: UndetailedHost[]) {
-        // add new hosts and update old ones
-        hosts.forEach(host => {
-            this.insertUpdateHost(host)
-        })
-
-        // remove old hosts
-        for (let i = 0; i < this.list.get().length; i++) {
-            const hostComponent = this.list.get()[i]
-
-            const hostExists = hosts.findIndex(host => host.host_id == hostComponent.getHostId()) != -1
-            if (!hostExists) {
-                this.removeHost(hostComponent.getHostId())
-                // decrement i because we'll add one in the loop
-                // however the removed element must be accounted
-                i--
-            }
-        }
-    }
-
-    private removeHostListener(event: ComponentEvent<Host>) {
-        this.removeHost(event.component.getHostId())
-    }
-
-    insertUpdateHost(host: UndetailedHost | DetailedHost) {
-        const hostComponent = this.list.get().find(listHost => listHost.getHostId() == host.host_id)
-
-        if (hostComponent) {
-            hostComponent.updateCache(host)
-        } else {
-            const newHost = new Host(this.api, host.host_id, host)
-            this.list.append(newHost)
-
-            newHost.addHostRemoveListener(this.removeHostListener.bind(this))
-        }
-    }
-    removeHost(hostId: number) {
-        const index = this.list.get().findIndex(listHost => listHost.getHostId() == hostId)
-
-        if (index != -1) {
-            const hostComponent = this.list.remove(index)
-
-            hostComponent?.removeHostRemoveListener(this.removeHostListener.bind(this))
-        }
-    }
-    getHost(hostId: number): Host | undefined {
-        return this.list.get().find(host => host.getHostId() == hostId)
-    }
-
-    mount(parent: Element): void {
-        this.list.mount(parent)
-    }
-    unmount(parent: Element): void {
-        this.list.unmount(parent)
-    }
-}
+import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
+import { Api, deleteHost, getHost, isDetailedHost, postPair } from "../../api.js"
+import { Component, ComponentEvent } from "../index.js"
+import { setContextMenu } from "../context_menu.js"
+import { showErrorPopup } from "../error.js"
+import { showMessage } from "../modal.js"
+import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE } from "../../resources/index.js"
 
 export type HostRemoveEventListener = (event: ComponentEvent<Host>) => void
 
@@ -142,7 +28,7 @@ export class Host implements Component {
 
         // Configure image
         this.imageElement.classList.add("host-image")
-        this.imageElement.src = ASSETS.HOST_IMAGE
+        this.imageElement.src = HOST_IMAGE
 
         // Configure image overlay
         this.imageOverlayElement.classList.add("host-image-overlay")
@@ -212,8 +98,7 @@ export class Host implements Component {
     private async showDetails() {
         let host = this.cache;
         if (!host || !isDetailedHost(host)) {
-            const api = await getApi()
-            host = await getHost(api, this.hostId)
+            host = await getHost(this.api, this.hostId)
         }
         if (!host || !isDetailedHost(host)) {
             showErrorPopup(`failed to get details for host ${this.hostId}`)
@@ -318,9 +203,9 @@ export class Host implements Component {
         this.nameElement.innerText = this.cache.name
 
         if (this.cache.paired != "Paired") {
-            this.imageOverlayElement.src = ASSETS.HOST_OVERLAY_LOCK
+            this.imageOverlayElement.src = HOST_OVERLAY_LOCK
         } else {
-            this.imageOverlayElement.src = ASSETS.HOST_OVERLAY_NONE
+            this.imageOverlayElement.src = HOST_OVERLAY_NONE
         }
     }
 

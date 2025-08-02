@@ -1,4 +1,4 @@
-import { Component, ListComponent } from "./component.js"
+import { Component, ListComponent } from "../component/index.js"
 import { showErrorPopup } from "./error.js"
 
 document.addEventListener("click", () => removeContextMenu())

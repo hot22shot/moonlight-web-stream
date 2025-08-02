@@ -1,8 +1,9 @@
-import { Api, getApi, putHost } from "./common.js";
-import { Component, ComponentHost } from "./gui/component.js";
-import { showErrorPopup } from "./gui/error.js";
-import { showModal } from "./gui/modal.js";
-import { AddHostModal, HostList } from "./host.js";
+import { Api, getApi, putHost } from "./api.js";
+import { AddHostModal } from "./component/host/add_modal.js";
+import { HostList } from "./component/host/list.js";
+import { Component, ComponentHost } from "./component/index.js";
+import { showErrorPopup } from "./component/error.js";
+import { showModal } from "./component/modal.js";
 
 // TODO: error handler with popup
 

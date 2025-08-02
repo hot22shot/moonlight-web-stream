@@ -1,5 +1,5 @@
-import { ASSETS } from "../common.js"
-import { Component, ListComponent } from "./component.js"
+import { Component, ListComponent } from "../component/index.js"
+import { ERROR_IMAGE, WARN_IMAGE } from "../resources/index.js"
 
 const ERROR_REMOVAL_TIME_MS = 10000
 
@@ -25,9 +25,9 @@ export function showErrorPopup(message: string, fatal: boolean = false) {
 
     let error
     if (fatal) {
-        error = new ErrorComponent(message, ASSETS.ERROR_IMAGE)
+        error = new ErrorComponent(message, ERROR_IMAGE)
     } else {
-        error = new ErrorComponent(message, ASSETS.WARN_IMAGE)
+        error = new ErrorComponent(message, WARN_IMAGE)
     }
 
     errorListComponent.append(error)

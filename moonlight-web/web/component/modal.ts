@@ -1,4 +1,4 @@
-import { Component } from "./component.js"
+import { Component } from "./index.js"
 import { showErrorPopup } from "./error.js"
 
 export interface Modal<Output> extends Component {

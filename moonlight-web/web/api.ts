@@ -1,14 +1,6 @@
 import { DeleteHostQuery, DetailedHost, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
-import { showErrorPopup } from "./gui/error.js";
-import { showMessage, showPrompt } from "./gui/modal.js";
-
-export const ASSETS = {
-    HOST_IMAGE: "/resources/desktop_windows-48px.svg",
-    HOST_OVERLAY_NONE: "",
-    HOST_OVERLAY_LOCK: "/resources/baseline-lock-24px.svg",
-    WARN_IMAGE: "/resources/baseline-warning-24px.svg",
-    ERROR_IMAGE: "/resources/baseline-error_outline-24px.svg",
-}
+import { showErrorPopup } from "./component/error.js";
+import { showMessage, showPrompt } from "./component/modal.js";
 
 // TODO: move api stuff into api file
 let currentApi: Api | null = null
@@ -58,6 +50,10 @@ export type ApiFetchInit = {
     json?: any,
     query?: any,
     response?: "json" | "ignore"
+}
+
+export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
+    return (host as DetailedHost).https_port !== undefined
 }
 
 export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any | null>
