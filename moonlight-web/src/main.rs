@@ -100,6 +100,8 @@ pub struct Config {
     data_path: String,
     #[serde(default = "moonlight_default_http_port_default")]
     moonlight_default_http_port: u16,
+    #[serde(default = "default_pair_device_name")]
+    pair_device_name: String,
 }
 
 impl Default for Config {
@@ -108,6 +110,7 @@ impl Default for Config {
             credentials: "default".to_string(),
             data_path: data_path_default(),
             moonlight_default_http_port: moonlight_default_http_port_default(),
+            pair_device_name: default_pair_device_name(),
         }
     }
 }
@@ -118,4 +121,8 @@ fn data_path_default() -> String {
 
 fn moonlight_default_http_port_default() -> u16 {
     47989
+}
+
+fn default_pair_device_name() -> String {
+    "roth".to_string()
 }

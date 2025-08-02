@@ -5,6 +5,16 @@ export interface Component {
     unmount(parent: HTMLElement): void
 }
 
+export class ComponentEvent<T extends Component> extends Event {
+    component: T
+
+    constructor(type: string, component: T) {
+        super(type)
+
+        this.component = component
+    }
+}
+
 export class ComponentHost<T extends Component> {
     private root: HTMLElement
     private component: T
@@ -99,7 +109,7 @@ export class ListComponent<T extends Component> implements Component {
             this.internalMountFrom(index)
         }
     }
-    remove(index: number) {
+    remove(index: number): T | null {
         if (index == this.list.length - 1) {
             const element = this.list.pop()
             const divElement = this.divElements[index]
@@ -108,14 +118,19 @@ export class ListComponent<T extends Component> implements Component {
                 element.unmount(divElement)
 
                 this.listElement.removeChild(divElement)
+                return element
             }
         } else {
             this.internalUnmountUntil(index)
 
-            this.list.splice(index, 1)
+            const element = this.list.splice(index, 1)
 
             this.internalMountFrom(index)
+
+            return element[0] ?? null
         }
+
+        return null
     }
 
     append(value: T) {

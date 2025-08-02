@@ -1,4 +1,4 @@
-import { DeleteHostQuery, DetailedHost, GetHostQuery, GetHostResponse, GetHostsResponse, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { DeleteHostQuery, DetailedHost, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./gui/error.js";
 import { showMessage, showPrompt } from "./gui/modal.js";
 
@@ -10,6 +10,7 @@ export const ASSETS = {
     ERROR_IMAGE: "/resources/baseline-error_outline-24px.svg",
 }
 
+// TODO: move api stuff into api file
 let currentApi: Api | null = null
 
 export async function getApi(host_url?: string): Promise<Api> {
@@ -56,10 +57,13 @@ export type Api = {
 export type ApiFetchInit = {
     json?: any,
     query?: any,
-    parseResponse?: boolean,
+    response?: "json" | "ignore"
 }
 
-export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: ApiFetchInit): Promise<any | null> {
+export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any | null>
+export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response>
+
+export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: ApiFetchInit) {
     const query = new URLSearchParams(init?.query)
     const queryString = query.size > 0 ? `?${query.toString()}` : "";
 
@@ -81,17 +85,19 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
         return null
     }
 
-    if (init?.parseResponse == undefined || init.parseResponse) {
+    if (init?.response == "ignore") {
+        return response
+    }
+
+    if (init?.response == undefined || init.response == "json") {
         const json = await response.json()
 
         return json
-    } else {
-        return await response.text()
     }
 }
 
 export async function authenticate(api: Api): Promise<boolean> {
-    const response = await fetchApi(api, "authenticate", "get", { parseResponse: false })
+    const response = await fetchApi(api, "authenticate", "get", { response: "ignore" })
 
     return response != null
 }
@@ -129,7 +135,44 @@ export async function putHost(api: Api, data: PutHostRequest): Promise<DetailedH
     return (response as PutHostResponse).host
 }
 export async function deleteHost(api: Api, query: DeleteHostQuery): Promise<boolean> {
-    const response = await fetchApi(api, "host", "delete", { query, parseResponse: false })
+    const response = await fetchApi(api, "host", "delete", { query, response: "ignore" })
 
     return response != null
+}
+
+export async function postPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost | null> } | { error: string } | null> {
+    const response = await fetchApi(api, "pair", "post", {
+        json: request,
+        response: "ignore"
+    })
+    if (response == null || response.body == null) {
+        return null
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    const read1 = await reader.read();
+    const response1 = JSON.parse(decoder.decode(read1.value)) as PostPairResponse1
+
+    if (typeof response1 == "string") {
+        return { error: response1 }
+    }
+    if (read1.done) {
+        return { error: "likely InternalServerError" }
+    }
+
+    return {
+        pin: response1.Pin,
+        result: (async () => {
+            const read2 = await reader.read();
+            const response2 = JSON.parse(decoder.decode(read2.value)) as PostPairResponse2
+
+            if (response2 == "PairError") {
+                return null
+            } else {
+                return response2.Paired
+            }
+        })()
+    }
 }

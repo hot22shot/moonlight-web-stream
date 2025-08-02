@@ -1,6 +1,6 @@
 import { DetailedHost, PutHostRequest, UndetailedHost } from "./api_bindings.js"
-import { Api, ASSETS, deleteHost, getApi, getHost, getHosts } from "./common.js"
-import { Component, ListComponent } from "./gui/component.js"
+import { Api, ASSETS, deleteHost, getApi, getHost, getHosts, postPair } from "./common.js"
+import { Component, ComponentEvent, ListComponent } from "./gui/component.js"
 import { setContextMenu } from "./gui/context_menu.js"
 import { showErrorPopup } from "./gui/error.js"
 import { FormModal, showMessage } from "./gui/modal.js"
@@ -48,7 +48,7 @@ export class HostList implements Component {
 
     private list: ListComponent<Host>
 
-    constructor(api: Api, hosts?: UndetailedHost) {
+    constructor(api: Api) {
         this.api = api
 
         this.list = new ListComponent([], {
@@ -75,7 +75,7 @@ export class HostList implements Component {
 
             const hostExists = hosts.findIndex(host => host.host_id == hostComponent.getHostId()) != -1
             if (!hostExists) {
-                this.list.remove(i)
+                this.removeHost(hostComponent.getHostId())
                 // decrement i because we'll add one in the loop
                 // however the removed element must be accounted
                 i--
@@ -83,7 +83,11 @@ export class HostList implements Component {
         }
     }
 
-    insertHost(host: UndetailedHost) {
+    private removeHostListener(event: ComponentEvent<Host>) {
+        this.removeHost(event.component.getHostId())
+    }
+
+    insertHost(host: UndetailedHost | DetailedHost) {
         const hostComponent = this.list.get().find(listHost => listHost.getHostId() == host.host_id)
 
         if (hostComponent) {
@@ -91,9 +95,22 @@ export class HostList implements Component {
         } else {
             const newHost = new Host(this.api, host.host_id, host)
             this.list.append(newHost)
+
+            newHost.addHostRemoveListener(this.removeHostListener.bind(this))
         }
     }
-    getHost(hostId: number) { }
+    removeHost(hostId: number) {
+        const index = this.list.get().findIndex(listHost => listHost.getHostId() == hostId)
+
+        if (index != -1) {
+            const hostComponent = this.list.remove(index)
+
+            hostComponent?.removeHostRemoveListener(this.removeHostListener.bind(this))
+        }
+    }
+    getHost(hostId: number): Host | undefined {
+        return this.list.get().find(host => host.getHostId() == hostId)
+    }
 
     mount(parent: Element): void {
         this.list.mount(parent)
@@ -103,21 +120,25 @@ export class HostList implements Component {
     }
 }
 
+export type HostRemoveEventListener = (event: ComponentEvent<Host>) => void
+
 export class Host implements Component {
     private api: Api
 
     private hostId: number
-    private host: UndetailedHost | DetailedHost | null = null
+    private cache: UndetailedHost | DetailedHost | null = null
+
+    private divElement: HTMLDivElement = document.createElement("div")
 
     private imageElement: HTMLImageElement = document.createElement("img")
     private imageOverlayElement: HTMLImageElement = document.createElement("img")
     private nameElement: HTMLElement = document.createElement("p")
 
-    constructor(api: Api, hostId: number, host?: UndetailedHost) {
+    constructor(api: Api, hostId: number, host: UndetailedHost | DetailedHost) {
         this.api = api
 
         this.hostId = hostId
-        this.host = host ?? null
+        this.cache = host
 
         // Configure image
         this.imageElement.classList.add("host-image")
@@ -125,28 +146,54 @@ export class Host implements Component {
 
         // Configure image overlay
         this.imageOverlayElement.classList.add("host-image-overlay")
-        this.imageOverlayElement.src = ASSETS.HOST_OVERLAY_LOCK
 
         // Configure name
         this.nameElement.classList.add("host-name")
 
-        this.updateDisplay()
+        // Append elements
+        this.divElement.appendChild(this.imageElement)
+        this.divElement.appendChild(this.imageOverlayElement)
+        this.divElement.appendChild(this.nameElement)
+
+        this.divElement.addEventListener("contextmenu", this.onContextMenu.bind(this))
+
+        // Update elements
+        this.updateDisplay(host)
+    }
+
+    async forceFetch() {
+        const newCache = await getHost(this.api, this.hostId)
+        if (newCache == null) {
+            showErrorPopup(`failed to fetch host ${this.getHostId()}`)
+            return;
+        }
+
+        this.cache = newCache
     }
 
     private onContextMenu(event: MouseEvent) {
+        const elements = [{
+            name: "Show Details",
+            callback: this.showDetails.bind(this),
+        }, {
+            name: "Remove Host",
+            callback: this.remove.bind(this)
+        }]
+
+        if (this.cache?.paired == "NotPaired") {
+            elements.push({
+                name: "Pair",
+                callback: this.pair.bind(this)
+            })
+        }
+
         setContextMenu(event, {
-            elements: [{
-                name: "Show Details",
-                callback: this.showDetails.bind(this),
-            }, {
-                name: "Remove Host",
-                callback: this.removeHost.bind(this)
-            }]
+            elements
         })
     }
 
     private async showDetails() {
-        let host = this.host;
+        let host = this.cache;
         if (!host || !isDetailedHost(host)) {
             const api = await getApi()
             host = await getHost(api, this.hostId)
@@ -155,7 +202,7 @@ export class Host implements Component {
             showErrorPopup(`failed to get details for host ${this.hostId}`)
             return;
         }
-        this.host = host;
+        this.cache = host;
 
         await showMessage(
             `Web Id: ${host.host_id}\n` +
@@ -175,7 +222,14 @@ export class Host implements Component {
         )
     }
 
-    private async removeHost() {
+    addHostRemoveListener(listener: HostRemoveEventListener, options?: EventListenerOptions) {
+        this.divElement.addEventListener("ml-hostremove", listener as EventListenerOrEventListenerObject, options)
+    }
+    removeHostRemoveListener(listener: HostRemoveEventListener, options?: EventListenerOptions) {
+        this.divElement.removeEventListener("ml-hostremove", listener as EventListenerOrEventListenerObject, options)
+    }
+
+    private async remove() {
         const success = await deleteHost(this.api, {
             host_id: this.getHostId()
         })
@@ -183,30 +237,76 @@ export class Host implements Component {
         if (!success) {
             showErrorPopup(`something went wrong whilst removing the host ${this.getHostId()}`)
         }
+        this.divElement.dispatchEvent(new ComponentEvent("ml-hostremove", this))
+    }
+    private async pair() {
+        if (this.cache?.paired == "Paired") {
+            await this.forceFetch()
+
+            if (this.cache?.paired == "Paired") {
+                showMessage("This host is already paired!")
+                return;
+            }
+        }
+
+        const pinResponse = await postPair(this.api, {
+            host_id: this.getHostId()
+        })
+        if (pinResponse == null) {
+            showErrorPopup("failed to pair host")
+            return
+        }
+        if ("error" in pinResponse) {
+            showErrorPopup(`failed to pair host: ${pinResponse.error}`)
+            return
+        }
+
+        const messageAbort = new AbortController()
+        showMessage(`Please pair your host ${this.getCache()?.name} with this pin:\nPin: ${pinResponse.pin}`, { signal: messageAbort.signal })
+
+        const resultResponse = await pinResponse.result
+        messageAbort.abort()
+
+        if (resultResponse == null) {
+            showErrorPopup("failed to pair to host: Make sure the Pin is correct")
+            return;
+        }
     }
 
     getHostId(): number {
         return this.hostId
     }
 
-    updateDisplay(host?: UndetailedHost) {
-        this.nameElement.innerText = this.host?.name ?? "! Unknown !"
+    getCache(): DetailedHost | UndetailedHost | null {
+        return this.cache
+    }
 
-        // TODO: update image
+    updateDisplay(host: UndetailedHost | DetailedHost) {
+        if (this.getHostId() != host.host_id) {
+            showErrorPopup(`tried to overwrite host ${this.getHostId()} with data from ${host.host_id}`)
+            return
+        }
+
+        if (this.cache == null) {
+            this.cache = host
+        } else {
+            Object.assign(this.cache, host)
+        }
+
+        // Update Elements
+        this.nameElement.innerText = this.cache.name
+
+        if (this.cache.paired != "Paired") {
+            this.imageOverlayElement.src = ASSETS.HOST_OVERLAY_LOCK
+        } else {
+            this.imageOverlayElement.src = ASSETS.HOST_OVERLAY_NONE
+        }
     }
 
     mount(parent: HTMLElement): void {
-        parent.appendChild(this.imageElement)
-        parent.appendChild(this.imageOverlayElement)
-        parent.appendChild(this.nameElement)
-
-        parent.addEventListener("contextmenu", this.onContextMenu.bind(this))
+        parent.appendChild(this.divElement)
     }
     unmount(parent: HTMLElement): void {
-        parent.removeChild(this.imageElement)
-        parent.removeChild(this.imageOverlayElement)
-        parent.removeChild(this.nameElement)
-
-        parent.removeEventListener("contextmenu", this.onContextMenu.bind(this))
+        parent.removeChild(this.divElement)
     }
 }

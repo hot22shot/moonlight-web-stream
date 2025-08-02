@@ -12,6 +12,8 @@ if (errorListElement) {
 let alertedErrorListNotFound = false
 
 export function showErrorPopup(message: string, fatal: boolean = false) {
+    console.error(message)
+
     if (!errorListElement) {
         if (!alertedErrorListNotFound) {
             alert("couldn't find the error element")

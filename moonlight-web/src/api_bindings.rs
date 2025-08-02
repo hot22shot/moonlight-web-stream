@@ -99,3 +99,24 @@ pub struct PutHostResponse {
 pub struct DeleteHostQuery {
     pub host_id: u32,
 }
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct PostPairRequest {
+    pub host_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub enum PostPairResponse1 {
+    InternalServerError,
+    PairError,
+    Pin(String),
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub enum PostPairResponse2 {
+    PairError,
+    Paired(DetailedHost),
+}

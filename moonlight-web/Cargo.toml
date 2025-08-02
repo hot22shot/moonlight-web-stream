@@ -16,6 +16,7 @@ pem = "3.0.5"
 slab = "0.4.10"
 log = "0.4.27"
 simplelog = "0.12.2"
+async-stream = "0.3.6"
 
 [features]
 

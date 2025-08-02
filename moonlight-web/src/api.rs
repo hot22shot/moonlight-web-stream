@@ -1,21 +1,28 @@
 use std::sync::Mutex;
 
 use actix_web::{
-    Either, HttpResponse, Responder, delete,
+    Either, Error, HttpResponse, Responder,
+    body::BodyStream,
+    delete,
     dev::HttpServiceFactory,
-    get, put, services,
-    web::{Data, Json, Query},
+    get,
+    http::header,
+    post, put, services,
+    web::{Bytes, Data, Json, Query},
 };
+use log::{info, warn};
 use moonlight_common::{
     high::{MaybePaired, MoonlightHost},
-    network::ApiError,
+    network::{ApiError, PairStatus},
+    pair::high::generate_new_client,
 };
 
 use crate::{
     Config,
     api_bindings::{
         DeleteHostQuery, DetailedHost, GetHostQuery, GetHostResponse, GetHostsResponse,
-        PutHostRequest, PutHostResponse, UndetailedHost,
+        PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse,
+        UndetailedHost,
     },
     data::RuntimeApiData,
 };
@@ -161,10 +168,136 @@ async fn delete_host(
     HttpResponse::Ok().finish()
 }
 
+#[post("pair")]
+async fn pair_host(
+    data: Data<RuntimeApiData>,
+    config: Data<Config>,
+    Json(request): Json<PostPairRequest>,
+) -> HttpResponse {
+    let Ok(mut hosts) = data.hosts.read() else {
+        // TODO: warn
+        return HttpResponse::InternalServerError().finish();
+    };
+
+    let host_id = request.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return HttpResponse::NotFound().finish();
+    };
+
+    let Ok(mut host) = host.lock() else {
+        // TODO: warn
+        return HttpResponse::InternalServerError().finish();
+    };
+
+    if matches!(host.is_paired(), PairStatus::Paired) {
+        return HttpResponse::NotModified().finish();
+    }
+
+    let data = data.clone();
+
+    // TODO: dedup code!
+    let stream = async_stream::stream! {
+        let Ok(mut hosts) = data.hosts.read() else {
+            // TODO: warn
+            return;
+        };
+
+        let host_id = request.host_id;
+        let Some(host) = hosts.get(host_id as usize) else {
+            // TODO: warn
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+
+        let Ok(mut host) = host.lock() else {
+            // TODO: warn
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+
+        let Ok(client_auth) = generate_new_client() else {
+            // TODO: warn
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+
+        let pin = data.crypto.generate_pin();
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+        if let Err(err) = host
+            .pair_in_place(
+                &data.crypto,
+                &client_auth,
+                config.pair_device_name.to_string(),
+                pin,
+            )
+            .await
+        {
+            info!("failed to pair host {}: {:?}", host.address(), err);
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+
+        let host = into_detailed_host(host_id as usize, &mut host).await.unwrap();
+
+        let Ok(text) = serde_json::to_string(&PostPairResponse2::Paired(host)) else {
+            unreachable!()
+        };
+
+        let bytes = Bytes::from_owner(text);
+        yield Ok::<_, Error>(bytes);
+    };
+
+    HttpResponse::Ok()
+        .insert_header(("Content-Type", "application/x-ndjson"))
+        .streaming(stream)
+}
+
 /// IMPORTANT: This won't authenticate clients -> everyone can use this api
-/// Put a guard before this service
+/// Put a guard or similar before this service
 pub fn api_service() -> impl HttpServiceFactory {
-    services![authenticate, list_hosts, get_host, put_host, delete_host]
+    services![
+        authenticate,
+        list_hosts,
+        get_host,
+        put_host,
+        delete_host,
+        pair_host
+    ]
 }
 
 async fn into_undetailed_host(

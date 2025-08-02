@@ -2,7 +2,7 @@
 //! The high level api of the moonlight wrapper
 //!
 
-use std::time::Duration;
+use std::{mem::swap, time::Duration};
 
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
@@ -69,11 +69,14 @@ pub struct MoonlightHost<PairStatus> {
 }
 
 pub struct Unknown;
+#[derive(Clone)]
 pub struct Unpaired;
+#[derive(Clone)]
 pub struct Paired {
     server_certificate: Pem,
     app_list: Option<HostAppListResponse>,
 }
+#[derive(Clone)]
 pub enum MaybePaired {
     Unpaired(Unpaired),
     Paired(Box<Paired>),
@@ -317,6 +320,40 @@ impl MoonlightHost<MaybePaired> {
             MaybePaired::Unpaired(_) => PairStatus::NotPaired,
             MaybePaired::Paired(_) => PairStatus::NotPaired,
         }
+    }
+
+    pub async fn pair_in_place(
+        &mut self,
+        crypto: &MoonlightCrypto,
+        auth: &ClientAuth,
+        device_name: String,
+        pin: PairPin,
+    ) -> Result<(), PairError> {
+        if matches!(self.is_paired(), PairStatus::Paired) {
+            return Ok(());
+        }
+
+        let copy = Self {
+            address: self.address.clone(),
+            client: self.client.clone(),
+            client_unique_id: self.client_unique_id.clone(),
+            http_port: self.http_port,
+            info: self.info.clone(),
+            paired: self.paired.clone(),
+        };
+        let Err(unpaired) = copy.try_into_paired() else {
+            unreachable!()
+        };
+
+        let mut paired = unpaired
+            .pair(crypto, auth, device_name, pin)
+            .await
+            .map_err(|(_, err)| err)?
+            .maybe_paired();
+
+        swap(self, &mut paired);
+
+        Ok(())
     }
 }
 

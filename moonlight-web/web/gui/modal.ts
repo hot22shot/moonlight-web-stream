@@ -29,12 +29,14 @@ export async function showModal<Output>(modal: Modal<Output>): Promise<Output | 
     }
     previousModal = modal
 
+    modalUsed = true
     modal.mount(modalParent)
     modalBackground?.classList.remove("modal-disabled")
 
     const output = await modal.onFinish()
 
     modalBackground?.classList.add("modal-disabled")
+    modalUsed = false
 
     return output
 }
@@ -145,21 +147,28 @@ class PromptModal extends FormModal<string> {
     }
 }
 
-export async function showMessage(message: string) {
-    const modal = new MessageModal(message)
+type MessageInit = {
+    signal?: AbortSignal
+}
+
+export async function showMessage(message: string, init?: MessageInit) {
+    const modal = new MessageModal(message, init)
 
     await showModal(modal)
 }
 
 class MessageModal implements Component, Modal<void> {
 
+    private signal?: AbortSignal
     private textElement: HTMLElement = document.createElement("p")
     private okButton: HTMLButtonElement = document.createElement("button")
 
-    constructor(message: string) {
+    constructor(message: string, init?: MessageInit) {
         this.textElement.innerText = message
 
         this.okButton.innerText = "Ok"
+
+        this.signal = init?.signal
     }
 
     mount(parent: Element): void {
@@ -173,7 +182,13 @@ class MessageModal implements Component, Modal<void> {
 
     onFinish(): Promise<void> {
         return new Promise((resolve, reject) => {
-            this.okButton.addEventListener("click", () => resolve(), { once: true })
+            let customController: AbortController | null = null
+            if (this.signal) {
+                customController = new AbortController()
+                this.signal.addEventListener("abort", () => customController?.abort(), { once: true, signal: customController.signal })
+            }
+
+            this.okButton.addEventListener("click", () => resolve(), { once: true, signal: customController?.signal })
         })
     }
 }
