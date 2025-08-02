@@ -1,5 +1,6 @@
 use std::sync::{Mutex, RwLock};
 
+use log::warn;
 use moonlight_common::{
     MoonlightInstance,
     crypto::MoonlightCrypto,
@@ -39,8 +40,6 @@ impl RuntimeApiData {
         // TODO: do this concurrently
         let mut hosts = Slab::new();
         for host_data in data.hosts {
-            // TODO: warn on continue
-
             let host = MoonlightHost::new(host_data.address, host_data.http_port, None);
             let host = try_pair_state(host, host_data.paired.as_ref()).await;
 
@@ -70,15 +69,24 @@ async fn try_pair_state<Pair>(
     };
 
     let Ok(client_private_key) = pem::parse(&paired.client_private_key) else {
-        // TODO: print error
+        warn!(
+            "failed to parse client private key as pem. Client: {}",
+            host.address()
+        );
         return host.maybe_paired();
     };
     let Ok(client_certificate) = pem::parse(&paired.client_certificate) else {
-        // TODO: print error
+        warn!(
+            "failed to parse client certificate as pem. Client: {}",
+            host.address()
+        );
         return host.maybe_paired();
     };
     let Ok(server_certificate) = pem::parse(&paired.server_certificate) else {
-        // TODO: print error
+        warn!(
+            "failed to parse server certificate as pem. Client: {}",
+            host.address()
+        );
         return host.maybe_paired();
     };
 
@@ -94,7 +102,11 @@ async fn try_pair_state<Pair>(
     {
         Ok(host) => host,
         Err((host, err)) => {
-            // TODO: print error
+            warn!(
+                "failed to pair client even though it has pair data: Client: {}, Error: {:?}",
+                host.address(),
+                err
+            );
             host.maybe_paired()
         }
     }

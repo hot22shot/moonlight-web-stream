@@ -8,8 +8,10 @@ use actix_web::{
     App, HttpServer, middleware,
     web::{Data, scope},
 };
+use log::LevelFilter;
 use moonlight_common::MoonlightInstance;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 use crate::{
     api::api_service,
@@ -26,6 +28,14 @@ mod web;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    TermLogger::init(
+        LevelFilter::Debug,
+        simplelog::Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )
+    .expect("failed to init logger");
+
     let address = "127.0.0.1";
     let port = 8080;
 
