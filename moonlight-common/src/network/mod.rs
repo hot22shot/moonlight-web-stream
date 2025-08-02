@@ -174,7 +174,7 @@ impl Display for ServerVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}-{}-{}-{}",
+            "{}.{}.{}.{}",
             self.major, self.minor, self.patch, self.mini_patch
         )
     }
