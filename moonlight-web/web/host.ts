@@ -60,13 +60,13 @@ export class HostList implements Component {
     async forceFetch() {
         const hosts = await getHosts(this.api)
 
-        this.updateDisplay(hosts)
+        this.updateCache(hosts)
     }
 
-    private updateDisplay(hosts: UndetailedHost[]) {
+    private updateCache(hosts: UndetailedHost[]) {
         // add new hosts and update old ones
         hosts.forEach(host => {
-            this.insertHost(host)
+            this.insertUpdateHost(host)
         })
 
         // remove old hosts
@@ -87,11 +87,11 @@ export class HostList implements Component {
         this.removeHost(event.component.getHostId())
     }
 
-    insertHost(host: UndetailedHost | DetailedHost) {
+    insertUpdateHost(host: UndetailedHost | DetailedHost) {
         const hostComponent = this.list.get().find(listHost => listHost.getHostId() == host.host_id)
 
         if (hostComponent) {
-            hostComponent.updateDisplay(host)
+            hostComponent.updateCache(host)
         } else {
             const newHost = new Host(this.api, host.host_id, host)
             this.list.append(newHost)
@@ -134,7 +134,7 @@ export class Host implements Component {
     private imageOverlayElement: HTMLImageElement = document.createElement("img")
     private nameElement: HTMLElement = document.createElement("p")
 
-    constructor(api: Api, hostId: number, host: UndetailedHost | DetailedHost) {
+    constructor(api: Api, hostId: number, host: UndetailedHost | DetailedHost | null) {
         this.api = api
 
         this.hostId = hostId
@@ -155,10 +155,15 @@ export class Host implements Component {
         this.divElement.appendChild(this.imageOverlayElement)
         this.divElement.appendChild(this.nameElement)
 
+        this.divElement.addEventListener("click", this.onClick.bind(this))
         this.divElement.addEventListener("contextmenu", this.onContextMenu.bind(this))
 
         // Update elements
-        this.updateDisplay(host)
+        if (host != null) {
+            this.updateCache(host)
+        } else {
+            this.forceFetch()
+        }
     }
 
     async forceFetch() {
@@ -168,17 +173,24 @@ export class Host implements Component {
             return;
         }
 
-        this.cache = newCache
+        this.updateCache(newCache)
+    }
+
+    private async onClick() {
+        if (this.cache?.paired == "Paired") {
+            // TODO: go into games view
+        } else {
+            await this.pair()
+        }
     }
 
     private onContextMenu(event: MouseEvent) {
-        const elements = [{
+        const elements = []
+
+        elements.push({
             name: "Show Details",
             callback: this.showDetails.bind(this),
-        }, {
-            name: "Remove Host",
-            callback: this.remove.bind(this)
-        }]
+        })
 
         if (this.cache?.paired == "NotPaired") {
             elements.push({
@@ -186,6 +198,11 @@ export class Host implements Component {
                 callback: this.pair.bind(this)
             })
         }
+
+        elements.push({
+            name: "Remove Host",
+            callback: this.remove.bind(this)
+        })
 
         setContextMenu(event, {
             elements
@@ -202,7 +219,7 @@ export class Host implements Component {
             showErrorPopup(`failed to get details for host ${this.hostId}`)
             return;
         }
-        this.cache = host;
+        this.updateCache(host)
 
         await showMessage(
             `Web Id: ${host.host_id}\n` +
@@ -272,7 +289,7 @@ export class Host implements Component {
             return;
         }
 
-        this.cache = resultResponse
+        this.updateCache(resultResponse)
     }
 
     getHostId(): number {
@@ -283,7 +300,7 @@ export class Host implements Component {
         return this.cache
     }
 
-    updateDisplay(host: UndetailedHost | DetailedHost) {
+    updateCache(host: UndetailedHost | DetailedHost) {
         if (this.getHostId() != host.host_id) {
             showErrorPopup(`tried to overwrite host ${this.getHostId()} with data from ${host.host_id}`)
             return

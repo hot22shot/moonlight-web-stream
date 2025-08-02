@@ -53,7 +53,7 @@ class MainApp implements Component {
             const newHost = await putHost(this.api, host)
 
             if (newHost) {
-                this.hostList.insertHost(newHost)
+                this.hostList.insertUpdateHost(newHost)
             } else {
                 showErrorPopup("couldn't add host")
             }
