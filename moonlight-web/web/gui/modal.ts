@@ -90,7 +90,9 @@ export abstract class FormModal<Output> implements Component, Modal<Output | nul
                 resolve(output)
             }, { signal: abortController.signal })
 
-            this.cancelButton.addEventListener("click", () => {
+            this.cancelButton.addEventListener("click", event => {
+                event.preventDefault()
+
                 abortController.abort()
                 resolve(null)
             }, { signal: abortController.signal })
