@@ -3,7 +3,9 @@ use std::sync::Mutex;
 use actix_web::{
     Either, Error, HttpResponse, Responder, delete,
     dev::HttpServiceFactory,
-    get, post, put, services,
+    get, post, put,
+    rt::spawn,
+    services,
     web::{Bytes, Data, Json, Query},
 };
 use log::{info, warn};
@@ -21,7 +23,7 @@ use crate::{
         PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse,
         UndetailedHost,
     },
-    data::RuntimeApiData,
+    data::{RuntimeApiData, RuntimeApiHost, save_data},
 };
 
 #[get("/authenticate")]
@@ -44,7 +46,7 @@ async fn list_hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHostsResponse>
             continue;
         };
 
-        let Ok(host) = into_undetailed_host(host_id, &mut host).await else {
+        let Ok(host) = into_undetailed_host(host_id, &mut host.moonlight).await else {
             continue;
         };
 
@@ -75,7 +77,7 @@ async fn get_host(
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
 
-    let Ok(detailed_host) = into_detailed_host(host_id as usize, &mut host).await else {
+    let Ok(detailed_host) = into_detailed_host(host_id as usize, &mut host.moonlight).await else {
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
 
@@ -119,7 +121,10 @@ async fn put_host(
     };
 
     let host_id = hosts.vacant_key();
-    hosts.insert(Mutex::new(host));
+    hosts.insert(Mutex::new(RuntimeApiHost {
+        moonlight: host,
+        pair_info: None,
+    }));
 
     drop(hosts);
 
@@ -135,7 +140,7 @@ async fn put_host(
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
 
-    let Ok(detailed_host) = into_detailed_host(host_id, &mut host).await else {
+    let Ok(detailed_host) = into_detailed_host(host_id, &mut host.moonlight).await else {
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
 
@@ -186,7 +191,7 @@ async fn pair_host(
         return HttpResponse::InternalServerError().finish();
     };
 
-    if matches!(host.paired(), PairStatus::Paired) {
+    if matches!(host.moonlight.paired(), PairStatus::Paired) {
         return HttpResponse::NotModified().finish();
     }
 
@@ -194,13 +199,13 @@ async fn pair_host(
 
     // TODO: dedup code!
     let stream = async_stream::stream! {
-        let Ok(mut hosts) = data.hosts.read() else {
+        let Ok(hosts) = data.hosts.read() else {
             // TODO: warn
             return;
         };
 
         let host_id = request.host_id;
-        let Some(host) = hosts.get(host_id as usize) else {
+        let Some(host_mutex) = hosts.get(host_id as usize) else {
             // TODO: warn
 
             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
@@ -213,7 +218,7 @@ async fn pair_host(
             return;
         };
 
-        let Ok(mut host) = host.lock() else {
+        let Ok(mut host) = host_mutex.lock() else {
             // TODO: warn
 
             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
@@ -248,7 +253,7 @@ async fn pair_host(
             let bytes = Bytes::from_owner(text);
             yield Ok::<_, Error>(bytes);
 
-        if let Err(err) = host
+        if let Err(err) = host.moonlight
             .pair(
                 &data.crypto,
                 &client_auth,
@@ -257,7 +262,7 @@ async fn pair_host(
             )
             .await
         {
-            info!("failed to pair host {}: {:?}", host.address(), err);
+            info!("failed to pair host {}: {:?}", host.moonlight.address(), err);
 
             let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
                 unreachable!()
@@ -269,13 +274,22 @@ async fn pair_host(
             return;
         };
 
-        let host = into_detailed_host(host_id as usize, &mut host).await.unwrap();
+        let detailed_host = into_detailed_host(host_id as usize, &mut host.moonlight).await.unwrap();
 
         let mut text = Vec::new();
         let _ = writeln!(&mut text);
-        if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(host)).is_err() {
+        if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(detailed_host)).is_err() {
             unreachable!()
         };
+
+        drop(host);
+        drop(hosts);
+
+        spawn(async move {
+            let (config, data) = (config, data);
+
+            save_data(&config, &data).await;
+        });
 
         let bytes = Bytes::from_owner(text);
         yield Ok::<_, Error>(bytes);

@@ -10,6 +10,8 @@ use moonlight_common::{
 use serde::{Deserialize, Serialize};
 use slab::Slab;
 
+use crate::Config;
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ApiData {
     hosts: Vec<Host>,
@@ -22,17 +24,22 @@ struct Host {
     paired: Option<PairedHost>,
 }
 #[derive(Debug, Serialize, Deserialize)]
-struct PairedHost {
+pub struct PairedHost {
     client_private_key: String,
     client_certificate: String,
     server_certificate: String,
+}
+
+pub struct RuntimeApiHost {
+    pub moonlight: MoonlightHost<MaybePaired>,
+    pub pair_info: Option<PairedHost>,
 }
 
 // TODO: async aware rwlock and mutex
 pub struct RuntimeApiData {
     pub(crate) instance: MoonlightInstance,
     pub(crate) crypto: MoonlightCrypto,
-    pub(crate) hosts: RwLock<Slab<Mutex<MoonlightHost<MaybePaired>>>>,
+    pub(crate) hosts: RwLock<Slab<Mutex<RuntimeApiHost>>>,
 }
 
 impl RuntimeApiData {
@@ -43,7 +50,10 @@ impl RuntimeApiData {
             let host = MoonlightHost::new(host_data.address, host_data.http_port, None);
             let host = try_pair_state(host, host_data.paired.as_ref()).await;
 
-            hosts.insert(Mutex::new(host));
+            hosts.insert(Mutex::new(RuntimeApiHost {
+                moonlight: host,
+                pair_info: host_data.paired,
+            }));
         }
 
         Self {
@@ -110,4 +120,9 @@ async fn try_pair_state<Pair>(
             host.maybe_paired()
         }
     }
+}
+
+pub async fn save_data(config: &Config, data: &RuntimeApiData) {
+    // TODO
+    return;
 }
