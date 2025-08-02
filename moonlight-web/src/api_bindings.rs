@@ -67,6 +67,24 @@ pub struct DetailedHost {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct App {
+    pub app_id: u32,
+    pub title: String,
+    pub is_hdr_supported: bool,
+}
+
+impl From<moonlight_common::network::App> for App {
+    fn from(value: moonlight_common::network::App) -> Self {
+        Self {
+            app_id: value.id,
+            title: value.title,
+            is_hdr_supported: value.is_hdr_supported,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
 pub struct GetHostsResponse {
     pub hosts: Vec<UndetailedHost>,
 }
@@ -121,4 +139,16 @@ pub enum PostPairResponse1 {
 pub enum PostPairResponse2 {
     PairError,
     Paired(DetailedHost),
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct GetAppsQuery {
+    pub host_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct GetAppsResponse {
+    pub apps: Vec<App>,
 }

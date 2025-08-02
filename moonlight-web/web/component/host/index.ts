@@ -44,7 +44,7 @@ export class Host implements Component {
         this.divElement.addEventListener("click", this.onClick.bind(this))
         this.divElement.addEventListener("contextmenu", this.onContextMenu.bind(this))
 
-        // Update elements
+        // Update cache
         if (host != null) {
             this.updateCache(host)
         } else {

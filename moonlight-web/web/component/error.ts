@@ -1,5 +1,6 @@
-import { Component, ListComponent } from "../component/index.js"
+import { Component } from "../component/index.js"
 import { ERROR_IMAGE, WARN_IMAGE } from "../resources/index.js"
+import { ListComponent } from "./list.js"
 
 const ERROR_REMOVAL_TIME_MS = 10000
 

@@ -1,7 +1,8 @@
 import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
 import { Api, apiGetHosts } from "../../api.js"
-import { Component, ComponentEvent, ListComponent } from "../index.js"
+import { Component, ComponentEvent } from "../index.js"
 import { Host } from "./index.js"
+import { ListComponent } from "../list.js"
 
 export class HostList implements Component {
     private api: Api

@@ -4,6 +4,7 @@ import { HostList } from "./component/host/list.js";
 import { Component, ComponentHost } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { showModal } from "./component/modal.js";
+import { setContextMenu } from "./component/context_menu.js";
 
 // TODO: error handler with popup
 
@@ -44,6 +45,10 @@ class MainApp implements Component {
 
         // Host list
         this.hostList = new HostList(api)
+
+        // Context Menu
+        // TODO: create div and set this on it
+        document.body.addEventListener("contextmenu", this.onContextMenu.bind(this))
     }
 
     private async addHost() {
@@ -63,8 +68,23 @@ class MainApp implements Component {
         }
     }
 
-    forceFetch() {
-        this.hostList.forceFetch()
+    private onContextMenu(event: MouseEvent) {
+        const elements = [
+            {
+                name: "Reload",
+                callback: this.forceFetch.bind(this)
+            }
+        ]
+
+        setContextMenu(event, {
+            elements
+        })
+    }
+
+    async forceFetch() {
+        await Promise.all([
+            this.hostList.forceFetch()
+        ])
     }
 
     mount(parent: HTMLElement): void {

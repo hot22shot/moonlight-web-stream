@@ -561,6 +561,11 @@ pub async fn host_app_list(
     Ok(HostAppListResponse { apps })
 }
 
+// TODO: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L721
+pub async fn host_app_box_art(client: &Client, https_address: &str, info: ClientInfo<'_>) {
+    todo!()
+}
+
 #[derive(Debug, Clone)]
 pub struct ClientStreamRequest {
     pub app_id: u32,

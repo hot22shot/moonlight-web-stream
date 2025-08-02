@@ -1,4 +1,4 @@
-import { DeleteHostQuery, DetailedHost, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showPrompt } from "./component/modal.js";
 
@@ -171,4 +171,8 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{
             }
         })()
     }
+}
+
+export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App>> {
+    return await fetchApi(api, "apps", "get", { query })
 }

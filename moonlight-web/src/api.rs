@@ -19,9 +19,9 @@ use std::io::Write as _;
 use crate::{
     Config,
     api_bindings::{
-        DeleteHostQuery, DetailedHost, GetHostQuery, GetHostResponse, GetHostsResponse,
-        PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse,
-        UndetailedHost,
+        DeleteHostQuery, DetailedHost, GetAppsQuery, GetAppsResponse, GetHostQuery,
+        GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
+        PutHostRequest, PutHostResponse, UndetailedHost,
     },
     data::{PairedHost, RuntimeApiData, RuntimeApiHost, save_data},
 };
@@ -327,6 +327,14 @@ async fn pair_host(
         .streaming(stream)
 }
 
+#[get("apps")]
+async fn get_apps(
+    data: Data<RuntimeApiData>,
+    Query(query): Query<GetAppsQuery>,
+) -> Either<Json<GetAppsResponse>, HttpResponse> {
+    todo!()
+}
+
 /// IMPORTANT: This won't authenticate clients -> everyone can use this api
 /// Put a guard or similar before this service
 pub fn api_service() -> impl HttpServiceFactory {
@@ -336,7 +344,8 @@ pub fn api_service() -> impl HttpServiceFactory {
         get_host,
         put_host,
         delete_host,
-        pair_host
+        pair_host,
+        get_apps
     ]
 }
 
