@@ -319,6 +319,8 @@ async fn into_detailed_host(
         name: host.host_name().await?.to_string(),
         paired: host.paired().into(),
         server_state: host.state().await?.1.into(),
+        address: host.address().to_string(),
+        http_port: host.http_port(),
         https_port: host.https_port().await?,
         external_port: host.external_port().await?,
         version: host.version().await?.to_string(),

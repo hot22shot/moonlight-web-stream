@@ -226,6 +226,8 @@ export class Host implements Component {
             `Name: ${host.name}\n` +
             `Pair Status: ${host.paired}\n` +
             `State: ${host.server_state}\n` +
+            `Address: ${host.address}\n` +
+            `Http Port: ${host.http_port}\n` +
             `Https Port: ${host.https_port}\n` +
             `External Port: ${host.external_port}\n` +
             `Version: ${host.version}\n` +

@@ -51,6 +51,8 @@ pub struct DetailedHost {
     pub name: String,
     pub paired: PairStatus,
     pub server_state: HostState,
+    pub address: String,
+    pub http_port: u16,
     pub https_port: u16,
     pub external_port: u16,
     pub version: String, // TODO: server version struct?
