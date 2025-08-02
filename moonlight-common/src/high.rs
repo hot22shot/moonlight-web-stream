@@ -137,15 +137,25 @@ impl<Pair> MoonlightHost<Pair> {
         Ok(info)
     }
     pub async fn reload_host_info(&mut self) -> Result<(), ApiError> {
-        self.info = Some(
-            host_info(
-                &self.client,
-                false,
-                &self.http_address(),
-                Some(self.client_info()),
-            )
-            .await?,
-        );
+        if let Some(old_info) = &self.info
+            && matches!(old_info.pair_status, PairStatus::Paired)
+        {
+            let https_address = Self::build_https_address(&self.address, old_info.https_port);
+
+            self.info = Some(
+                host_info(&self.client, true, &https_address, Some(self.client_info())).await?,
+            );
+        } else {
+            self.info = Some(
+                host_info(
+                    &self.client,
+                    false,
+                    &self.http_address(),
+                    Some(self.client_info()),
+                )
+                .await?,
+            );
+        }
 
         Ok(())
     }
@@ -161,9 +171,13 @@ impl<Pair> MoonlightHost<Pair> {
         let info = self.host_info().await?;
         Ok(info.https_port)
     }
+
+    fn build_https_address(address: &str, https_port: u16) -> String {
+        format!("{address}:{https_port}")
+    }
     pub async fn https_address(&mut self) -> Result<String, ApiError> {
         let https_port = self.https_port().await?;
-        Ok(format!("{}:{}", self.address, https_port))
+        Ok(Self::build_https_address(&self.address, https_port))
     }
     pub async fn external_port(&mut self) -> Result<u16, ApiError> {
         let info = self.host_info().await?;
@@ -322,24 +336,20 @@ impl MoonlightHost<MaybePaired> {
         }
     }
 
-    pub fn is_paired(&self) -> PairStatus {
+    pub fn paired(&self) -> PairStatus {
         match &self.paired {
             MaybePaired::Unpaired(_) => PairStatus::NotPaired,
-            MaybePaired::Paired(_) => PairStatus::NotPaired,
+            MaybePaired::Paired(_) => PairStatus::Paired,
         }
     }
 
-    pub async fn pair_in_place(
+    pub async fn pair(
         &mut self,
         crypto: &MoonlightCrypto,
         auth: &ClientAuth,
         device_name: String,
         pin: PairPin,
     ) -> Result<(), PairError> {
-        if matches!(self.is_paired(), PairStatus::Paired) {
-            return Ok(());
-        }
-
         let copy = Self {
             address: self.address.clone(),
             client: self.client.clone(),
@@ -348,16 +358,18 @@ impl MoonlightHost<MaybePaired> {
             info: self.info.clone(),
             paired: self.paired.clone(),
         };
-        let Err(unpaired) = copy.try_into_paired() else {
-            unreachable!()
+
+        let unpaired = match copy.try_into_paired() {
+            Ok(_) => return Ok(()),
+            Err(unpaired) => unpaired,
         };
 
-        let mut paired = unpaired
+        let paired = unpaired
             .pair(crypto, auth, device_name, pin)
             .await
-            .map_err(|(_, err)| err)?
-            .maybe_paired();
+            .map_err(|(_, err)| err)?;
 
+        let mut paired = paired.maybe_paired();
         swap(self, &mut paired);
 
         Ok(())
@@ -407,7 +419,7 @@ impl MoonlightHost<Unpaired> {
             Ok(client) => client,
         };
 
-        Ok(MoonlightHost {
+        let mut host = MoonlightHost {
             client,
             client_unique_id: self.client_unique_id,
             address: self.address,
@@ -418,7 +430,16 @@ impl MoonlightHost<Unpaired> {
                 server_certificate,
                 app_list: None,
             },
-        })
+        };
+
+        let Some(info) = host.info.as_mut() else {
+            unreachable!()
+        };
+        info.pair_status = PairStatus::Paired;
+
+        let _ = host.reload_host_info().await;
+
+        Ok(host)
     }
 }
 

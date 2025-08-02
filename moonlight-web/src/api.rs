@@ -1,13 +1,9 @@
 use std::sync::Mutex;
 
 use actix_web::{
-    Either, Error, HttpResponse, Responder,
-    body::BodyStream,
-    delete,
+    Either, Error, HttpResponse, Responder, delete,
     dev::HttpServiceFactory,
-    get,
-    http::header,
-    post, put, services,
+    get, post, put, services,
     web::{Bytes, Data, Json, Query},
 };
 use log::{info, warn};
@@ -16,6 +12,7 @@ use moonlight_common::{
     network::{ApiError, PairStatus},
     pair::high::generate_new_client,
 };
+use std::io::Write as _;
 
 use crate::{
     Config,
@@ -189,7 +186,7 @@ async fn pair_host(
         return HttpResponse::InternalServerError().finish();
     };
 
-    if matches!(host.is_paired(), PairStatus::Paired) {
+    if matches!(host.paired(), PairStatus::Paired) {
         return HttpResponse::NotModified().finish();
     }
 
@@ -252,7 +249,7 @@ async fn pair_host(
             yield Ok::<_, Error>(bytes);
 
         if let Err(err) = host
-            .pair_in_place(
+            .pair(
                 &data.crypto,
                 &client_auth,
                 config.pair_device_name.to_string(),
@@ -274,7 +271,9 @@ async fn pair_host(
 
         let host = into_detailed_host(host_id as usize, &mut host).await.unwrap();
 
-        let Ok(text) = serde_json::to_string(&PostPairResponse2::Paired(host)) else {
+        let mut text = Vec::new();
+        let _ = writeln!(&mut text);
+        if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(host)).is_err() {
             unreachable!()
         };
 
@@ -307,7 +306,7 @@ async fn into_undetailed_host(
     Ok(UndetailedHost {
         host_id: id as u32,
         name: host.host_name().await?.to_string(),
-        paired: host.is_paired().into(),
+        paired: host.paired().into(),
         server_state: host.state().await?.1.into(),
     })
 }
@@ -318,7 +317,7 @@ async fn into_detailed_host(
     Ok(DetailedHost {
         host_id: id as u32,
         name: host.host_name().await?.to_string(),
-        paired: host.is_paired().into(),
+        paired: host.paired().into(),
         server_state: host.state().await?.1.into(),
         https_port: host.https_port().await?,
         external_port: host.external_port().await?,

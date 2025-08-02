@@ -271,6 +271,8 @@ export class Host implements Component {
             showErrorPopup("failed to pair to host: Make sure the Pin is correct")
             return;
         }
+
+        this.cache = resultResponse
     }
 
     getHostId(): number {

@@ -185,10 +185,16 @@ class MessageModal implements Component, Modal<void> {
             let customController: AbortController | null = null
             if (this.signal) {
                 customController = new AbortController()
-                this.signal.addEventListener("abort", () => customController?.abort(), { once: true, signal: customController.signal })
+                this.signal.addEventListener("abort", () => {
+                    resolve()
+                    customController?.abort()
+                }, { once: true, signal: customController.signal })
             }
 
-            this.okButton.addEventListener("click", () => resolve(), { once: true, signal: customController?.signal })
+            this.okButton.addEventListener("click", () => {
+                resolve()
+                customController?.abort()
+            }, { signal: customController?.signal })
         })
     }
 }
