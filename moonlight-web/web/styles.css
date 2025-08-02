@@ -28,6 +28,7 @@ body {
     padding: 20px;
     border: 1px solid #888;
     width: 80%;
+    border-radius: 5px;
 }
 
 .modal-disabled {
@@ -43,6 +44,7 @@ body {
     display: block;
     position: fixed;
     z-index: 1;
+    border-radius: 5px;
     background-color: rgb(86, 92, 100);
     /** animation */
     scale: 1;
