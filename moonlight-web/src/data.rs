@@ -1,5 +1,6 @@
 use std::sync::{Mutex, RwLock};
 
+use anyhow::anyhow;
 use log::warn;
 use moonlight_common::{
     MoonlightInstance,
@@ -9,6 +10,7 @@ use moonlight_common::{
 };
 use serde::{Deserialize, Serialize};
 use slab::Slab;
+use tokio::fs;
 
 use crate::Config;
 
@@ -23,11 +25,11 @@ struct Host {
     http_port: u16,
     paired: Option<PairedHost>,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedHost {
-    client_private_key: String,
-    client_certificate: String,
-    server_certificate: String,
+    pub client_private_key: String,
+    pub client_certificate: String,
+    pub server_certificate: String,
 }
 
 pub struct RuntimeApiHost {
@@ -122,7 +124,29 @@ async fn try_pair_state<Pair>(
     }
 }
 
-pub async fn save_data(config: &Config, data: &RuntimeApiData) {
-    // TODO
-    return;
+// TODO: maybe make a seperate thread for syncing the data so we don't get two file writes at once?
+pub async fn save_data(config: &Config, data: &RuntimeApiData) -> Result<(), anyhow::Error> {
+    let hosts = data.hosts.read().map_err(|err| anyhow!("{err}"))?;
+
+    let mut output = ApiData {
+        hosts: Vec::with_capacity(hosts.len()),
+    };
+
+    for (_, host) in &*hosts {
+        let host = host.lock().map_err(|err| anyhow!("{err}"))?;
+
+        output.hosts.push(Host {
+            address: host.moonlight.address().to_string(),
+            http_port: host.moonlight.http_port(),
+            paired: host.pair_info.clone(),
+        });
+    }
+
+    drop(hosts);
+
+    let text = serde_json::to_string_pretty(&output)?;
+
+    fs::write(&config.data_path, text).await?;
+
+    Ok(())
 }

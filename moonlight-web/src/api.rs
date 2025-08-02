@@ -23,7 +23,7 @@ use crate::{
         PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse,
         UndetailedHost,
     },
-    data::{RuntimeApiData, RuntimeApiHost, save_data},
+    data::{PairedHost, RuntimeApiData, RuntimeApiHost, save_data},
 };
 
 #[get("/authenticate")]
@@ -140,6 +140,16 @@ async fn put_host(
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
 
+    spawn({
+        let (config, data) = (config.clone(), data.clone());
+
+        async move {
+            if let Err(err) = save_data(&config, &data).await {
+                warn!("failed to save data: {err:?}")
+            }
+        }
+    });
+
     let Ok(detailed_host) = into_detailed_host(host_id, &mut host.moonlight).await else {
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
@@ -152,6 +162,7 @@ async fn put_host(
 #[delete("host")]
 async fn delete_host(
     data: Data<RuntimeApiData>,
+    config: Data<Config>,
     Query(query): Query<DeleteHostQuery>,
 ) -> HttpResponse {
     let Ok(mut hosts) = data.hosts.write() else {
@@ -165,6 +176,14 @@ async fn delete_host(
 
     if host.is_none() {
         return HttpResponse::NotFound().finish();
+    } else {
+        spawn(async move {
+            let (config, data) = (config, data);
+
+            if let Err(err) = save_data(&config, &data).await {
+                warn!("failed to save data: {err:?}")
+            }
+        });
     }
 
     HttpResponse::Ok().finish()
@@ -274,6 +293,12 @@ async fn pair_host(
             return;
         };
 
+        host.pair_info = Some(PairedHost {
+            client_private_key: client_auth.key_pair.to_string(),
+            client_certificate: client_auth.certificate.to_string(),
+            server_certificate: host.moonlight.server_certificate().expect("server certificate after pairing").to_string(),
+        });
+
         let detailed_host = into_detailed_host(host_id as usize, &mut host.moonlight).await.unwrap();
 
         let mut text = Vec::new();
@@ -288,7 +313,9 @@ async fn pair_host(
         spawn(async move {
             let (config, data) = (config, data);
 
-            save_data(&config, &data).await;
+            if let Err(err) = save_data(&config, &data).await {
+                warn!("failed to save data: {err:?}")
+            }
         });
 
         let bytes = Bytes::from_owner(text);

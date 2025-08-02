@@ -9,14 +9,21 @@ moonlight-common = { workspace = true }
 
 actix-web = "4.11.0"
 actix-files = "0.6.6"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.142"
-ts-rs = "11.0.1"
-pem = "3.0.5"
-slab = "0.4.10"
+tokio = { version = "1.47.1", features = ["fs"] }
+
 log = "0.4.27"
 simplelog = "0.12.2"
+
+anyhow = "1.0.98"
+
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+pem = "3.0.5"
+
+slab = "0.4.10"
 async-stream = "0.3.6"
+
+ts-rs = "11.0.1"
 
 [features]
 

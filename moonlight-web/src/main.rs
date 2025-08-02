@@ -1,8 +1,5 @@
-use std::{
-    fs::{self},
-    io::ErrorKind,
-    path::Path,
-};
+use std::{io::ErrorKind, path::Path};
+use tokio::fs;
 
 use actix_web::{
     App, HttpServer, middleware,
@@ -41,13 +38,13 @@ async fn main() -> std::io::Result<()> {
 
     println!("Starting server on http://{address}:{port}");
 
-    let config = read_or_default::<Config>("./server/config.json");
+    let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
         panic!("enter your credentials in the config (server/config.json)");
     }
     let config = Data::new(config);
 
-    let data = read_or_default::<ApiData>(&config.data_path);
+    let data = read_or_default::<ApiData>(&config.data_path).await;
     let data = RuntimeApiData::load(
         data,
         MoonlightInstance::global().expect("failed to initialize moonlight"),
@@ -71,11 +68,11 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-fn read_or_default<T>(path: impl AsRef<Path>) -> T
+async fn read_or_default<T>(path: impl AsRef<Path>) -> T
 where
     T: DeserializeOwned + Serialize + Default,
 {
-    match fs::read_to_string(path.as_ref()) {
+    match fs::read_to_string(path.as_ref()).await {
         Ok(value) => serde_json::from_str(&value).expect("invalid file"),
         Err(err) if err.kind() == ErrorKind::NotFound => {
             let value = T::default();
@@ -83,9 +80,13 @@ where
             let value_str = serde_json::to_string_pretty(&value).expect("failed to serialize file");
 
             if let Some(parent) = path.as_ref().parent() {
-                fs::create_dir_all(parent).expect("failed to create directories to file");
+                fs::create_dir_all(parent)
+                    .await
+                    .expect("failed to create directories to file");
             }
-            fs::write(path.as_ref(), value_str).expect("failed to write default file");
+            fs::write(path.as_ref(), value_str)
+                .await
+                .expect("failed to write default file");
 
             value
         }

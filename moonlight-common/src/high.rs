@@ -374,6 +374,13 @@ impl MoonlightHost<MaybePaired> {
 
         Ok(())
     }
+
+    pub fn server_certificate(&self) -> Option<&Pem> {
+        match &self.paired {
+            MaybePaired::Unpaired(_) => None,
+            MaybePaired::Paired(paired) => Some(&paired.server_certificate),
+        }
+    }
 }
 
 impl MoonlightHost<Unpaired> {
