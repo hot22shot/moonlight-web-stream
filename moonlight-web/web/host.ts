@@ -1,7 +1,7 @@
 import { DetailedHost, PutHostRequest, UndetailedHost } from "./api_bindings.js"
 import { Api, ASSETS, deleteHost, getApi, getHost, getHosts } from "./common.js"
 import { Component, ListComponent } from "./gui/component.js"
-import { setContextMenu } from "./gui/contextmenu.js"
+import { setContextMenu } from "./gui/context_menu.js"
 import { showErrorPopup } from "./gui/error.js"
 import { FormModal, showMessage } from "./gui/modal.js"
 
