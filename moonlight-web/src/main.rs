@@ -88,6 +88,8 @@ pub struct Config {
     credentials: String,
     #[serde(default = "data_path_default")]
     data_path: String,
+    #[serde(default = "moonlight_default_http_port_default")]
+    moonlight_default_http_port: u16,
 }
 
 impl Default for Config {
@@ -95,10 +97,15 @@ impl Default for Config {
         Self {
             credentials: "default".to_string(),
             data_path: data_path_default(),
+            moonlight_default_http_port: moonlight_default_http_port_default(),
         }
     }
 }
 
 fn data_path_default() -> String {
     "server/data.json".to_string()
+}
+
+fn moonlight_default_http_port_default() -> u16 {
+    47989
 }

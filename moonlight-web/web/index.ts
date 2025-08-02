@@ -1,9 +1,8 @@
-import { DetailedHost, UndetailedHost } from "./api_bindings.js";
-import { Api, ASSETS, getApi, getDetailedHost, getHosts } from "./common.js";
-import { Component, ComponentHost, ListComponent } from "./gui/component.js";
-import { setContextMenu } from "./gui/contextmenu.js";
+import { Api, getApi, putHost } from "./common.js";
+import { Component, ComponentHost } from "./gui/component.js";
 import { showErrorPopup } from "./gui/error.js";
-import { showMessage } from "./gui/modal.js";
+import { showModal } from "./gui/modal.js";
+import { AddHostModal, HostList } from "./host.js";
 
 // TODO: error handler with popup
 
@@ -16,157 +15,65 @@ async function startApp() {
         return;
     }
 
-    const rootComponent = new HostList()
+    const rootComponent = new MainApp(api)
     const root = new ComponentHost(rootElement, rootComponent)
 
-    rootComponent.forceUpdate(api)
+    rootComponent.forceFetch()
 }
 
 console.log("starting app")
 startApp()
 
-class HostList implements Component {
-    private list: ListComponent<Host>
+class MainApp implements Component {
+    private api: Api
 
-    constructor(hosts?: UndetailedHost) {
-        this.list = new ListComponent([], {
-            listElementClasses: ["host-list"]
-        })
+    private moonlightTextElement = document.createElement("h1")
+    private hostAddButton: HTMLButtonElement = document.createElement("button")
+    private hostList: HostList
+
+    constructor(api: Api) {
+        this.api = api
+
+        // Moonlight text
+        this.moonlightTextElement.innerHTML = "Moonlight Web"
+
+        // Host add button
+        this.hostAddButton.innerText = "Add Host"
+        this.hostAddButton.addEventListener("click", this.addHost.bind(this))
+
+        // Host list
+        this.hostList = new HostList(api)
     }
 
-    async forceUpdate(api: Api) {
-        const hosts = await getHosts(api)
+    private async addHost() {
+        const modal = new AddHostModal()
 
-        this.updateDisplay(hosts)
-    }
+        let host = await showModal(modal);
+        if (host) {
+            const newHost = await putHost(this.api, host)
 
-    private updateDisplay(hosts: UndetailedHost[]) {
-        hosts.forEach(host => {
-            const hostComponent = this.list.get().find(listHost => listHost.getHostId() == host.host_id)
-
-            if (hostComponent) {
-                hostComponent.updateDisplay(host)
+            if (newHost) {
+                this.hostList.insertHost(newHost)
             } else {
-                const newHost = new Host(host.host_id, host)
-                this.list.append(newHost)
+                showErrorPopup("couldn't add host")
             }
-        })
-
-        // remove old hosts
-        for (let i = 0; i < this.list.get().length; i++) {
-            const hostComponent = this.list.get()[i]
-
-            const hostExists = hosts.findIndex(host => host.host_id == hostComponent.getHostId()) != -1
-            if (!hostExists) {
-                this.list.remove(i)
-                // decrement i because we'll add one in the loop
-                // however the removed element must be accounted
-                i--
-            }
+        } else {
+            showErrorPopup("couldn't add host")
         }
     }
 
-    getHost(hostId: number) { }
-
-    mount(parent: Element): void {
-        this.list.mount(parent)
-    }
-    unmount(parent: Element): void {
-        this.list.unmount(parent)
-    }
-}
-
-class Host implements Component {
-    private hostId: number
-    private host: UndetailedHost | null = null
-    private detailedHost: DetailedHost | null = null
-
-    private divElement = document.createElement("div")
-
-    private imageElement: HTMLImageElement = document.createElement("img")
-    private imageOverlayElement: HTMLImageElement = document.createElement("img")
-    private nameElement: HTMLElement = document.createElement("p")
-
-    constructor(hostId: number, host?: UndetailedHost) {
-        this.hostId = hostId
-        this.host = host ?? null
-
-
-        // Configure image
-        this.imageElement.classList.add("host-image")
-        this.imageElement.src = ASSETS.HOST_IMAGE
-
-        // Configure image overlay
-        this.imageOverlayElement.classList.add("host-image-overlay")
-        this.imageOverlayElement.src = ASSETS.HOST_OVERLAY_LOCK
-
-        // Configure name
-        this.nameElement.classList.add("host-name")
-
-        // Configure div
-        this.divElement.classList.add("host-background")
-        this.divElement.appendChild(this.imageElement)
-        this.divElement.appendChild(this.imageOverlayElement)
-        this.divElement.appendChild(this.nameElement)
-        this.divElement.addEventListener("contextmenu", event => {
-            setContextMenu(event, {
-                elements: [{
-                    name: "Show Details",
-                    callback: async () => {
-                        let host = this.detailedHost;
-                        if (!host) {
-                            const api = await getApi()
-                            host = await getDetailedHost(api, this.hostId)
-                        }
-                        if (!host) {
-                            showErrorPopup(`failed to get details for host ${this.hostId}`)
-                            return;
-                        }
-                        this.detailedHost = host;
-
-                        await showMessage(
-                            `Web Id: ${host.host_id}\n` +
-                            `Name: ${host.name}\n` +
-                            `Pair Status: ${host.paired}\n` +
-                            `State: ${host.server_state}\n` +
-                            `Https Port: ${host.https_port}\n` +
-                            `External Port: ${host.external_port}\n` +
-                            `Version: ${host.version}\n` +
-                            `Gfe Version: ${host.gfe_version}\n` +
-                            `Unique ID: ${host.unique_id}\n` +
-                            `MAC: ${host.mac}\n` +
-                            `Local IP: ${host.local_ip}\n` +
-                            `Current Game: ${host.current_game}\n` +
-                            `Max Luma Pixels Hevc: ${host.max_luma_pixels_hevc}\n` +
-                            `Server Codec Mode Support: ${host.server_codec_mode_support}`
-                        )
-                    }
-                }, {
-                    name: "Remove Host",
-                    callback: async => {
-                        // TODO
-                    }
-                }]
-            })
-        })
-
-        this.updateDisplay()
+    forceFetch() {
+        this.hostList.forceFetch()
     }
 
-    getHostId(): number {
-        return this.hostId
+    mount(parent: HTMLElement): void {
+        parent.appendChild(this.moonlightTextElement)
+        parent.appendChild(this.hostAddButton)
+        this.hostList.mount(parent)
     }
-
-    updateDisplay(host?: UndetailedHost) {
-        this.nameElement.innerText = this.host?.name ?? "! Unknown !"
-
-        // TODO: update image
-    }
-
-    mount(parent: Element): void {
-        parent.appendChild(this.divElement)
-    }
-    unmount(parent: Element): void {
-        parent.removeChild(this.divElement)
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.moonlightTextElement)
+        parent.removeChild(this.hostAddButton)
+        this.hostList.unmount(parent)
     }
 }

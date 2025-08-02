@@ -1,15 +1,15 @@
 
 export interface Component {
-    mount(parent: Element): void
+    mount(parent: HTMLElement): void
 
-    unmount(parent: Element): void
+    unmount(parent: HTMLElement): void
 }
 
 export class ComponentHost<T extends Component> {
-    private root: Element
+    private root: HTMLElement
     private component: T
 
-    constructor(root: Element, component: T) {
+    constructor(root: HTMLElement, component: T) {
         this.root = root
         this.component = component
 

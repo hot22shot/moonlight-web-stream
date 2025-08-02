@@ -1,4 +1,4 @@
-import { DetailedHost, GetDetailedHostResponse, GetHostsResponse, UndetailedHost } from "./api_bindings.js";
+import { DeleteHostQuery, DetailedHost, GetHostQuery, GetHostResponse, GetHostsResponse, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./gui/error.js";
 import { showMessage, showPrompt } from "./gui/modal.js";
 
@@ -54,17 +54,27 @@ export type Api = {
 }
 
 export type ApiFetchInit = {
-    data?: any,
+    json?: any,
+    query?: any,
     parseResponse?: boolean,
 }
 
 export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: ApiFetchInit): Promise<any | null> {
-    const response = await fetch(`${api.host_url}/${endpoint}`, {
+    const query = new URLSearchParams(init?.query)
+    const queryString = query.size > 0 ? `?${query.toString()}` : "";
+
+    const headers: any = {
+        "Authorization": `Bearer ${api.credentials}`,
+    };
+
+    if (init?.json) {
+        headers["Content-Type"] = "application/json";
+    }
+
+    const response = await fetch(`${api.host_url}/${endpoint}${queryString}`, {
         method: method,
-        headers: {
-            "Authorization": `Bearer ${api.credentials}`
-        },
-        body: init?.data && JSON.parse(init.data),
+        headers,
+        body: init?.json && JSON.stringify(init.json)
     })
 
     if (!response.ok) {
@@ -96,12 +106,30 @@ export async function getHosts(api: Api): Promise<Array<UndetailedHost>> {
 
     return (response as GetHostsResponse).hosts
 }
-export async function getDetailedHost(api: Api, hostId: number): Promise<DetailedHost | null> {
-    const response = await fetchApi(api, `host?host_id=${hostId}`, "get")
+export async function getHost(api: Api, hostId: number): Promise<DetailedHost | null> {
+    let query: GetHostQuery = {
+        host_id: hostId
+    };
+
+    const response = await fetchApi(api, "host", "get", { query })
 
     if (response == null) {
         return null
     }
 
-    return (response as GetDetailedHostResponse).host
+    return (response as GetHostResponse).host
+}
+export async function putHost(api: Api, data: PutHostRequest): Promise<DetailedHost | null> {
+    const response = await fetchApi(api, "host", "put", { json: data })
+
+    if (response == null) {
+        return null
+    }
+
+    return (response as PutHostResponse).host
+}
+export async function deleteHost(api: Api, query: DeleteHostQuery): Promise<boolean> {
+    const response = await fetchApi(api, "host", "delete", { query, parseResponse: false })
+
+    return response != null
 }

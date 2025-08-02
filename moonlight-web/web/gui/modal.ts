@@ -61,6 +61,8 @@ export abstract class FormModal<Output> implements Component, Modal<Output | nul
     mount(parent: Element): void {
         if (!this.mounted) {
             this.mountForm(this.formElement)
+            this.formElement.appendChild(this.submitButton)
+            this.formElement.appendChild(this.cancelButton)
         }
 
         this.reset()

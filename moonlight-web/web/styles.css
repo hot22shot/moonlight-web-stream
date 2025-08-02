@@ -120,7 +120,7 @@ body {
     flex-wrap: wrap;
 }
 
-.host-background {
+.host-element {
     cursor: pointer;
     margin: 0.2cm;
     padding-top: 0.1cm;
@@ -129,7 +129,7 @@ body {
     padding-right: 0.4cm;
 }
 
-.host-background:hover {
+.host-element:hover {
     transition: all 0.2s;
     background-color: rgba(255, 255, 255, 0.2);
 }

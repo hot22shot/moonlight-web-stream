@@ -2,6 +2,8 @@
 //! The high level api of the moonlight wrapper
 //!
 
+use std::time::Duration;
+
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
 use tokio::task::block_in_place;
@@ -30,8 +32,8 @@ use crate::{
 
 fn default_client_builder() -> ClientBuilder {
     ClientBuilder::new()
-    // .connect_timeout(Duration::from_secs(5))
-    // .timeout(Duration::from_secs(7))
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(7))
 }
 fn tls_client_builder(
     auth: &ClientAuth,

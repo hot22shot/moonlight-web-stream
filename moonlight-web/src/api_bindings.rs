@@ -71,12 +71,31 @@ pub struct GetHostsResponse {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
-pub struct GetDetailedHostQuery {
+pub struct GetHostQuery {
     pub host_id: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
-pub struct GetDetailedHostResponse {
+pub struct GetHostResponse {
     pub host: DetailedHost,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct PutHostRequest {
+    pub address: String,
+    pub http_port: Option<u16>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct PutHostResponse {
+    pub host: DetailedHost,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct DeleteHostQuery {
+    pub host_id: u32,
 }
