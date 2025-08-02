@@ -25,7 +25,7 @@ export async function getApi(host_url?: string): Promise<Api> {
 
         let api = { host_url, credentials: testCredentials }
 
-        if (await authenticate(api)) {
+        if (await apiAuthenticate(api)) {
             window.sessionStorage.setItem("credentials", testCredentials)
 
             credentials = api.credentials;
@@ -92,13 +92,13 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
     }
 }
 
-export async function authenticate(api: Api): Promise<boolean> {
+export async function apiAuthenticate(api: Api): Promise<boolean> {
     const response = await fetchApi(api, "authenticate", "get", { response: "ignore" })
 
     return response != null
 }
 
-export async function getHosts(api: Api): Promise<Array<UndetailedHost>> {
+export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {
     const response = await fetchApi(api, "hosts", "get")
 
     if (response == null) {
@@ -108,7 +108,7 @@ export async function getHosts(api: Api): Promise<Array<UndetailedHost>> {
 
     return (response as GetHostsResponse).hosts
 }
-export async function getHost(api: Api, hostId: number): Promise<DetailedHost | null> {
+export async function apiGetHost(api: Api, hostId: number): Promise<DetailedHost | null> {
     let query: GetHostQuery = {
         host_id: hostId
     };
@@ -121,7 +121,7 @@ export async function getHost(api: Api, hostId: number): Promise<DetailedHost | 
 
     return (response as GetHostResponse).host
 }
-export async function putHost(api: Api, data: PutHostRequest): Promise<DetailedHost | null> {
+export async function apiPutHost(api: Api, data: PutHostRequest): Promise<DetailedHost | null> {
     const response = await fetchApi(api, "host", "put", { json: data })
 
     if (response == null) {
@@ -130,13 +130,13 @@ export async function putHost(api: Api, data: PutHostRequest): Promise<DetailedH
 
     return (response as PutHostResponse).host
 }
-export async function deleteHost(api: Api, query: DeleteHostQuery): Promise<boolean> {
+export async function apiDeleteHost(api: Api, query: DeleteHostQuery): Promise<boolean> {
     const response = await fetchApi(api, "host", "delete", { query, response: "ignore" })
 
     return response != null
 }
 
-export async function postPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost | null> } | { error: string } | null> {
+export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost | null> } | { error: string } | null> {
     const response = await fetchApi(api, "pair", "post", {
         json: request,
         response: "ignore"

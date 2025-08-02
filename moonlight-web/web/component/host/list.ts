@@ -1,5 +1,5 @@
 import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
-import { Api, getHosts } from "../../api.js"
+import { Api, apiGetHosts } from "../../api.js"
 import { Component, ComponentEvent, ListComponent } from "../index.js"
 import { Host } from "./index.js"
 
@@ -18,7 +18,7 @@ export class HostList implements Component {
     }
 
     async forceFetch() {
-        const hosts = await getHosts(this.api)
+        const hosts = await apiGetHosts(this.api)
 
         this.updateCache(hosts)
     }

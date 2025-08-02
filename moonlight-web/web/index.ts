@@ -1,4 +1,4 @@
-import { Api, getApi, putHost } from "./api.js";
+import { Api, getApi, apiPutHost } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentHost } from "./component/index.js";
@@ -51,7 +51,7 @@ class MainApp implements Component {
 
         let host = await showModal(modal);
         if (host) {
-            const newHost = await putHost(this.api, host)
+            const newHost = await apiPutHost(this.api, host)
 
             if (newHost) {
                 this.hostList.insertUpdateHost(newHost)

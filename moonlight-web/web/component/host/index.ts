@@ -1,5 +1,5 @@
 import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
-import { Api, deleteHost, getHost, isDetailedHost, postPair } from "../../api.js"
+import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair } from "../../api.js"
 import { Component, ComponentEvent } from "../index.js"
 import { setContextMenu } from "../context_menu.js"
 import { showErrorPopup } from "../error.js"
@@ -53,7 +53,7 @@ export class Host implements Component {
     }
 
     async forceFetch() {
-        const newCache = await getHost(this.api, this.hostId)
+        const newCache = await apiGetHost(this.api, this.hostId)
         if (newCache == null) {
             showErrorPopup(`failed to fetch host ${this.getHostId()}`)
             return;
@@ -98,7 +98,7 @@ export class Host implements Component {
     private async showDetails() {
         let host = this.cache;
         if (!host || !isDetailedHost(host)) {
-            host = await getHost(this.api, this.hostId)
+            host = await apiGetHost(this.api, this.hostId)
         }
         if (!host || !isDetailedHost(host)) {
             showErrorPopup(`failed to get details for host ${this.hostId}`)
@@ -134,7 +134,7 @@ export class Host implements Component {
     }
 
     private async remove() {
-        const success = await deleteHost(this.api, {
+        const success = await apiDeleteHost(this.api, {
             host_id: this.getHostId()
         })
 
@@ -153,7 +153,7 @@ export class Host implements Component {
             }
         }
 
-        const pinResponse = await postPair(this.api, {
+        const pinResponse = await apiPostPair(this.api, {
             host_id: this.getHostId()
         })
         if (pinResponse == null) {
