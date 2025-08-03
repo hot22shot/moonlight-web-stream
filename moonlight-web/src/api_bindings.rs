@@ -152,3 +152,10 @@ pub struct GetAppsQuery {
 pub struct GetAppsResponse {
     pub apps: Vec<App>,
 }
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct GetAppImageQuery {
+    pub host_id: u32,
+    pub app_id: u32,
+}

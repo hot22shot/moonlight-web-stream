@@ -1,8 +1,9 @@
 import { Component } from "../index.js";
-import { Api } from "../../api.js";
+import { Api, apiGetAppImage } from "../../api.js";
 import { App } from "../../api_bindings.js";
 import { setContextMenu } from "../context_menu.js";
 import { showMessage } from "../modal.js";
+import { APP_NOT_FOUND as APP_NO_IMAGE } from "../../resources/index.js";
 
 export class Game implements Component {
     private api: Api
@@ -10,11 +11,14 @@ export class Game implements Component {
     private hostId: number
     private appId: number
 
+    private mounted: number = 0
     private divElement: HTMLDivElement = document.createElement("div")
 
+    private imageBlob: Blob | null = null
+    private imageBlobUrl: string | null = null
     private imageElement: HTMLImageElement = document.createElement("img")
+
     private imageOverlayElement: HTMLImageElement = document.createElement("img")
-    private nameElement: HTMLElement = document.createElement("p")
 
     private cache: App
 
@@ -28,18 +32,16 @@ export class Game implements Component {
 
         // Configure image
         this.imageElement.classList.add("app-image")
-        this.imageElement.src = "TODO"
+        this.imageElement.src = APP_NO_IMAGE
+
+        this.forceLoadImage()
 
         // Configure image overlay
         this.imageOverlayElement.classList.add("app-image-overlay")
 
-        // Configure name
-        this.nameElement.classList.add("app-name")
-
         // Append elements
         this.divElement.appendChild(this.imageElement)
         this.divElement.appendChild(this.imageOverlayElement)
-        this.divElement.appendChild(this.nameElement)
 
         this.divElement.addEventListener("click", this.onClick.bind(this))
         this.divElement.addEventListener("contextmenu", this.onContextMenu.bind(this))
@@ -47,14 +49,39 @@ export class Game implements Component {
         this.updateCache(game)
     }
 
-    updateCache(cache: App) {
-        this.nameElement.innerText = cache.title
+    async forceLoadImage() {
+        this.imageBlob = await apiGetAppImage(this.api, {
+            host_id: this.hostId,
+            app_id: this.appId
+        })
 
+        this.updateImage()
+    }
+    private updateImage() {
+        // generate and set url
+        if (this.imageBlob && !this.imageBlobUrl && this.mounted > 0) {
+            this.imageBlobUrl = URL.createObjectURL(this.imageBlob)
+
+            this.imageElement.classList.add("app-image-loaded")
+            this.imageElement.src = this.imageBlobUrl
+        }
+
+        // revoke url
+        if (this.imageBlobUrl && this.mounted <= 0) {
+            URL.revokeObjectURL(this.imageBlobUrl)
+
+            this.imageElement.classList.remove("app-image-loaded")
+            this.imageElement.src = ""
+        }
+    }
+
+    updateCache(cache: App) {
         this.cache = cache
     }
 
     private async onClick() {
-        // TODO: start stream
+        // TODO
+        await showMessage("NOT YET IMPLEMENTED: STREAMING")
     }
 
     private onContextMenu(event: MouseEvent) {
@@ -74,8 +101,8 @@ export class Game implements Component {
         const app = this.cache
 
         await showMessage(
-            `Id: ${app.app_id}\n` +
             `Title: ${app.title}\n` +
+            `Id: ${app.app_id}\n` +
             `HDR Supported: ${app.is_hdr_supported}\n`
         )
     }
@@ -88,9 +115,15 @@ export class Game implements Component {
     }
 
     mount(parent: HTMLElement): void {
+        this.mounted++
+        this.updateImage()
+
         parent.appendChild(this.divElement)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.divElement)
+
+        this.mounted--
+        this.updateImage()
     }
 }

@@ -157,12 +157,13 @@ body {
     text-align: center;
 }
 
-/** */
+/** Apps */
 .app-list {
     list-style-type: none;
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 10px;
 }
 
 .app-element {
@@ -176,13 +177,28 @@ body {
     transition: opacity 0.05s linear;
 }
 
+.app-element>div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 10px;
+}
+
 .app-element:hover {
     transition: all 0.2s;
     background-color: rgba(255, 255, 255, 0.2);
 }
 
-.app-name {
-    margin: 0;
-    font-size: 0.7cm;
-    text-align: center;
+.app-image {
+    /** Ratio: w:h 200:266 */
+    width: 200px;
+    height: 266px;
+    /** animation */
+    opacity: 0;
+}
+
+.app-image-loaded {
+    /** animation */
+    opacity: 1;
+    transition: all 0.3s linear;
 }

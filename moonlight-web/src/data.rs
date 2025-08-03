@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
-use actix_web::web::Data;
+use actix_web::web::{Bytes, Data};
 use log::warn;
 use moonlight_common::{
     MoonlightInstance,
@@ -41,6 +41,7 @@ pub struct PairedHost {
 pub struct RuntimeApiHost {
     pub moonlight: MoonlightHost<MaybePaired>,
     pub pair_info: Option<PairedHost>,
+    pub app_images_cache: HashMap<u32, Bytes>,
 }
 
 pub struct RuntimeApiData {
@@ -61,6 +62,7 @@ impl RuntimeApiData {
             hosts.insert(Mutex::new(RuntimeApiHost {
                 moonlight: host,
                 pair_info: host_data.paired,
+                app_images_cache: Default::default(),
             }));
         }
 

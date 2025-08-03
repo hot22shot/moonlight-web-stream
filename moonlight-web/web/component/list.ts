@@ -127,6 +127,7 @@ export class ListComponent<T extends Component> implements Component {
     }
 
     mount(parent: Element): void {
+        // TODO: mount and unmount here: maybe counter!
         parent.appendChild(this.listElement)
     }
     unmount(parent: Element): void {

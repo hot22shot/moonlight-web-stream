@@ -133,9 +133,15 @@ class MainApp implements Component {
             return
         }
 
-        // If we're already in the correct state
-        if (this.currentDisplay == "games" && this.gameList?.getHostId() == hostId) {
-            return
+        // The old state is games
+        if (this.currentDisplay == "games") {
+            if (this.gameList?.getHostId() == hostId) {
+                // If we're already in the correct state
+                return
+            } else {
+                // If we're going to a different host
+                this.gameList?.unmount(this.divElement)
+            }
         }
 
         // Unmount host view if we're in the host view

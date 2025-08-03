@@ -17,9 +17,9 @@ use tokio::sync::Mutex;
 use crate::{
     Config,
     api_bindings::{
-        DeleteHostQuery, DetailedHost, GetAppsQuery, GetAppsResponse, GetHostQuery,
-        GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
-        PutHostRequest, PutHostResponse, UndetailedHost,
+        DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
+        GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1,
+        PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost,
     },
     data::{PairedHost, RuntimeApiData, RuntimeApiHost},
 };
@@ -118,6 +118,7 @@ async fn put_host(
     hosts.insert(Mutex::new(RuntimeApiHost {
         moonlight: host,
         pair_info: None,
+        app_images_cache: Default::default(),
     }));
 
     drop(hosts);
@@ -301,6 +302,43 @@ async fn get_apps(
     }))
 }
 
+#[get("app/image")]
+async fn get_app_image(
+    data: Data<RuntimeApiData>,
+    Query(query): Query<GetAppImageQuery>,
+) -> Either<Bytes, HttpResponse> {
+    let hosts = data.hosts.read().await;
+
+    let host_id = query.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return Either::Right(HttpResponse::NotFound().finish());
+    };
+    let mut host = host.lock().await;
+
+    let app_id = query.app_id;
+    if let Some(cache) = host.app_images_cache.get(&app_id) {
+        return Either::Left(cache.clone());
+    }
+
+    let image = host.moonlight.request_app_image(app_id).await;
+    match image {
+        None => {
+            // Not paired
+            todo!()
+        }
+        Some(Err(err)) => {
+            warn!("failed to get host {host_id} app image {app_id}: {err:?}");
+
+            Either::Right(HttpResponse::InternalServerError().finish())
+        }
+        Some(Ok(image)) => {
+            host.app_images_cache.insert(app_id, image.clone());
+
+            Either::Left(image)
+        }
+    }
+}
+
 /// IMPORTANT: This won't authenticate clients -> everyone can use this api
 /// Put a guard or similar before this service
 pub fn api_service() -> impl HttpServiceFactory {
@@ -311,7 +349,8 @@ pub fn api_service() -> impl HttpServiceFactory {
         put_host,
         delete_host,
         pair_host,
-        get_apps
+        get_apps,
+        get_app_image,
     ]
 }
 

@@ -377,8 +377,10 @@ impl MoonlightHost<MaybePaired> {
         Ok(())
     }
 
-    // TODO: also return a reference
-    pub async fn app_list(&mut self) -> Option<Result<Vec<App>, ApiError>> {
+    async fn try_exec_paired<R>(
+        &mut self,
+        f: impl AsyncFnOnce(&mut MoonlightHost<Paired>) -> R,
+    ) -> Option<R> {
         let paired = match &self.paired {
             MaybePaired::Unpaired(_) => return None,
             MaybePaired::Paired(paired) => paired,
@@ -394,12 +396,18 @@ impl MoonlightHost<MaybePaired> {
             paired: paired.as_ref().clone(),
         };
 
-        let app_list = match copy.app_list().await {
-            Err(err) => return Some(Err(err)),
-            Ok(value) => value,
-        };
+        let result = f(&mut copy).await;
 
-        Some(Ok(app_list.to_vec()))
+        Some(result)
+    }
+    // TODO: also return a reference
+    pub async fn app_list(&mut self) -> Option<Result<Vec<App>, ApiError>> {
+        self.try_exec_paired(async |paired| paired.app_list().await.map(|x| x.to_vec()))
+            .await
+    }
+    pub async fn request_app_image(&mut self, app_id: u32) -> Option<Result<Bytes, ApiError>> {
+        self.try_exec_paired(async move |paired| paired.request_app_image(app_id).await)
+            .await
     }
 
     pub fn server_certificate(&self) -> Option<&Pem> {

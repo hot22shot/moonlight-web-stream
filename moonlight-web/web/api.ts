@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DetailedHost, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showPrompt } from "./component/modal.js";
 
@@ -49,7 +49,6 @@ export type Api = {
 export type ApiFetchInit = {
     json?: any,
     query?: any,
-    response?: "json" | "ignore"
 }
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
@@ -57,9 +56,9 @@ export function isDetailedHost(host: UndetailedHost | DetailedHost): host is Det
 }
 
 export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any | null>
-export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response>
+export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response | null>
 
-export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: ApiFetchInit) {
+export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: { response?: "json" | "ignore" } & ApiFetchInit) {
     const query = new URLSearchParams(init?.query)
     const queryString = query.size > 0 ? `?${query.toString()}` : "";
 
@@ -177,4 +176,19 @@ export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<A
     const response = await fetchApi(api, "apps", "get", { query }) as GetAppsResponse
 
     return response?.apps
+}
+
+export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise<Blob | null> {
+    const response = await fetchApi(api, "app/image", "get", {
+        query,
+        response: "ignore"
+    })
+
+    if (!response) {
+        return null
+    }
+
+    const data = await response.blob()
+
+    return data
 }
