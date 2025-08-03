@@ -1,10 +1,13 @@
 import { Api, getApi, apiPutHost } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
-import { Component, ComponentHost } from "./component/index.js";
+import { Component, ComponentEvent, ComponentHost } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { showModal } from "./component/modal.js";
 import { setContextMenu } from "./component/context_menu.js";
+import { GameList } from "./component/game/list.js";
+import { Host } from "./component/host/index.js";
+import { App } from "./api_bindings.js";
 
 // TODO: error handler with popup
 
@@ -29,9 +32,14 @@ startApp()
 class MainApp implements Component {
     private api: Api
 
+    private divElement = document.createElement("div")
+
     private moonlightTextElement = document.createElement("h1")
     private hostAddButton: HTMLButtonElement = document.createElement("button")
+
+    private currentDisplay: "hosts" | "games" = "hosts"
     private hostList: HostList
+    private gameList: GameList | null = null
 
     constructor(api: Api) {
         this.api = api
@@ -45,9 +53,14 @@ class MainApp implements Component {
 
         // Host list
         this.hostList = new HostList(api)
+        this.hostList.addHostOpenListener(this.onHostOpen.bind(this))
+
+        // Append default elements
+        this.divElement.appendChild(this.moonlightTextElement)
+        this.divElement.appendChild(this.hostAddButton)
+        this.hostList.mount(this.divElement)
 
         // Context Menu
-        // TODO: create div and set this on it
         document.body.addEventListener("contextmenu", this.onContextMenu.bind(this))
     }
 
@@ -81,6 +94,32 @@ class MainApp implements Component {
         })
     }
 
+    private async onHostOpen(event: ComponentEvent<Host>) {
+        const hostId = event.component.getHostId()
+
+        this.setCurrentGames(hostId)
+    }
+    private setCurrentGames(hostId: number | null, cache?: Array<App>) {
+        if (hostId == null) {
+            if (this.currentDisplay == "games") {
+                this.gameList?.unmount(this.divElement)
+                this.hostList.mount(this.divElement)
+            }
+
+            this.currentDisplay = "hosts"
+            return
+        }
+
+        if (this.currentDisplay == "games" && this.gameList?.getHostId() == hostId) {
+            return
+        }
+
+        this.gameList = new GameList(this.api, hostId, cache ?? null)
+        this.gameList.mount(this.divElement)
+
+        this.currentDisplay = "games"
+    }
+
     async forceFetch() {
         await Promise.all([
             this.hostList.forceFetch()
@@ -88,13 +127,9 @@ class MainApp implements Component {
     }
 
     mount(parent: HTMLElement): void {
-        parent.appendChild(this.moonlightTextElement)
-        parent.appendChild(this.hostAddButton)
-        this.hostList.mount(parent)
+        parent.appendChild(this.divElement)
     }
     unmount(parent: HTMLElement): void {
-        parent.removeChild(this.moonlightTextElement)
-        parent.removeChild(this.hostAddButton)
-        this.hostList.unmount(parent)
+        parent.removeChild(this.divElement)
     }
 }

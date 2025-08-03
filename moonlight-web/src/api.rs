@@ -332,7 +332,29 @@ async fn get_apps(
     data: Data<RuntimeApiData>,
     Query(query): Query<GetAppsQuery>,
 ) -> Either<Json<GetAppsResponse>, HttpResponse> {
-    todo!()
+    let Ok(hosts) = data.hosts.read() else {
+        // TODO: warn
+        return Either::Right(HttpResponse::InternalServerError().finish());
+    };
+
+    let host_id = query.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return Either::Right(HttpResponse::NotFound().finish());
+    };
+
+    let Ok(mut host) = host.lock() else {
+        return Either::Right(HttpResponse::InternalServerError().finish());
+    };
+
+    let app_list = match host.moonlight.app_list().await {
+        None => todo!(), // NO auth
+        Some(Err(err)) => return Either::Right(HttpResponse::InternalServerError().finish()),
+        Some(Ok(value)) => value,
+    };
+
+    Either::Left(Json(GetAppsResponse {
+        apps: app_list.into_iter().map(|x| x.into()).collect(),
+    }))
 }
 
 /// IMPORTANT: This won't authenticate clients -> everyone can use this api

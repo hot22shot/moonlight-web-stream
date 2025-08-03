@@ -6,7 +6,7 @@ import { showErrorPopup } from "../error.js"
 import { showMessage } from "../modal.js"
 import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE } from "../../resources/index.js"
 
-export type HostRemoveEventListener = (event: ComponentEvent<Host>) => void
+export type HostEventListener = (event: ComponentEvent<Host>) => void
 
 export class Host implements Component {
     private api: Api
@@ -64,7 +64,7 @@ export class Host implements Component {
 
     private async onClick() {
         if (this.cache?.paired == "Paired") {
-            // TODO: go into games view
+            this.divElement.dispatchEvent(new ComponentEvent("ml-hostopen", this))
         } else {
             await this.pair()
         }
@@ -126,11 +126,18 @@ export class Host implements Component {
         )
     }
 
-    addHostRemoveListener(listener: HostRemoveEventListener, options?: EventListenerOptions) {
+    addHostRemoveListener(listener: HostEventListener, options?: EventListenerOptions) {
         this.divElement.addEventListener("ml-hostremove", listener as EventListenerOrEventListenerObject, options)
     }
-    removeHostRemoveListener(listener: HostRemoveEventListener, options?: EventListenerOptions) {
+    removeHostRemoveListener(listener: HostEventListener, options?: EventListenerOptions) {
         this.divElement.removeEventListener("ml-hostremove", listener as EventListenerOrEventListenerObject, options)
+    }
+
+    addHostOpenListener(listener: HostEventListener, options?: EventListenerOptions) {
+        this.divElement.addEventListener("ml-hostopen", listener as EventListenerOrEventListenerObject, options)
+    }
+    removeHostOpenListener(listener: HostEventListener, options?: EventListenerOptions) {
+        this.divElement.removeEventListener("ml-hostopen", listener as EventListenerOrEventListenerObject, options)
     }
 
     private async remove() {

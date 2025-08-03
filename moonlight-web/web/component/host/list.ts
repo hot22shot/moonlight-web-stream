@@ -1,12 +1,13 @@
 import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
 import { Api, apiGetHosts } from "../../api.js"
 import { Component, ComponentEvent } from "../index.js"
-import { Host } from "./index.js"
+import { Host, HostEventListener } from "./index.js"
 import { ListComponent } from "../list.js"
 
 export class HostList implements Component {
     private api: Api
 
+    private eventTarget = new EventTarget()
     private list: ListComponent<Host>
 
     constructor(api: Api) {
@@ -55,9 +56,11 @@ export class HostList implements Component {
             hostComponent.updateCache(host)
         } else {
             const newHost = new Host(this.api, host.host_id, host)
+
             this.list.append(newHost)
 
             newHost.addHostRemoveListener(this.removeHostListener.bind(this))
+            newHost.addHostOpenListener(this.onHostOpenEvent.bind(this))
         }
     }
     removeHost(hostId: number) {
@@ -66,11 +69,23 @@ export class HostList implements Component {
         if (index != -1) {
             const hostComponent = this.list.remove(index)
 
+            hostComponent?.addHostOpenListener(this.onHostOpenEvent.bind(this))
             hostComponent?.removeHostRemoveListener(this.removeHostListener.bind(this))
         }
     }
     getHost(hostId: number): Host | undefined {
         return this.list.get().find(host => host.getHostId() == hostId)
+    }
+
+    private onHostOpenEvent(event: ComponentEvent<Host>) {
+        this.eventTarget.dispatchEvent(new ComponentEvent("ml-hostopen", event.component))
+    }
+
+    addHostOpenListener(listener: HostEventListener, options?: EventListenerOptions) {
+        this.eventTarget.addEventListener("ml-hostopen", listener as EventListenerOrEventListenerObject, options)
+    }
+    removeHostOpenListener(listener: HostEventListener, options?: EventListenerOptions) {
+        this.eventTarget.removeEventListener("ml-hostopen", listener as EventListenerOrEventListenerObject, options)
     }
 
     mount(parent: Element): void {

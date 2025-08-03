@@ -350,6 +350,7 @@ impl MoonlightHost<MaybePaired> {
         device_name: String,
         pin: PairPin,
     ) -> Result<(), PairError> {
+        // TODO: more non wasteful method
         let copy = Self {
             address: self.address.clone(),
             client: self.client.clone(),
@@ -373,6 +374,31 @@ impl MoonlightHost<MaybePaired> {
         swap(self, &mut paired);
 
         Ok(())
+    }
+
+    // TODO: also return a reference
+    pub async fn app_list(&mut self) -> Option<Result<Vec<App>, ApiError>> {
+        let paired = match &self.paired {
+            MaybePaired::Unpaired(_) => return None,
+            MaybePaired::Paired(paired) => paired,
+        };
+
+        // TODO: more non wasteful method
+        let mut copy: MoonlightHost<Paired> = MoonlightHost {
+            address: self.address.clone(),
+            client: self.client.clone(),
+            client_unique_id: self.client_unique_id.clone(),
+            http_port: self.http_port,
+            info: self.info.clone(),
+            paired: paired.as_ref().clone(),
+        };
+
+        let app_list = match copy.app_list().await {
+            Err(err) => return Some(Err(err)),
+            Ok(value) => value,
+        };
+
+        Some(Ok(app_list.to_vec()))
     }
 
     pub fn server_certificate(&self) -> Option<&Pem> {
