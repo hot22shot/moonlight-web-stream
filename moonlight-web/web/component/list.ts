@@ -36,6 +36,15 @@ export class ListComponent<T extends Component> implements Component {
         return div
     }
 
+    private onElementInserted(index: number) {
+        const element = this.divElements[index]
+
+        // let the element render and then add "show" for transitions :)
+        setTimeout(() => {
+            element.classList.add("show")
+        }, 0)
+    }
+
     private internalUnmountUntil(index: number) {
         for (let i = this.list.length - 1; i >= index; i--) {
             const divElement = this.divAt(i)
@@ -70,6 +79,8 @@ export class ListComponent<T extends Component> implements Component {
 
             this.internalMountFrom(index)
         }
+
+        this.onElementInserted(index)
     }
     remove(index: number): T | null {
         if (index == this.list.length - 1) {
