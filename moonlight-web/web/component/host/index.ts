@@ -3,7 +3,7 @@ import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair } from "../
 import { Component, ComponentEvent } from "../index.js"
 import { setContextMenu } from "../context_menu.js"
 import { showErrorPopup } from "../error.js"
-import { showMessage } from "../modal.js"
+import { showMessage } from "../modal/index.js"
 import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE } from "../../resources/index.js"
 
 export type HostEventListener = (event: ComponentEvent<Host>) => void

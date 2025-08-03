@@ -3,7 +3,7 @@ import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent, ComponentHost } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { showModal } from "./component/modal.js";
+import { showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
@@ -64,7 +64,7 @@ class MainApp implements Component {
         this.gamesBackButton.addEventListener("click", () => this.setCurrentGames(null))
 
         // Host add button
-        this.hostAddButton.innerText = "Add Host"
+        this.hostAddButton.classList.add("host-add")
         this.hostAddButton.addEventListener("click", this.addHost.bind(this))
 
         // Host list

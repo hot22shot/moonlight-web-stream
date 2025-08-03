@@ -1,27 +1,34 @@
 import { PutHostRequest } from "../../api_bindings.js"
-import { FormModal } from "../modal.js"
+import { FormModal } from "../modal/form.js"
 
 export class AddHostModal extends FormModal<PutHostRequest> {
 
-    private addressElement: HTMLInputElement = document.createElement("input")
-    private httpPortElement: HTMLInputElement = document.createElement("input")
+    private addressLabel: HTMLLabelElement = document.createElement("label")
+    private addressInput: HTMLInputElement = document.createElement("input")
+
+    private httpPortLabel: HTMLLabelElement = document.createElement("label")
+    private httpPortInput: HTMLInputElement = document.createElement("input")
 
     constructor() {
         super()
 
-        this.addressElement.type = "text"
+        this.addressLabel.innerText = "Address"
+        this.addressInput.type = "text"
+        this.addressLabel.appendChild(this.addressInput)
 
-        this.httpPortElement.type = "text"
-        this.httpPortElement.inputMode = "numeric"
+        this.httpPortLabel.innerText = "Port"
+        this.httpPortInput.type = "text"
+        this.httpPortInput.inputMode = "numeric"
+        this.httpPortLabel.appendChild(this.httpPortInput)
     }
 
     reset(): void {
-        this.addressElement.value = ""
-        this.httpPortElement.value = ""
+        this.addressInput.value = ""
+        this.httpPortInput.value = ""
     }
     submit(): PutHostRequest | null {
-        const address = this.addressElement.value
-        const httpPort = this.httpPortElement.valueAsNumber
+        const address = this.addressInput.value
+        const httpPort = this.httpPortInput.valueAsNumber
 
         return {
             address,
@@ -30,7 +37,7 @@ export class AddHostModal extends FormModal<PutHostRequest> {
     }
 
     mountForm(form: HTMLFormElement): void {
-        form.appendChild(this.addressElement)
-        form.appendChild(this.httpPortElement)
+        form.appendChild(this.addressLabel)
+        form.appendChild(this.httpPortLabel)
     }
 }

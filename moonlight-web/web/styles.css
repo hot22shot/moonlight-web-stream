@@ -4,6 +4,22 @@ body {
     font-family: sans-serif;
 }
 
+button {
+    background-color: rgba(63, 81, 181, 1.0);
+    border: none;
+    border-radius: 5px;
+    padding: 5px;
+    margin-right: 5px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    font-size: 1.2rem;
+}
+
+button:hover {
+    /** background-color: rgba(255, 255, 255, 0.2); */
+    transition: all 0.2s;
+}
+
 /** Modal */
 .modal-background {
     display: block;
@@ -128,6 +144,15 @@ body {
 }
 
 /** Hosts */
+.host-add {
+    background-image: url("resources/ic_add_to_queue_white_48px.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
 .host-list {
     list-style-type: none;
     display: flex;
@@ -156,7 +181,7 @@ body {
 
 .host-name {
     margin: 0;
-    font-size: 1.4cm;
+    font-size: 3rem;
     text-align: center;
 }
 

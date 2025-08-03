@@ -2,8 +2,8 @@ import { Component } from "../index.js";
 import { Api, apiGetAppImage } from "../../api.js";
 import { App } from "../../api_bindings.js";
 import { setContextMenu } from "../context_menu.js";
-import { showMessage } from "../modal.js";
-import { APP_NOT_FOUND as APP_NO_IMAGE } from "../../resources/index.js";
+import { showMessage } from "../modal/index.js";
+import { APP_NO_IMAGE } from "../../resources/index.js";
 
 export class Game implements Component {
     private api: Api

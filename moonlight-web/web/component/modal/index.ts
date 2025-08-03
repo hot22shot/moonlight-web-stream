@@ -1,5 +1,6 @@
-import { Component } from "./index.js"
-import { showErrorPopup } from "./error.js"
+import { Component } from "../index.js"
+import { showErrorPopup } from "../error.js"
+import { FormModal } from "./form.js"
 
 export interface Modal<Output> extends Component {
     onFinish(): Promise<Output>
@@ -9,6 +10,11 @@ let modalUsed = false
 let modalBackground = document.getElementById("modal-overlay")
 let modalParent = document.getElementById("modal-parent")
 let previousModal: Modal<unknown> | null = null
+
+// Don't allow context menu event through this background
+modalBackground?.addEventListener("contextmenu", event => {
+    event.stopImmediatePropagation()
+})
 
 export async function showModal<Output>(modal: Modal<Output>): Promise<Output | null> {
     if (modalParent == null) {
@@ -41,66 +47,7 @@ export async function showModal<Output>(modal: Modal<Output>): Promise<Output | 
     return output
 }
 
-export abstract class FormModal<Output> implements Component, Modal<Output | null> {
-
-    private formElement: HTMLFormElement = document.createElement("form")
-    private mounted: boolean = false
-    private submitButton: HTMLButtonElement = document.createElement("button")
-    private cancelButton: HTMLButtonElement = document.createElement("button")
-
-    constructor() {
-        this.submitButton.type = "submit"
-        this.submitButton.innerText = "Ok"
-
-        this.cancelButton.innerText = "Cancel"
-    }
-
-    abstract reset(): void
-    abstract submit(): Output | null
-
-    abstract mountForm(form: HTMLFormElement): void
-
-    mount(parent: Element): void {
-        if (!this.mounted) {
-            this.mountForm(this.formElement)
-            this.formElement.appendChild(this.submitButton)
-            this.formElement.appendChild(this.cancelButton)
-        }
-
-        this.reset()
-
-        parent.appendChild(this.formElement)
-    }
-    unmount(parent: Element): void {
-        parent.removeChild(this.formElement)
-    }
-
-    onFinish(): Promise<Output | null> {
-        const abortController = new AbortController()
-
-        return new Promise((resolve, reject) => {
-            this.formElement.addEventListener("submit", event => {
-                event.preventDefault()
-
-                const output = this.submit()
-
-                if (output == null) {
-                    return
-                }
-
-                abortController.abort()
-                resolve(output)
-            }, { signal: abortController.signal })
-
-            this.cancelButton.addEventListener("click", event => {
-                event.preventDefault()
-
-                abortController.abort()
-                resolve(null)
-            }, { signal: abortController.signal })
-        })
-    }
-}
+/// --- Helper Modals
 
 export async function showPrompt(prompt: string, promptInit?: PromptInit): Promise<string | null> {
     const modal = new PromptModal(prompt, promptInit)
@@ -198,4 +145,3 @@ class MessageModal implements Component, Modal<void> {
         })
     }
 }
-
