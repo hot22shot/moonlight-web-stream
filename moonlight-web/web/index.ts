@@ -9,7 +9,10 @@ import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
 import { App } from "./api_bindings.js";
 
-// TODO: error handler with popup
+type AppState = { display: number | "hosts" }
+function pushAppState(state: AppState) {
+    history.pushState(state, "")
+}
 
 async function startApp() {
     const api = await getApi()
@@ -20,14 +23,19 @@ async function startApp() {
         return;
     }
 
-    const rootComponent = new MainApp(api)
-    const root = new ComponentHost(rootElement, rootComponent)
+    const app = new MainApp(api)
+    const root = new ComponentHost(rootElement, app)
 
-    rootComponent.forceFetch()
+    app.forceFetch()
+
+    window.addEventListener("popstate", event => {
+        app.setAppState(event.state)
+    })
 }
 
 console.log("starting app")
 startApp()
+
 
 class MainApp implements Component {
     private api: Api
@@ -62,6 +70,16 @@ class MainApp implements Component {
 
         // Context Menu
         document.body.addEventListener("contextmenu", this.onContextMenu.bind(this))
+
+        pushAppState({ display: "hosts" })
+    }
+
+    setAppState(state: AppState) {
+        if (state.display == "hosts") {
+            this.setCurrentGames(null)
+        } else {
+            this.setCurrentGames(state.display)
+        }
     }
 
     private async addHost() {
@@ -106,6 +124,9 @@ class MainApp implements Component {
             if (this.currentDisplay == "games") {
                 this.gameList?.unmount(this.divElement)
                 this.hostList.mount(this.divElement)
+
+                // Push new state
+                pushAppState({ display: "hosts" })
             }
 
             this.currentDisplay = "hosts"
@@ -117,9 +138,11 @@ class MainApp implements Component {
             return
         }
 
-        // Unmount host view if present
+        // Unmount host view if we're in the host view
         if (this.currentDisplay == "hosts") {
             this.hostList.unmount(this.divElement)
+
+            pushAppState({ display: "hosts" })
         }
 
         // Mount game view
