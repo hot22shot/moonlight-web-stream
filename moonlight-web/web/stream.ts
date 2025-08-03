@@ -88,7 +88,6 @@ class Stream {
 
     private ws: WebSocket
     private rtc: RTCPeerConnection
-    private channel: RTCDataChannel
 
     constructor(api: Api, hostId: number, appId: number) {
         this.api = api
@@ -109,10 +108,9 @@ class Stream {
             iceCandidatePoolSize: 10,
         })
         this.rtc.ontrack = this.onTrack.bind(this)
-        this.rtc.ondatachannel = this.onDataChannelCreated.bind(this)
         this.rtc.onicecandidate = this.onIceCandidate.bind(this)
 
-        this.channel = this.rtc.createDataChannel("test")
+        this.rtc.ondatachannel = this.onDataChannelCreated.bind(this)
     }
 
     // Send Offer
@@ -150,12 +148,12 @@ class Stream {
                 usernameFragment: candidate.username_fragment
             }
 
-            this.rtc.addIceCandidate(candidateJson)
+            this.addIceCandidate(candidateJson)
         } else if ("Answer" in message) {
             // Set Remote Description
             const answer_sdp = message.Answer.answer_sdp
 
-            this.rtc.setRemoteDescription({
+            this.setRemoteDescription({
                 type: "answer",
                 sdp: answer_sdp
             })
@@ -193,18 +191,18 @@ class Stream {
     }
 
     // -- Raw Web Socket stuff
-    private wsNotConnectedBuffer: Array<StreamClientMessage> = []
+    private wsMessageBuffer: Array<StreamClientMessage> = []
     private sendWsMessage(message: StreamClientMessage) {
         if (this.ws.readyState == WebSocket.OPEN) {
             this.ws.send(JSON.stringify(message))
 
-            if (this.wsNotConnectedBuffer.length != 0) {
-                for (const message of this.wsNotConnectedBuffer.splice(0, this.wsNotConnectedBuffer.length)) {
+            if (this.wsMessageBuffer.length != 0) {
+                for (const message of this.wsMessageBuffer.splice(0, this.wsMessageBuffer.length)) {
                     this.ws.send(JSON.stringify(message))
                 }
             }
         } else {
-            this.wsNotConnectedBuffer.push(message)
+            this.wsMessageBuffer.push(message)
         }
     }
     private onWsMessage(event: MessageEvent) {
@@ -222,6 +220,24 @@ class Stream {
     }
 
     // -- Raw Peer Connection stuff
+    private iceCandidateBuffer: Array<RTCIceCandidateInit> = []
+    private addIceCandidate(candidate: RTCIceCandidateInit) {
+        if (this.rtc.remoteDescription != null) {
+            this.rtc.addIceCandidate(candidate)
+        } else {
+            this.iceCandidateBuffer.push(candidate)
+        }
+    }
+
+    private async setRemoteDescription(description: RTCSessionDescriptionInit) {
+        await this.rtc.setRemoteDescription(description)
+
+        // add bufferd ice candidates
+        for (const candidate of this.iceCandidateBuffer.splice(0, this.iceCandidateBuffer.length)) {
+            this.addIceCandidate(candidate)
+        }
+    }
+
     private onDataChannelCreated(event: RTCDataChannelEvent) {
         console.info(event)
     }

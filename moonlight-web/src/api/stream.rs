@@ -188,6 +188,9 @@ async fn start_connection(
         })
     });
 
+    // Create test data channel
+    let channel = peer.create_data_channel("test", None).await?;
+
     // Create and Add a video track
     let video_track = Arc::new(TrackLocalStaticSample::new(
         RTCRtpCodecCapability {
