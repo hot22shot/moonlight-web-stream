@@ -11,14 +11,12 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
     private eventTarget = new EventTarget()
 
     constructor(api: Api) {
-        super()
-
-        this.api = api
-
-        this.list = new ListComponent([], {
+        super({
             listElementClasses: ["host-list"],
             componentDivClasses: ["host-element"]
         })
+
+        this.api = api
     }
 
     async forceFetch() {
@@ -37,7 +35,7 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
         return data.host_id
     }
 
-    protected insertList(dataId: number, data: DetailedHost | UndetailedHost | null): void {
+    public insertList(dataId: number, data: DetailedHost | UndetailedHost | null): void {
         const newHost = new Host(this.api, dataId, data)
 
         this.list.append(newHost)
@@ -45,7 +43,7 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
         newHost.addHostRemoveListener(this.removeHostListener.bind(this))
         newHost.addHostOpenListener(this.onHostOpenEvent.bind(this))
     }
-    protected removeList(listIndex: number): void {
+    public removeList(listIndex: number): void {
         const hostComponent = this.list.remove(listIndex)
 
         hostComponent?.addHostOpenListener(this.onHostOpenEvent.bind(this))

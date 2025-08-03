@@ -119,6 +119,6 @@ export class ListComponent<T extends Component> implements Component {
         parent.appendChild(this.listElement)
     }
     unmount(parent: Element): void {
-        parent.appendChild(this.listElement)
+        parent.removeChild(this.listElement)
     }
 }

@@ -1,14 +1,11 @@
-import { Component, FetchComponent } from "."
-import { ListComponent } from "./list"
+import { Component, FetchComponent } from "./index.js"
+import { ListComponent, ListComponentInit } from "./list.js"
 
 export abstract class FetchListComponent<Data, T extends Component> implements FetchComponent<Data>, Component {
     protected list: ListComponent<T>
 
-    constructor() {
-        this.list = new ListComponent([], {
-            listElementClasses: ["host-list"],
-            componentDivClasses: ["host-element"]
-        })
+    constructor(listInit?: ListComponentInit) {
+        this.list = new ListComponent([], listInit)
     }
 
     protected abstract updateComponentData(component: T, data: Data): void
@@ -51,7 +48,7 @@ export abstract class FetchListComponent<Data, T extends Component> implements F
         }
     }
 
-    protected abstract insertList(dataId: number, data: Data | null): void
+    protected abstract insertList(dataId: number, data: Data): void
     protected removeList(listIndex: number) {
         this.list.remove(listIndex)
     }

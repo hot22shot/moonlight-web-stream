@@ -1,29 +1,24 @@
 import { Api, apiGetApps } from "../../api.js";
 import { App } from "../../api_bindings.js";
-import { Component } from "../index.js";
-import { ListComponent } from "../list.js";
+import { showErrorPopup } from "../error.js";
+import { FetchListComponent } from "../fetch_list.js";
 import { Game } from "./index.js";
 
 // TODO: move to fetch list
-export class GameList implements Component {
+export class GameList extends FetchListComponent<App, Game> {
     private api: Api
 
     private hostId: number
 
-    private list: ListComponent<Game>
-
-    private cache: App | null = null
-
     constructor(api: Api, hostId: number, cache: App[] | null) {
+        super({
+            listElementClasses: ["app-list"],
+            componentDivClasses: ["app-element"]
+        })
+
         this.api = api
 
         this.hostId = hostId
-
-        // List component
-        this.list = new ListComponent([], {
-            componentDivClasses: ["app-list"],
-            listElementClasses: ["app-element"]
-        })
 
         // Update cache
         if (cache != null) {
@@ -38,11 +33,24 @@ export class GameList implements Component {
             host_id: this.hostId
         })
 
-        this.updateCache(apps)
+        if (apps) {
+            this.updateCache(apps)
+        } else {
+            showErrorPopup(`failed to fetch apps for host ${this.getHostId()}`)
+        }
     }
 
-    updateCache(cache: App[] | null) {
-        // TODO: fix
+    protected updateComponentData(component: Game, data: App): void {
+        component.updateCache(data)
+    }
+    protected getComponentDataId(component: Game): number {
+        return component.getAppId()
+    }
+    protected getDataId(data: App): number {
+        return data.app_id
+    }
+    protected insertList(dataId: number, data: App): void {
+        this.list.append(new Game(this.api, this.hostId, dataId, data))
     }
 
     getHostId(): number {

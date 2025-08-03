@@ -72,7 +72,7 @@ class MainApp implements Component {
             const newHost = await apiPutHost(this.api, host)
 
             if (newHost) {
-                this.hostList.insertUpdateHost(newHost)
+                this.hostList.insertList(newHost.host_id, newHost)
             } else {
                 showErrorPopup("couldn't add host")
             }
@@ -100,7 +100,9 @@ class MainApp implements Component {
         this.setCurrentGames(hostId)
     }
     private setCurrentGames(hostId: number | null, cache?: Array<App>) {
+        // We want to transition to host view
         if (hostId == null) {
+            // We aren't currently in host view
             if (this.currentDisplay == "games") {
                 this.gameList?.unmount(this.divElement)
                 this.hostList.mount(this.divElement)
@@ -110,10 +112,17 @@ class MainApp implements Component {
             return
         }
 
+        // If we're already in the correct state
         if (this.currentDisplay == "games" && this.gameList?.getHostId() == hostId) {
             return
         }
 
+        // Unmount host view if present
+        if (this.currentDisplay == "hosts") {
+            this.hostList.unmount(this.divElement)
+        }
+
+        // Mount game view
         this.gameList = new GameList(this.api, hostId, cache ?? null)
         this.gameList.mount(this.divElement)
 
@@ -122,8 +131,16 @@ class MainApp implements Component {
 
     async forceFetch() {
         await Promise.all([
-            this.hostList.forceFetch()
+            this.hostList.forceFetch(),
+            this.gameList?.forceFetch()
         ])
+
+        if (this.currentDisplay == "games" &&
+            this.gameList &&
+            !this.hostList.getHost(this.gameList.getHostId())) {
+            // The newly fetched list doesn't contain the hosts game view we're in -> go to hosts
+            this.setCurrentGames(null)
+        }
     }
 
     mount(parent: HTMLElement): void {

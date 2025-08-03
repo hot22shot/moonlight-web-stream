@@ -48,6 +48,8 @@ export class Game implements Component {
     }
 
     updateCache(cache: App) {
+        this.nameElement.innerText = cache.title
+
         this.cache = cache
     }
 

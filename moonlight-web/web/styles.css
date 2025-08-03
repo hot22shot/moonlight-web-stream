@@ -146,3 +146,17 @@ body {
     font-size: 1.4cm;
     text-align: center;
 }
+
+/** */
+.app-list {
+    list-style-type: none;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.app-name {
+    margin: 0;
+    font-size: 0.7cm;
+    text-align: center;
+}

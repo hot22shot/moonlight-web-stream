@@ -173,6 +173,8 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{
     }
 }
 
-export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App>> {
-    return await fetchApi(api, "apps", "get", { query })
+export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App> | null> {
+    const response = await fetchApi(api, "apps", "get", { query }) as GetAppsResponse
+
+    return response?.apps
 }

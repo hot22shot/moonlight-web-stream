@@ -77,6 +77,10 @@ export class Host implements Component {
             name: "Show Details",
             callback: this.showDetails.bind(this),
         })
+        elements.push({
+            name: "Reload",
+            callback: this.forceFetch.bind(this)
+        })
 
         if (this.cache?.paired == "NotPaired") {
             elements.push({
