@@ -15,6 +15,12 @@ export class ComponentEvent<T extends Component> extends Event {
     }
 }
 
+export interface FetchComponent<Data> extends Component {
+    forceFetch(): Promise<void>
+
+    updateCache(data: Array<Data>): void
+}
+
 export class ComponentHost<T extends Component> {
     private root: HTMLElement
     private component: T

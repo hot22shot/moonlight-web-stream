@@ -4,6 +4,7 @@ import { Component } from "../index.js";
 import { ListComponent } from "../list.js";
 import { Game } from "./index.js";
 
+// TODO: move to fetch list
 export class GameList implements Component {
     private api: Api
 

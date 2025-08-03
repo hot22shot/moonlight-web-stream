@@ -1,16 +1,18 @@
 import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
 import { Api, apiGetHosts } from "../../api.js"
-import { Component, ComponentEvent } from "../index.js"
+import { ComponentEvent } from "../index.js"
 import { Host, HostEventListener } from "./index.js"
 import { ListComponent } from "../list.js"
+import { FetchListComponent } from "../fetch_list.js"
 
-export class HostList implements Component {
+export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, Host> {
     private api: Api
 
     private eventTarget = new EventTarget()
-    private list: ListComponent<Host>
 
     constructor(api: Api) {
+        super()
+
         this.api = api
 
         this.list = new ListComponent([], {
@@ -25,54 +27,37 @@ export class HostList implements Component {
         this.updateCache(hosts)
     }
 
-    private updateCache(hosts: UndetailedHost[]) {
-        // add new hosts and update old ones
-        hosts.forEach(host => {
-            this.insertUpdateHost(host)
-        })
+    protected updateComponentData(component: Host, data: DetailedHost | UndetailedHost): void {
+        component.updateCache(data)
+    }
+    protected getComponentDataId(component: Host): number {
+        return component.getHostId()
+    }
+    protected getDataId(data: DetailedHost | UndetailedHost): number {
+        return data.host_id
+    }
 
-        // remove old hosts
-        for (let i = 0; i < this.list.get().length; i++) {
-            const hostComponent = this.list.get()[i]
+    protected insertList(dataId: number, data: DetailedHost | UndetailedHost | null): void {
+        const newHost = new Host(this.api, dataId, data)
 
-            const hostExists = hosts.findIndex(host => host.host_id == hostComponent.getHostId()) != -1
-            if (!hostExists) {
-                this.removeHost(hostComponent.getHostId())
-                // decrement i because we'll add one in the loop
-                // however the removed element must be accounted
-                i--
-            }
-        }
+        this.list.append(newHost)
+
+        newHost.addHostRemoveListener(this.removeHostListener.bind(this))
+        newHost.addHostOpenListener(this.onHostOpenEvent.bind(this))
+    }
+    protected removeList(listIndex: number): void {
+        const hostComponent = this.list.remove(listIndex)
+
+        hostComponent?.addHostOpenListener(this.onHostOpenEvent.bind(this))
+        hostComponent?.removeHostRemoveListener(this.removeHostListener.bind(this))
     }
 
     private removeHostListener(event: ComponentEvent<Host>) {
-        this.removeHost(event.component.getHostId())
+        const listIndex = this.list.get().findIndex(component => component.getHostId() == event.component.getHostId())
+
+        this.removeList(listIndex)
     }
 
-    insertUpdateHost(host: UndetailedHost | DetailedHost) {
-        const hostComponent = this.list.get().find(listHost => listHost.getHostId() == host.host_id)
-
-        if (hostComponent) {
-            hostComponent.updateCache(host)
-        } else {
-            const newHost = new Host(this.api, host.host_id, host)
-
-            this.list.append(newHost)
-
-            newHost.addHostRemoveListener(this.removeHostListener.bind(this))
-            newHost.addHostOpenListener(this.onHostOpenEvent.bind(this))
-        }
-    }
-    removeHost(hostId: number) {
-        const index = this.list.get().findIndex(listHost => listHost.getHostId() == hostId)
-
-        if (index != -1) {
-            const hostComponent = this.list.remove(index)
-
-            hostComponent?.addHostOpenListener(this.onHostOpenEvent.bind(this))
-            hostComponent?.removeHostRemoveListener(this.removeHostListener.bind(this))
-        }
-    }
     getHost(hostId: number): Host | undefined {
         return this.list.get().find(host => host.getHostId() == hostId)
     }
