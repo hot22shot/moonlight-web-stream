@@ -7,9 +7,13 @@ license = { workspace = true }
 [dependencies]
 moonlight-common = { workspace = true }
 
+tokio = { version = "1.47.1", features = ["fs"] }
+
 actix-web = "4.11.0"
 actix-files = "0.6.6"
-tokio = { version = "1.47.1", features = ["fs"] }
+actix-ws = "0.3.0"
+
+webrtc = "0.13.0"
 
 log = "0.4.27"
 simplelog = "0.12.2"
@@ -25,7 +29,7 @@ async-stream = "0.3.6"
 
 ts-rs = "11.0.1"
 futures = "0.3.31"
-webrtc = "0.13.0"
+
 
 [features]
 

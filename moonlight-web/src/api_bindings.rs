@@ -169,15 +169,32 @@ pub struct GetAppImageQuery {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
-pub struct PostStartStreamRequest1 {
-    pub host_id: u32,
-    pub app_id: u32,
+pub struct RtcIceCandidate {
+    pub candidate: String,
+    pub sdp_mid: Option<String>,
+    pub sdp_mline_index: Option<u16>,
+    pub username_fragment: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
-pub struct PostStartStreamResponse1 {
-    pub app: App,
-    // Session Description Protocol
-    pub rtc_sdp: String,
+pub enum StreamClientMessage {
+    Offer {
+        credentials: String,
+        host_id: u32,
+        app_id: u32,
+        offer_sdp: String,
+    },
+    AddIceCandidate {
+        candidate: RtcIceCandidate,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub enum StreamServerMessage {
+    InternalServerError,
+    HostOrAppNotFound,
+    Answer { app: App, answer_sdp: String },
+    AddIceCandidate { candidate: RtcIceCandidate },
 }

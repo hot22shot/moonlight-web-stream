@@ -17,9 +17,9 @@ use tokio::sync::Mutex;
 use crate::{
     Config,
     api_bindings::{
-        DeleteHostQuery, DetailedHost, GetAppsQuery, GetAppsResponse, GetHostQuery,
-        GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
-        PostStartStreamRequest1, PutHostRequest, PutHostResponse, UndetailedHost,
+        DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
+        GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1,
+        PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost,
     },
     data::{PairedHost, RuntimeApiData, RuntimeApiHost},
 };
@@ -307,7 +307,7 @@ async fn get_apps(
 #[get("/app/image")]
 async fn get_app_image(
     data: Data<RuntimeApiData>,
-    Query(query): Query<PostStartStreamRequest1>,
+    Query(query): Query<GetAppImageQuery>,
 ) -> Either<Bytes, HttpResponse> {
     let hosts = data.hosts.read().await;
 

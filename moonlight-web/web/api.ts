@@ -55,12 +55,10 @@ export function isDetailedHost(host: UndetailedHost | DetailedHost): host is Det
     return (host as DetailedHost).https_port !== undefined
 }
 
-export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any | null>
-export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response | null>
-
-export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: { response?: "json" | "ignore" } & ApiFetchInit) {
+function buildRequest(api: Api, endpoint: string, method: string, init?: { response?: "json" | "ignore" } & ApiFetchInit): [string, RequestInit] {
     const query = new URLSearchParams(init?.query)
     const queryString = query.size > 0 ? `?${query.toString()}` : "";
+    const url = `${api.host_url}/${endpoint}${queryString}`
 
     const headers: any = {
         "Authorization": `Bearer ${api.credentials}`,
@@ -70,11 +68,23 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
         headers["Content-Type"] = "application/json";
     }
 
-    const response = await fetch(`${api.host_url}/${endpoint}${queryString}`, {
+    const request = {
         method: method,
         headers,
         body: init?.json && JSON.stringify(init.json)
-    })
+    }
+
+    return [url, request]
+}
+
+export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any | null>
+export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response | null>
+
+export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: { response?: "json" | "ignore" } & ApiFetchInit) {
+
+    const [url, request] = buildRequest(api, endpoint, method, init)
+
+    const response = await fetch(url, request)
 
     if (!response.ok) {
         return null

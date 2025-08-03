@@ -1,6 +1,6 @@
 
 # Moonlight Web
-A web client for [Moonlight](https://moonlight-stream.org/) using a hosted web server.
+A web client for [Moonlight](https://moonlight-stream.org/) using a hosted web server and a WebRTC Media Stream.
 
 ## Limitations
 - Requires a host for the web server which is capable of being a Moonlight Client
@@ -25,3 +25,6 @@ Go into moonlight-web directory `cd moonlight-web`
 - Build the frontend with `npm run build-web`
 
 TODO: ssl / tls info https://actix.rs/docs/server/
+
+## Interesting
+- WebRTC Signaling: https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling
