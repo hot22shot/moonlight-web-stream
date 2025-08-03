@@ -1,13 +1,18 @@
 import { Component } from "./index.js"
 
 export type ListComponentInit = {
-    listElementClasses?: string[],
-    componentDivClasses?: string[]
+    listClasses?: string[],
+    elementDivClasses?: string[]
+    remountIsInsert?: boolean
 }
 
 export class ListComponent<T extends Component> implements Component {
 
     private list: Array<T>
+
+    private mounted: number = 0
+    private remountIsInsertTransition: boolean
+
     private listElement: HTMLLIElement = document.createElement("li")
     private divElements: Array<HTMLDivElement> = []
     private divClasses: string[]
@@ -18,10 +23,12 @@ export class ListComponent<T extends Component> implements Component {
             this.internalMountFrom(0)
         }
 
-        if (init?.listElementClasses) {
-            this.listElement.classList.add(...init?.listElementClasses)
+        if (init?.listClasses) {
+            this.listElement.classList.add(...init?.listClasses)
         }
-        this.divClasses = init?.componentDivClasses ?? []
+        this.divClasses = init?.elementDivClasses ?? []
+
+        this.remountIsInsertTransition = init?.remountIsInsert ?? true
     }
 
     private divAt(index: number): HTMLDivElement {
@@ -36,13 +43,21 @@ export class ListComponent<T extends Component> implements Component {
         return div
     }
 
-    private onElementInserted(index: number) {
+    private onAnimElementInserted(index: number) {
         const element = this.divElements[index]
 
-        // let the element render and then add "show" for transitions :)
+        // let the element render and then add "list-show" for transitions :)
         setTimeout(() => {
-            element.classList.add("show")
+            element.classList.add("list-show")
         }, 0)
+    }
+    private onAnimLengthDecrease(length?: number) {
+        let i = length ?? this.list.length
+        let element
+
+        while ((element = this.divElements[i]).classList.contains("list-show")) {
+            element.classList.remove("list-show")
+        }
     }
 
     private internalUnmountUntil(index: number) {
@@ -55,6 +70,10 @@ export class ListComponent<T extends Component> implements Component {
         }
     }
     private internalMountFrom(index: number) {
+        if (this.mounted <= 0) {
+            return;
+        }
+
         for (let i = index; i < this.list.length; i++) {
             let divElement = this.divAt(i)
             this.listElement.appendChild(divElement)
@@ -80,7 +99,7 @@ export class ListComponent<T extends Component> implements Component {
             this.internalMountFrom(index)
         }
 
-        this.onElementInserted(index)
+        this.onAnimElementInserted(index)
     }
     remove(index: number): T | null {
         if (index == this.list.length - 1) {
@@ -102,6 +121,8 @@ export class ListComponent<T extends Component> implements Component {
 
             return element[0] ?? null
         }
+
+        this.onAnimLengthDecrease()
 
         return null
     }
@@ -127,10 +148,33 @@ export class ListComponent<T extends Component> implements Component {
     }
 
     mount(parent: Element): void {
-        // TODO: mount and unmount here: maybe counter!
+        this.mounted++
+
         parent.appendChild(this.listElement)
+
+        // Mount all elements
+        if (this.mounted == 1) {
+            this.internalMountFrom(0)
+
+            if (this.remountIsInsertTransition) {
+                for (let i = 0; i < this.list.length; i++) {
+                    this.onAnimElementInserted(i)
+                }
+            }
+        }
     }
     unmount(parent: Element): void {
+        this.mounted--
+
         parent.removeChild(this.listElement)
+
+        // Unmount all elements
+        if (this.mounted == 0) {
+            this.internalUnmountUntil(0)
+
+            if (this.remountIsInsertTransition) {
+                this.onAnimLengthDecrease(0)
+            }
+        }
     }
 }

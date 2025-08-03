@@ -43,6 +43,10 @@ class MainApp implements Component {
     private divElement = document.createElement("div")
 
     private moonlightTextElement = document.createElement("h1")
+    private actionElement = document.createElement("div")
+
+    private gamesBackButton: HTMLButtonElement = document.createElement("button")
+
     private hostAddButton: HTMLButtonElement = document.createElement("button")
 
     private currentDisplay: "hosts" | "games" = "hosts"
@@ -55,6 +59,10 @@ class MainApp implements Component {
         // Moonlight text
         this.moonlightTextElement.innerHTML = "Moonlight Web"
 
+        // Back button
+        this.gamesBackButton.innerText = "Back"
+        this.gamesBackButton.addEventListener("click", () => this.setCurrentGames(null))
+
         // Host add button
         this.hostAddButton.innerText = "Add Host"
         this.hostAddButton.addEventListener("click", this.addHost.bind(this))
@@ -65,8 +73,10 @@ class MainApp implements Component {
 
         // Append default elements
         this.divElement.appendChild(this.moonlightTextElement)
-        this.divElement.appendChild(this.hostAddButton)
+        this.divElement.appendChild(this.actionElement)
         this.hostList.mount(this.divElement)
+
+        this.actionElement.appendChild(this.hostAddButton)
 
         // Context Menu
         document.body.addEventListener("contextmenu", this.onContextMenu.bind(this))
@@ -120,8 +130,13 @@ class MainApp implements Component {
     private setCurrentGames(hostId: number | null, cache?: Array<App>) {
         // We want to transition to host view
         if (hostId == null) {
+
             // We aren't currently in host view
             if (this.currentDisplay == "games") {
+                // Action elements
+                this.actionElement.removeChild(this.gamesBackButton)
+                this.actionElement.appendChild(this.hostAddButton)
+
                 this.gameList?.unmount(this.divElement)
                 this.hostList.mount(this.divElement)
 
@@ -146,6 +161,10 @@ class MainApp implements Component {
 
         // Unmount host view if we're in the host view
         if (this.currentDisplay == "hosts") {
+            // Action elements
+            this.actionElement.appendChild(this.gamesBackButton)
+            this.actionElement.removeChild(this.hostAddButton)
+
             this.hostList.unmount(this.divElement)
 
             pushAppState({ display: "hosts" })

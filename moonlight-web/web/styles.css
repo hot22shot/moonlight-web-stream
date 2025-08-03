@@ -115,6 +115,18 @@ body {
     margin-right: 0.3cm;
 }
 
+/** Animated Lists */
+.animated-list-element {
+    /** animation */
+    opacity: 0;
+}
+
+.animated-list-element.list-show {
+    /** animation */
+    opacity: 1;
+    transition: opacity 0.3s ease-in;
+}
+
 /** Hosts */
 .host-list {
     list-style-type: none;
@@ -130,15 +142,6 @@ body {
     padding-bottom: 0.5cm;
     padding-left: 0.4cm;
     padding-right: 0.4cm;
-
-    /** animation */
-    opacity: 0;
-}
-
-.host-element.show {
-    /** animation */
-    opacity: 1;
-    transition: opacity 0.05s linear;
 }
 
 .host-element:hover {
@@ -166,17 +169,6 @@ body {
     gap: 10px;
 }
 
-.app-element {
-    /** animation */
-    opacity: 0;
-}
-
-.app-element.show {
-    /** animation */
-    opacity: 1;
-    transition: opacity 0.05s linear;
-}
-
 .app-element>div {
     display: flex;
     flex-direction: column;
@@ -200,5 +192,5 @@ body {
 .app-image-loaded {
     /** animation */
     opacity: 1;
-    transition: all 0.3s linear;
+    transition: opacity 0.3s ease-in;
 }

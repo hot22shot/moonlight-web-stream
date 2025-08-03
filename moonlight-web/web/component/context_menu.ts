@@ -15,7 +15,7 @@ export type ContextMenuInit = {
 
 const contextMenuElement = document.getElementById("context-menu")
 const contextMenuList = new ListComponent<ContextMenuElementComponent>([], {
-    listElementClasses: ["context-menu-list"]
+    listClasses: ["context-menu-list"]
 })
 
 export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {

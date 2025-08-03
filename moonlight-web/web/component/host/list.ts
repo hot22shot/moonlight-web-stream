@@ -2,7 +2,6 @@ import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
 import { Api, apiGetHosts } from "../../api.js"
 import { ComponentEvent } from "../index.js"
 import { Host, HostEventListener } from "./index.js"
-import { ListComponent } from "../list.js"
 import { FetchListComponent } from "../fetch_list.js"
 
 export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, Host> {
@@ -12,8 +11,8 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
 
     constructor(api: Api) {
         super({
-            listElementClasses: ["host-list"],
-            componentDivClasses: ["host-element"]
+            listClasses: ["host-list"],
+            elementDivClasses: ["animated-list-element", "host-element"]
         })
 
         this.api = api

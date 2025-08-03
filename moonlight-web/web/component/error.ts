@@ -5,7 +5,7 @@ import { ListComponent } from "./list.js"
 const ERROR_REMOVAL_TIME_MS = 10000
 
 const errorListElement = document.getElementById("error-list")
-const errorListComponent = new ListComponent<ErrorComponent>([], { listElementClasses: ["error-list"], componentDivClasses: ["error-element"] })
+const errorListComponent = new ListComponent<ErrorComponent>([], { listClasses: ["error-list"], elementDivClasses: ["error-element"] })
 if (errorListElement) {
     errorListComponent.mount(errorListElement)
 }
