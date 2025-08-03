@@ -1,3 +1,6 @@
+use std::path::Path;
+
+use actix_web::web::Data;
 use log::warn;
 use moonlight_common::{
     MoonlightInstance,
@@ -8,8 +11,11 @@ use moonlight_common::{
 use serde::{Deserialize, Serialize};
 use slab::Slab;
 use tokio::{
-    fs,
-    sync::{Mutex, RwLock},
+    fs, spawn,
+    sync::{
+        Mutex, RwLock,
+        mpsc::{Receiver, Sender, channel},
+    },
 };
 
 use crate::Config;
@@ -38,13 +44,14 @@ pub struct RuntimeApiHost {
 }
 
 pub struct RuntimeApiData {
+    pub(crate) file_writer: Sender<()>,
     pub(crate) instance: MoonlightInstance,
     pub(crate) crypto: MoonlightCrypto,
     pub(crate) hosts: RwLock<Slab<Mutex<RuntimeApiHost>>>,
 }
 
 impl RuntimeApiData {
-    pub async fn load(data: ApiData, instance: MoonlightInstance) -> Self {
+    pub async fn load(config: &Config, data: ApiData, instance: MoonlightInstance) -> Data<Self> {
         // TODO: do this concurrently
         let mut hosts = Slab::new();
         for host_data in data.hosts {
@@ -57,15 +64,47 @@ impl RuntimeApiData {
             }));
         }
 
-        Self {
+        // This channel only requires a capacity of 1:
+        // 1. All sender will use try_send after finishing their write operations
+        // 2. If the buffer would larger than 1 we would do multiple writes after each other without data changes
+        // -> no extra write operations
+        let (file_writer, file_writer_receiver) = channel(1);
+
+        let this = Data::new(Self {
+            file_writer,
             crypto: instance.crypto(),
             instance,
             hosts: RwLock::new(hosts),
-        }
+        });
+
+        spawn({
+            let path = config.data_path.clone();
+            let this = this.clone();
+
+            async move { self::file_writer(file_writer_receiver, path, this).await }
+        });
+
+        this
     }
 
     pub async fn save(&self) -> ApiData {
-        todo!()
+        let hosts = self.hosts.read().await;
+
+        let mut output = ApiData {
+            hosts: Vec::with_capacity(hosts.len()),
+        };
+
+        for (_, host) in &*hosts {
+            let host = host.lock().await;
+
+            output.hosts.push(Host {
+                address: host.moonlight.address().to_string(),
+                http_port: host.moonlight.http_port(),
+                paired: host.pair_info.clone(),
+            });
+        }
+
+        output
     }
 }
 
@@ -123,29 +162,29 @@ async fn try_pair_state<Pair>(
     }
 }
 
-// TODO: maybe make a seperate thread for syncing the data so we don't get two file writes at once?
-pub async fn save_data(config: &Config, data: &RuntimeApiData) -> Result<(), anyhow::Error> {
-    let hosts = data.hosts.read().await;
+async fn file_writer(
+    mut receiver: Receiver<()>,
+    path: impl AsRef<Path>,
+    data: Data<RuntimeApiData>,
+) {
+    loop {
+        if receiver.recv().await.is_none() {
+            return;
+        }
 
-    let mut output = ApiData {
-        hosts: Vec::with_capacity(hosts.len()),
-    };
+        let data = data.save().await;
 
-    for (_, host) in &*hosts {
-        let host = host.lock().await;
+        let text = match serde_json::to_string_pretty(&data) {
+            Err(err) => {
+                warn!("failed to save data: {err:?}");
 
-        output.hosts.push(Host {
-            address: host.moonlight.address().to_string(),
-            http_port: host.moonlight.http_port(),
-            paired: host.pair_info.clone(),
-        });
+                continue;
+            }
+            Ok(value) => value,
+        };
+
+        if let Err(err) = fs::write(&path, text).await {
+            warn!("failed to save data: {err:?}");
+        }
     }
-
-    drop(hosts);
-
-    let text = serde_json::to_string_pretty(&output)?;
-
-    fs::write(&config.data_path, text).await?;
-
-    Ok(())
 }

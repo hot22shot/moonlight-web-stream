@@ -46,11 +46,11 @@ async fn main() -> std::io::Result<()> {
 
     let data = read_or_default::<ApiData>(&config.data_path).await;
     let data = RuntimeApiData::load(
+        &config,
         data,
         MoonlightInstance::global().expect("failed to initialize moonlight"),
     )
     .await;
-    let data = Data::new(data);
 
     HttpServer::new(move || {
         App::new()
@@ -94,7 +94,7 @@ where
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     credentials: String,
     #[serde(default = "data_path_default")]

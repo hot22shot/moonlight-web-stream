@@ -1,9 +1,7 @@
 use actix_web::{
     Either, Error, HttpResponse, Responder, delete,
     dev::HttpServiceFactory,
-    get, post, put,
-    rt::spawn,
-    services,
+    get, post, put, services,
     web::{Bytes, Data, Json, Query},
 };
 use futures::future::join_all;
@@ -23,7 +21,7 @@ use crate::{
         GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
         PutHostRequest, PutHostResponse, UndetailedHost,
     },
-    data::{PairedHost, RuntimeApiData, RuntimeApiHost, save_data},
+    data::{PairedHost, RuntimeApiData, RuntimeApiHost},
 };
 
 #[get("/authenticate")]
@@ -131,15 +129,7 @@ async fn put_host(
     };
     let mut host = host.lock().await;
 
-    spawn({
-        let (config, data) = (config.clone(), data.clone());
-
-        async move {
-            if let Err(err) = save_data(&config, &data).await {
-                warn!("failed to save data: {err:?}")
-            }
-        }
-    });
+    let _ = data.file_writer.try_send(());
 
     let Ok(detailed_host) = into_detailed_host(host_id, &mut host.moonlight).await else {
         return Either::Right(HttpResponse::InternalServerError().finish());
@@ -153,7 +143,6 @@ async fn put_host(
 #[delete("host")]
 async fn delete_host(
     data: Data<RuntimeApiData>,
-    config: Data<Config>,
     Query(query): Query<DeleteHostQuery>,
 ) -> HttpResponse {
     let mut hosts = data.hosts.write().await;
@@ -165,13 +154,7 @@ async fn delete_host(
     if host.is_none() {
         return HttpResponse::NotFound().finish();
     } else {
-        spawn(async move {
-            let (config, data) = (config, data);
-
-            if let Err(err) = save_data(&config, &data).await {
-                warn!("failed to save data: {err:?}")
-            }
-        });
+        let _ = data.file_writer.try_send(());
     }
 
     HttpResponse::Ok().finish()
@@ -279,13 +262,7 @@ async fn pair_host(
         drop(host);
         drop(hosts);
 
-        spawn(async move {
-            let (config, data) = (config, data);
-
-            if let Err(err) = save_data(&config, &data).await {
-                warn!("failed to save data: {err:?}")
-            }
-        });
+        let _ = data.file_writer.try_send(());
 
         let bytes = Bytes::from_owner(text);
         yield Ok::<_, Error>(bytes);
