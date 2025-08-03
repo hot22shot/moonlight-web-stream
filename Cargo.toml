@@ -12,7 +12,9 @@ license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 moonlight-common = { path = "./moonlight-common" }
-moonlight-common-sys = { path = "./moonlight-common-sys" }
+moonlight-common-sys = { path = "./moonlight-common-sys", features = [
+    "vendored",
+] }
 
 [workspace.lints.clippy]
 too_many_arguments = "allow"

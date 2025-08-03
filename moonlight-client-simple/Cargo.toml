@@ -5,6 +5,8 @@ edition = "2024"
 license = { workspace = true }
 
 [dependencies]
+moonlight-common-sys = { workspace = true }
+
 moonlight-common = { workspace = true }
 tokio = { version = "1.46.1", features = ["full"] }
 

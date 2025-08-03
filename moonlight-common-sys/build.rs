@@ -46,14 +46,7 @@ fn compile_moonlight() -> (String, PathBuf) {
 
 fn link(extra: Option<(String, PathBuf)>) {
     // OpenSSL, crypto
-    #[cfg(feature = "link-openssl")]
-    {
-        println!(
-            "cargo:rustc-link-search=native={}",
-            env::var("OPENSSL_LIB_DIR").unwrap()
-        );
-        println!("cargo:rustc-link-lib=static=libcrypto");
-    }
+    println!("cargo:rustc-link-lib=static=libcrypto");
 
     // ENet
     #[cfg(feature = "link-enet")]

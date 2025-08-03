@@ -16,11 +16,8 @@ A valid [Rust](https://www.rust-lang.org/tools/install) installation
 [moonlight-common-sys](./moonlight-common-sys/) are rust bindings to the cpp [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library.
 
 Requires:
-- A [cmake installation](https://cmake.org/download/) which will automatically compile the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
-- OpenSSL `crypto` library.
-  - Download OpenSSL from https://openssl-library.org/source/
-  - Build it with the instructions for your system https://github.com/openssl/openssl#build-and-install
-  - Set the environment variable `OPENSSL_LIB_DIR` to the directory which contains the `crypto` library
+- A [CMake installation](https://cmake.org/download/) which will automatically compile the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
+- [openssl-sys](https://docs.rs/openssl-sys/0.9.109/openssl_sys/): For information on building openssl sys go to the [openssl docs](https://docs.rs/openssl/latest/openssl/)
 
 ### Moonlight Web
 Go into moonlight-web directory `cd moonlight-web`
