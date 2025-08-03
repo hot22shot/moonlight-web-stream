@@ -1,6 +1,3 @@
-use std::sync::{Mutex, RwLock};
-
-use anyhow::anyhow;
 use log::warn;
 use moonlight_common::{
     MoonlightInstance,
@@ -10,7 +7,10 @@ use moonlight_common::{
 };
 use serde::{Deserialize, Serialize};
 use slab::Slab;
-use tokio::fs;
+use tokio::{
+    fs,
+    sync::{Mutex, RwLock},
+};
 
 use crate::Config;
 
@@ -37,7 +37,6 @@ pub struct RuntimeApiHost {
     pub pair_info: Option<PairedHost>,
 }
 
-// TODO: async aware rwlock and mutex
 pub struct RuntimeApiData {
     pub(crate) instance: MoonlightInstance,
     pub(crate) crypto: MoonlightCrypto,
@@ -126,14 +125,14 @@ async fn try_pair_state<Pair>(
 
 // TODO: maybe make a seperate thread for syncing the data so we don't get two file writes at once?
 pub async fn save_data(config: &Config, data: &RuntimeApiData) -> Result<(), anyhow::Error> {
-    let hosts = data.hosts.read().map_err(|err| anyhow!("{err}"))?;
+    let hosts = data.hosts.read().await;
 
     let mut output = ApiData {
         hosts: Vec::with_capacity(hosts.len()),
     };
 
     for (_, host) in &*hosts {
-        let host = host.lock().map_err(|err| anyhow!("{err}"))?;
+        let host = host.lock().await;
 
         output.hosts.push(Host {
             address: host.moonlight.address().to_string(),

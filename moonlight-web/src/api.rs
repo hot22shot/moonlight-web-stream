@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use actix_web::{
     Either, Error, HttpResponse, Responder, delete,
     dev::HttpServiceFactory,
@@ -8,6 +6,7 @@ use actix_web::{
     services,
     web::{Bytes, Data, Json, Query},
 };
+use futures::future::join_all;
 use log::{info, warn};
 use moonlight_common::{
     high::{MaybePaired, MoonlightHost},
@@ -15,6 +14,7 @@ use moonlight_common::{
     pair::high::generate_new_client,
 };
 use std::io::Write as _;
+use tokio::sync::Mutex;
 
 use crate::{
     Config,
@@ -33,28 +33,32 @@ async fn authenticate() -> impl Responder {
 
 #[get("/hosts")]
 async fn list_hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHostsResponse>, HttpResponse> {
-    let Ok(hosts) = data.hosts.read() else {
-        // TODO: warn
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let hosts = data.hosts.read().await;
 
-    let mut response_hosts = Vec::with_capacity(hosts.len());
+    let host_results = join_all(hosts.iter().map(|(host_id, host)| async move {
+        let mut host = host.lock().await;
 
-    // TODO: parallel?
-    for (host_id, host) in &*hosts {
-        let Ok(mut host) = host.lock() else {
-            continue;
-        };
+        (
+            host_id,
+            into_undetailed_host(host_id, &mut host.moonlight).await,
+        )
+    }))
+    .await;
 
-        let Ok(host) = into_undetailed_host(host_id, &mut host.moonlight).await else {
-            continue;
-        };
+    let host_response = host_results
+        .into_iter()
+        .filter_map(|(host_id, result)| match result {
+            Err(err) => {
+                warn!("failed to get host data {host_id}: {err:?}");
 
-        response_hosts.push(host);
-    }
+                None
+            }
+            Ok(value) => Some(value),
+        })
+        .collect::<Vec<_>>();
 
     Either::Left(Json(GetHostsResponse {
-        hosts: response_hosts,
+        hosts: host_response,
     }))
 }
 
@@ -63,19 +67,14 @@ async fn get_host(
     data: Data<RuntimeApiData>,
     Query(query): Query<GetHostQuery>,
 ) -> Either<Json<GetHostResponse>, HttpResponse> {
-    let Ok(hosts) = data.hosts.read() else {
-        // TODO: warn
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let hosts = data.hosts.read().await;
 
     let host_id = query.host_id;
     let Some(host) = hosts.get(host_id as usize) else {
         return Either::Right(HttpResponse::NotFound().finish());
     };
 
-    let Ok(mut host) = host.lock() else {
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let mut host = host.lock().await;
 
     let Ok(detailed_host) = into_detailed_host(host_id as usize, &mut host.moonlight).await else {
         return Either::Right(HttpResponse::InternalServerError().finish());
@@ -115,10 +114,7 @@ async fn put_host(
     };
 
     // Write host
-    let Ok(mut hosts) = data.hosts.write() else {
-        // TODO: warn
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let mut hosts = data.hosts.write().await;
 
     let host_id = hosts.vacant_key();
     hosts.insert(Mutex::new(RuntimeApiHost {
@@ -129,16 +125,11 @@ async fn put_host(
     drop(hosts);
 
     // Read host and respond
-    let Ok(hosts) = data.hosts.read() else {
-        // TODO: warn
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let hosts = data.hosts.read().await;
     let Some(host) = hosts.get(host_id) else {
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
-    let Ok(mut host) = host.lock() else {
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let mut host = host.lock().await;
 
     spawn({
         let (config, data) = (config.clone(), data.clone());
@@ -165,10 +156,7 @@ async fn delete_host(
     config: Data<Config>,
     Query(query): Query<DeleteHostQuery>,
 ) -> HttpResponse {
-    let Ok(mut hosts) = data.hosts.write() else {
-        // TODO: warn
-        return HttpResponse::InternalServerError().finish();
-    };
+    let mut hosts = data.hosts.write().await;
 
     let host = hosts.try_remove(query.host_id as usize);
 
@@ -195,20 +183,14 @@ async fn pair_host(
     config: Data<Config>,
     Json(request): Json<PostPairRequest>,
 ) -> HttpResponse {
-    let Ok(mut hosts) = data.hosts.read() else {
-        // TODO: warn
-        return HttpResponse::InternalServerError().finish();
-    };
+    let hosts = data.hosts.read().await;
 
     let host_id = request.host_id;
     let Some(host) = hosts.get(host_id as usize) else {
         return HttpResponse::NotFound().finish();
     };
 
-    let Ok(mut host) = host.lock() else {
-        // TODO: warn
-        return HttpResponse::InternalServerError().finish();
-    };
+    let host = host.lock().await;
 
     if matches!(host.moonlight.paired(), PairStatus::Paired) {
         return HttpResponse::NotModified().finish();
@@ -216,17 +198,9 @@ async fn pair_host(
 
     let data = data.clone();
 
-    // TODO: dedup code!
     let stream = async_stream::stream! {
-        let Ok(hosts) = data.hosts.read() else {
-            // TODO: warn
-            return;
-        };
-
-        let host_id = request.host_id;
-        let Some(host_mutex) = hosts.get(host_id as usize) else {
-            // TODO: warn
-
+        let hosts = data.hosts.read().await;
+        let Some(host) = hosts.get(host_id as usize) else {
             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
                 unreachable!()
             };
@@ -236,22 +210,10 @@ async fn pair_host(
 
             return;
         };
-
-        let Ok(mut host) = host_mutex.lock() else {
-            // TODO: warn
-
-            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
-                unreachable!()
-            };
-
-            let bytes = Bytes::from_owner(text);
-            yield Ok::<_, Error>(bytes);
-
-            return;
-        };
+        let mut host = host.lock().await;
 
         let Ok(client_auth) = generate_new_client() else {
-            // TODO: warn
+            warn!("failed to generate new client to host authentication data");
 
             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
                 unreachable!()
@@ -299,7 +261,14 @@ async fn pair_host(
             server_certificate: host.moonlight.server_certificate().expect("server certificate after pairing").to_string(),
         });
 
-        let detailed_host = into_detailed_host(host_id as usize, &mut host.moonlight).await.unwrap();
+        let detailed_host = match into_detailed_host(host_id as usize, &mut host.moonlight).await {
+            Err(err) => {
+                warn!("failed to get host info after pairing for host {host_id}: {err:?}");
+
+                return
+            }
+            Ok(value) => value,
+        };
 
         let mut text = Vec::new();
         let _ = writeln!(&mut text);
@@ -332,23 +301,21 @@ async fn get_apps(
     data: Data<RuntimeApiData>,
     Query(query): Query<GetAppsQuery>,
 ) -> Either<Json<GetAppsResponse>, HttpResponse> {
-    let Ok(hosts) = data.hosts.read() else {
-        // TODO: warn
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let hosts = data.hosts.read().await;
 
     let host_id = query.host_id;
     let Some(host) = hosts.get(host_id as usize) else {
         return Either::Right(HttpResponse::NotFound().finish());
     };
-
-    let Ok(mut host) = host.lock() else {
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    let mut host = host.lock().await;
 
     let app_list = match host.moonlight.app_list().await {
         None => todo!(), // NO auth
-        Some(Err(err)) => return Either::Right(HttpResponse::InternalServerError().finish()),
+        Some(Err(err)) => {
+            warn!("failed to get app list for host {host_id}: {err:?}");
+
+            return Either::Right(HttpResponse::InternalServerError().finish());
+        }
         Some(Ok(value)) => value,
     };
 

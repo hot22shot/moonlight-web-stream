@@ -24,6 +24,7 @@ slab = "0.4.10"
 async-stream = "0.3.6"
 
 ts-rs = "11.0.1"
+futures = "0.3.31"
 
 [features]
 
