@@ -17,7 +17,6 @@ const contextMenuElement = document.getElementById("context-menu")
 const contextMenuList = new ListComponent<ContextMenuElementComponent>([], {
     listElementClasses: ["context-menu-list"]
 })
-let contextMenuMounted = false
 
 export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
     event.preventDefault()
@@ -39,8 +38,6 @@ export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
 
     contextMenuList.mount(contextMenuElement)
     contextMenuElement.classList.remove("context-menu-disabled")
-
-    contextMenuMounted = true
 }
 
 export function removeContextMenu() {
@@ -49,12 +46,7 @@ export function removeContextMenu() {
         return;
     }
 
-    if (contextMenuMounted) {
-        contextMenuElement.classList.add("context-menu-disabled")
-        contextMenuList.unmount(contextMenuElement)
-    }
-
-    contextMenuMounted = false
+    contextMenuElement.classList.add("context-menu-disabled")
 }
 
 class ContextMenuElementComponent implements Component {
