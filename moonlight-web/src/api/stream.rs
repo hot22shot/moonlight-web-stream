@@ -90,6 +90,7 @@ pub async fn start_stream(
 
         let app = spawn({
             let data = data.clone();
+
             async move {
                 let hosts = data.hosts.read().await;
                 let Some(host) = hosts.get(host_id as usize) else {
@@ -102,17 +103,20 @@ pub async fn start_stream(
                 };
                 let app_list = result?;
 
-                // TODO: don't clone
-                let Some(app) = app_list.get(app_id as usize) else {
+                let Some(app) = app_list.into_iter().find(|app| app.id == app_id) else {
                     return Ok(None);
                 };
 
-                Ok(Some(app.clone().into()))
+                Ok(Some(app.into()))
             }
         });
 
-        if let Err(err) = start_connection(data, app, session, stream, offer_description).await {
-            warn!("stream error: {err:?}")
+        if let Err(err) =
+            start_connection(data, app, session.clone(), stream, offer_description).await
+        {
+            warn!("stream error: {err:?}");
+
+            let _ = session.close(None).await;
         }
     });
 
