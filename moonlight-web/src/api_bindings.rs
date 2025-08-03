@@ -155,7 +155,29 @@ pub struct GetAppsResponse {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct GetAppQuery {
+    pub host_id: u32,
+    pub app_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
 pub struct GetAppImageQuery {
     pub host_id: u32,
     pub app_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct PostStartStreamRequest1 {
+    pub host_id: u32,
+    pub app_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct PostStartStreamResponse1 {
+    pub app: App,
+    // Session Description Protocol
+    pub rtc_sdp: String,
 }

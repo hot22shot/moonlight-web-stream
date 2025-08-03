@@ -17,12 +17,14 @@ use tokio::sync::Mutex;
 use crate::{
     Config,
     api_bindings::{
-        DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
-        GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1,
-        PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost,
+        DeleteHostQuery, DetailedHost, GetAppsQuery, GetAppsResponse, GetHostQuery,
+        GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
+        PostStartStreamRequest1, PutHostRequest, PutHostResponse, UndetailedHost,
     },
     data::{PairedHost, RuntimeApiData, RuntimeApiHost},
 };
+
+mod stream;
 
 #[get("/authenticate")]
 async fn authenticate() -> impl Responder {
@@ -305,7 +307,7 @@ async fn get_apps(
 #[get("/app/image")]
 async fn get_app_image(
     data: Data<RuntimeApiData>,
-    Query(query): Query<GetAppImageQuery>,
+    Query(query): Query<PostStartStreamRequest1>,
 ) -> Either<Bytes, HttpResponse> {
     let hosts = data.hosts.read().await;
 
@@ -351,6 +353,7 @@ pub fn api_service() -> impl HttpServiceFactory {
         pair_host,
         get_apps,
         get_app_image,
+        stream::start_stream,
     ]
 }
 

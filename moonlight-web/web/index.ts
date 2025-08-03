@@ -33,7 +33,6 @@ async function startApp() {
     })
 }
 
-console.log("starting app")
 startApp()
 
 

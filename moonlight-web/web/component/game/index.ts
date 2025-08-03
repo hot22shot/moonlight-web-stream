@@ -80,8 +80,12 @@ export class Game implements Component {
     }
 
     private async onClick() {
-        // TODO
-        await showMessage("NOT YET IMPLEMENTED: STREAMING")
+        let query = new URLSearchParams({
+            hostId: this.getHostId(),
+            appId: this.getAppId(),
+        } as any)
+
+        window.open(`/stream.html?${query}`, "_blank")
     }
 
     private onContextMenu(event: MouseEvent) {
