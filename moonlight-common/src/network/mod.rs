@@ -1,5 +1,6 @@
 use std::{fmt::Display, io::Write as _, num::ParseIntError, str::FromStr, string::FromUtf8Error};
 
+use bytes::Bytes;
 use reqwest::{Client, Url};
 use roxmltree::{Document, Error, Node};
 use thiserror::Error;
@@ -521,7 +522,7 @@ pub struct App {
 }
 
 #[derive(Debug, Clone)]
-pub struct HostAppListResponse {
+pub struct ServerAppListResponse {
     pub apps: Vec<App>,
 }
 
@@ -529,7 +530,7 @@ pub async fn host_app_list(
     client: &Client,
     https_address: &str,
     info: ClientInfo<'_>,
-) -> Result<HostAppListResponse, ApiError> {
+) -> Result<ServerAppListResponse, ApiError> {
     let url = build_url(true, https_address, "applist", Some(info))?;
 
     let response = client.get(url).send().await?.text().await?;
@@ -558,12 +559,35 @@ pub async fn host_app_list(
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
 
-    Ok(HostAppListResponse { apps })
+    Ok(ServerAppListResponse { apps })
 }
 
-// TODO: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L721
-pub async fn host_app_box_art(client: &Client, https_address: &str, info: ClientInfo<'_>) {
-    todo!()
+#[derive(Debug, Clone)]
+pub struct ClientAppBoxArtRequest {
+    pub app_id: u32,
+}
+
+pub async fn host_app_box_art(
+    client: &Client,
+    https_address: &str,
+    info: ClientInfo<'_>,
+    request: ClientAppBoxArtRequest,
+) -> Result<Bytes, ApiError> {
+    //  https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L721
+    let mut url = build_url(true, https_address, "appasset", Some(info))?;
+
+    let mut query_params = url.query_pairs_mut();
+
+    // TODO: don't format use array
+    query_params.append_pair("appid", &format!("{}", request.app_id));
+    query_params.append_pair("AssetType", "2");
+    query_params.append_pair("AssetIdx", "0");
+
+    drop(query_params);
+
+    let response = client.get(url).send().await?.bytes().await?;
+
+    Ok(response)
 }
 
 #[derive(Debug, Clone)]

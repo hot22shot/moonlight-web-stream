@@ -1688,6 +1688,7 @@ dependencies = [
  "aes",
  "bitflags",
  "block-modes",
+ "bytes",
  "der",
  "form_urlencoded",
  "hex",

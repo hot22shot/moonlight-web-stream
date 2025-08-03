@@ -8,7 +8,8 @@ use moonlight_common::{
     stream::{ColorRange, Colorspace},
 };
 use tokio::{
-    fs::{read_to_string, try_exists, write},
+    fs::{self, File, read_to_string, try_exists, write},
+    io::AsyncWriteExt,
     task::spawn_blocking,
     time::sleep,
 };
@@ -95,11 +96,24 @@ async fn main() {
         host
     };
 
-    let apps = host.app_list().await.unwrap();
+    let apps = host.app_list().await.unwrap().to_vec();
+
+    println!("Writing all app images to file");
+
+    fs::create_dir_all("appimages").await.unwrap();
 
     println!("The host has {} apps:", apps.len());
-    for app in apps {
+    for app in &apps {
         println!("- {app:?}");
+
+        let app_image = host.request_app_image(app.id).await.unwrap();
+
+        File::create(format!("appimages/{}.png", app.id))
+            .await
+            .unwrap()
+            .write_all(&app_image)
+            .await
+            .unwrap();
     }
 
     assert!(!apps.is_empty(), "The host needs at least one app!");
@@ -125,7 +139,7 @@ async fn main() {
             60,
             Colorspace::Rec2020,
             ColorRange::Full,
-            40,
+            40000,
             1024,
             DebugHandler,
             video_decoder,

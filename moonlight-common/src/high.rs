@@ -4,6 +4,7 @@
 
 use std::{mem::swap, time::Duration};
 
+use bytes::Bytes;
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
 use tokio::task::block_in_place;
@@ -15,9 +16,9 @@ use crate::{
     connection::ConnectionListener,
     crypto::MoonlightCrypto,
     network::{
-        ApiError, App, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID, HostAppListResponse,
-        HostInfo, PairStatus, ServerState, ServerVersion, host_app_list, host_info, host_launch,
-        host_resume,
+        ApiError, App, ClientAppBoxArtRequest, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID,
+        HostInfo, PairStatus, ServerAppListResponse, ServerState, ServerVersion, host_app_box_art,
+        host_app_list, host_info, host_launch, host_resume,
     },
     pair::{
         PairPin,
@@ -79,7 +80,7 @@ pub struct Unpaired;
 #[derive(Clone)]
 pub struct Paired {
     server_certificate: Pem,
-    app_list: Option<HostAppListResponse>,
+    app_list: Option<ServerAppListResponse>,
 }
 #[derive(Clone)]
 pub enum MaybePaired {
@@ -502,6 +503,20 @@ impl MoonlightHost<Paired> {
         };
 
         Ok(&app_list.apps)
+    }
+
+    pub async fn request_app_image(&mut self, app_id: u32) -> Result<Bytes, ApiError> {
+        let https_address = self.https_address().await?;
+
+        let response = host_app_box_art(
+            &self.client,
+            &https_address,
+            self.client_info(),
+            ClientAppBoxArtRequest { app_id },
+        )
+        .await?;
+
+        Ok(response)
     }
 
     // TODO: add a fn to create / correct streaming info: e.g. width, height, fps
