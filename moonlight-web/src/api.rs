@@ -83,7 +83,7 @@ async fn get_host(
     }))
 }
 
-#[put("host")]
+#[put("/host")]
 async fn put_host(
     data: Data<RuntimeApiData>,
     config: Data<Config>,
@@ -141,7 +141,7 @@ async fn put_host(
     }))
 }
 
-#[delete("host")]
+#[delete("/host")]
 async fn delete_host(
     data: Data<RuntimeApiData>,
     Query(query): Query<DeleteHostQuery>,
@@ -161,7 +161,7 @@ async fn delete_host(
     HttpResponse::Ok().finish()
 }
 
-#[post("pair")]
+#[post("/pair")]
 async fn pair_host(
     data: Data<RuntimeApiData>,
     config: Data<Config>,
@@ -274,7 +274,7 @@ async fn pair_host(
         .streaming(stream)
 }
 
-#[get("apps")]
+#[get("/apps")]
 async fn get_apps(
     data: Data<RuntimeApiData>,
     Query(query): Query<GetAppsQuery>,
@@ -302,7 +302,7 @@ async fn get_apps(
     }))
 }
 
-#[get("app/image")]
+#[get("/app/image")]
 async fn get_app_image(
     data: Data<RuntimeApiData>,
     Query(query): Query<GetAppImageQuery>,
