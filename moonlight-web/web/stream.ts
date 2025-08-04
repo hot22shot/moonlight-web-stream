@@ -49,6 +49,8 @@ class ViewerApp implements Component {
         this.stream.addAppInfoListener(this.onAppInfo.bind(this))
 
         // Configure video element
+        this.videoElement.playsInline = true
+        this.videoElement.autoplay = true
         this.videoElement.srcObject = this.stream.getMediaStream()
     }
 
@@ -103,9 +105,9 @@ class Stream {
         })
         this.rtc.onicecandidate = this.onIceCandidate.bind(this)
 
-        // this.rtc.addTransceiver("video", {
-        //     direction: "recvonly",
-        // })
+        this.rtc.addTransceiver("video", {
+            direction: "recvonly",
+        })
         // this.rtc.addTransceiver("audio", {
         //     direction: "recvonly",
         // })
@@ -179,6 +181,7 @@ class Stream {
         if (stream) {
             stream.getTracks().forEach(track => this.mediaStream.addTrack(track))
         }
+        this.mediaStream.addTrack(event.track)
     }
     private onDataChannel(event: RTCDataChannelEvent) {
         console.log(event)

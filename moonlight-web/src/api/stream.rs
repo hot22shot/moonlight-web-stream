@@ -190,16 +190,16 @@ async fn start_connection(
     });
 
     // Create and Add a video track
-    // let video_track = Arc::new(TrackLocalStaticSample::new(
-    //     RTCRtpCodecCapability {
-    //         mime_type: MIME_TYPE_H264.to_owned(),
-    //         ..Default::default()
-    //     },
-    //     "video".to_owned(),
-    //     "webrtc-rs".to_owned(),
-    // ));
-    // let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
-    // test_video(video_track, rtp_sender);
+    let video_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_H264.to_owned(),
+            ..Default::default()
+        },
+        "video".to_owned(),
+        "webrtc-rs".to_owned(),
+    ));
+    let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
+    test_video(video_track, rtp_sender);
 
     // Listen test Channel
     peer.on_data_channel(Box::new(|channel| {
@@ -286,7 +286,7 @@ fn test_video(video_track: Arc<TrackLocalStaticSample>, rtp_sender: Arc<RTCRtpSe
         let mut h264 = H264Reader::new(reader, 1_048_576);
 
         // Wait for connection established
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(4)).await;
 
         println!("play video from disk file {video_file_name}");
 
