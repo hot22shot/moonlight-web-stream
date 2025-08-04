@@ -9,7 +9,7 @@ use actix_web::{
 };
 use actix_ws::{Closed, Message, MessageStream, Session};
 use anyhow::anyhow;
-use log::{info, warn};
+use log::{debug, info, warn};
 use moonlight_common::{
     debug::{DebugHandler, NullHandler},
     network::ApiError,
@@ -20,7 +20,7 @@ use tokio::{
     runtime::Handle,
     spawn,
     sync::{
-        Notify,
+        Mutex, Notify,
         mpsc::{Receiver, Sender, channel},
     },
     task::{JoinHandle, spawn_blocking},
@@ -125,7 +125,7 @@ pub async fn start_stream(
         )
         .await
         {
-            warn!("stream error: {err:?}");
+            warn!("[Stream]: stream error: {err:?}");
 
             let _ = session.close(None).await;
         }
@@ -174,10 +174,10 @@ async fn start_moonlight(
             1920,
             1080,
             60,
-            Colorspace::Rec2020,
-            ColorRange::Full,
-            40000,
-            1024,
+            Colorspace::Rec709,
+            ColorRange::Limited,
+            100000,
+            4096,
             DebugHandler,
             video_decoder,
             NullHandler,
@@ -186,7 +186,7 @@ async fn start_moonlight(
     {
         Some(Ok(value)) => value,
         Some(Err(err)) => {
-            warn!("failed to start moonlight stream: {err:?}");
+            warn!("[Stream]: failed to start moonlight stream: {err:?}");
             return Ok(None);
         }
         None => return Ok(None),
@@ -269,6 +269,8 @@ async fn start_webrtc(
     let video_track = Arc::new(TrackLocalStaticSample::new(
         RTCRtpCodecCapability {
             mime_type: video_mime_type,
+            clock_rate: 90000,
+            sdp_fmtp_line: "packetization-mode=1;profile-level-id=42e01f".to_owned(),
             ..Default::default()
         },
         "video".to_owned(),
@@ -288,7 +290,7 @@ async fn start_webrtc(
     peer.on_data_channel(Box::new(|channel| {
         let label = channel.label().to_owned();
         channel.on_message(Box::new(move |message| {
-            warn!("RECEIVED: {}, {:?}", label, str::from_utf8(&message.data));
+            debug!("RECEIVED: {}, {:?}", label, str::from_utf8(&message.data));
 
             Box::pin(async move {})
         }));
@@ -307,6 +309,7 @@ async fn start_webrtc(
             Box::pin(async move {})
         })
     });
+    let test_channel_notify = spawn(async move { test_channel_notify.notified().await });
 
     // When connected
     let connected_notify = Arc::new(Notify::new());
@@ -315,37 +318,15 @@ async fn start_webrtc(
 
         Box::new(move |state| {
             if matches!(state, RTCIceConnectionState::Connected) {
-                connected_notify.notify_waiters();
                 // Connection established: allow audio, video
-            }
-
-            Box::pin(async move {})
-        })
-    });
-
-    // Connection state change
-    let disconnected_notify = Arc::new(Notify::new());
-    peer.on_peer_connection_state_change({
-        let connected_notify = connected_notify.clone();
-        let disconnected_notify = disconnected_notify.clone();
-
-        Box::new(move |state| {
-            if matches!(
-                state,
-                RTCPeerConnectionState::Disconnected
-                    | RTCPeerConnectionState::Failed
-                    | RTCPeerConnectionState::Closed
-            ) {
-                info!("connection failed!");
-                // If we didn't connect yet
                 connected_notify.notify_waiters();
-
-                disconnected_notify.notify_waiters();
             }
 
             Box::pin(async move {})
         })
     });
+
+    let connected_notify = spawn(async move { connected_notify.notified().await });
 
     // Set Offer as Remote
     peer.set_remote_description(offer_description).await?;
@@ -376,6 +357,36 @@ async fn start_webrtc(
         }
     };
 
+    // Connection state change
+    peer.on_peer_connection_state_change({
+        let stream = Arc::new(Mutex::new(Some(stream)));
+
+        Box::new(move |state| {
+            if matches!(
+                state,
+                RTCPeerConnectionState::Disconnected
+                    | RTCPeerConnectionState::Failed
+                    | RTCPeerConnectionState::Closed
+            ) {
+                let stream = stream.clone();
+
+                return Box::pin(async move {
+                    let mut stream = stream.lock().await;
+
+                    if let Some(stream) = stream.take() {
+                        let _ = spawn_blocking(move || {
+                            stream.stop();
+                            info!("[Stream]: Moonlight Stream Stopped");
+                        })
+                        .await;
+                    }
+                });
+            }
+
+            Box::pin(async move {})
+        })
+    });
+
     send_ws_message(
         &mut sender,
         StreamServerMessage::Answer {
@@ -385,22 +396,19 @@ async fn start_webrtc(
     )
     .await?;
 
-    connected_notify.notified().await;
+    connected_notify.await?;
 
+    debug!("[Stream]: SETTINGS VIDEO TRACK1");
     // Send test messages
-    test_channel_notify.notified().await;
+    test_channel_notify.await?;
     test_channel.send_text("Hello").await?;
 
     // Set video decoder
-    set_video_track.send(video_track).await?;
+    set_video_track
+        .send_timeout(video_track, Duration::from_secs(2))
+        .await?;
 
-    disconnected_notify.notified().await;
-    info!("Stopping Stream");
-
-    spawn_blocking(move || {
-        stream.stop();
-        info!("Moonlight Stream Stopped");
-    });
+    info!("[Stream]: Stopping Stream");
 
     Ok(())
 }
@@ -469,6 +477,29 @@ impl TrackSampleVideoDecoder {
     }
 }
 
+fn ensure_annexb(buffer: &[u8]) -> Bytes {
+    // If already Annex-B (starts with 00 00 00 01 or 00 00 01), just copy
+    if buffer.starts_with(&[0, 0, 0, 1]) || buffer.starts_with(&[0, 0, 1]) {
+        return Bytes::copy_from_slice(buffer);
+    }
+
+    // Otherwise assume it's AVCC (length-prefixed) and convert to Annex-B
+    let mut out = Vec::new();
+    let mut offset = 0;
+    while offset + 4 <= buffer.len() {
+        let nal_size = u32::from_be_bytes(buffer[offset..offset + 4].try_into().unwrap()) as usize;
+        offset += 4;
+        if offset + nal_size > buffer.len() {
+            break;
+        }
+
+        out.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+        out.extend_from_slice(&buffer[offset..offset + nal_size]);
+        offset += nal_size;
+    }
+    Bytes::from(out)
+}
+
 impl VideoDecoder for TrackSampleVideoDecoder {
     fn setup(
         &mut self,
@@ -478,7 +509,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         redraw_rate: u32,
         flags: (),
     ) -> i32 {
-        info!("Streaming with format: {format:?}");
+        info!("[Stream] Streaming with format: {format:?}");
 
         if !format.contained_in(self.supported_video_formats) {
             warn!(
@@ -498,6 +529,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn stop(&mut self) {}
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
+        // Maybe this will help: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/binding/video/MediaCodecDecoderRenderer.java#L1397
         self.receive_video_tracks();
 
         let Some(video_track) = self.video_track.as_ref() else {
@@ -509,7 +541,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             // TODO: fill in these values
             let video_track = video_track.clone();
 
-            let data = Bytes::copy_from_slice(buffer.data);
+            let data = ensure_annexb(buffer.data);
             let frame_time = self.frame_time;
             let timestamp = self.timestamp;
 

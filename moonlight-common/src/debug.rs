@@ -1,3 +1,5 @@
+use log::info;
+
 use crate::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
     connection::{ConnectionListener, ConnectionStatus, Stage},
@@ -141,31 +143,32 @@ impl ConnectionListener for NullHandler {
     }
 }
 
+// TODO: use log crate
 pub struct DebugHandler;
 
 impl ConnectionListener for DebugHandler {
     fn stage_starting(&mut self, stage: Stage) {
-        println!("Stage Starting: {stage:?}");
+        info!("[Moonlight]: Stage Starting: {stage:?}");
     }
     fn stage_complete(&mut self, stage: Stage) {
-        println!("Stage Complete: {stage:?}");
+        info!("[Moonlight]: Stage Complete: {stage:?}");
     }
     fn stage_failed(&mut self, stage: Stage, error_code: i32) {
-        println!("Stage Failed: {stage:?}, Error: {error_code}");
+        info!("[Moonlight]: Stage Failed: {stage:?}, Error: {error_code}");
     }
 
     fn connection_started(&mut self) {
-        println!("Connection Started");
+        info!("[Moonlight]: Connection Started");
     }
     fn connection_status_update(&mut self, status: ConnectionStatus) {
-        println!("Connection Status Update: {status:?}");
+        info!("[Moonlight]: Connection Status Update: {status:?}");
     }
     fn connection_terminated(&mut self, error_code: i32) {
-        println!("Connection Terminated: {error_code}");
+        info!("[Moonlight]: Connection Terminated: {error_code}");
     }
 
     fn log_message(&mut self, message: &str) {
-        println!("Moonlight Log: {}", message.trim());
+        info!("[Moonlight]: {}", message.trim());
     }
 
     fn set_hdr_mode(&mut self, hdr_enabled: bool) {

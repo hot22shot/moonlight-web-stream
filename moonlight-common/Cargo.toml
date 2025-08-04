@@ -25,6 +25,7 @@ form_urlencoded = { version = "1.2.1", optional = true }
 hex = { version = "0.4.3", optional = true }
 
 # High
+log = { version = "0.4.27", optional = true }
 tokio = { version = "1.46.1", default-features = false, features = [
     "rt",
     "rt-multi-thread",
@@ -50,6 +51,7 @@ default = ["high"]
 high = [
     "network",
     "crypto",
+    "dep:log",
     "dep:tokio",
     "dep:sha1",
     "dep:sha2",
