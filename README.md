@@ -1,9 +1,9 @@
 
 # Moonlight Web
-A web client for [Moonlight](https://moonlight-stream.org/) using a hosted web server and a WebRTC Media Stream.
+A web client for [Moonlight](https://moonlight-stream.org/) using a hosted web server and a [WebRTC Media Stream](https://webrtc.org/).
 
 ## Limitations
-- Requires a host for the web server which is capable of being a Moonlight Client
+- Requires a host for the web server which is capable of being a Moonlight Client (compiling [moonlight-common-sys](#moonlight-common-sys))
 - Only one active stream per web server
 
 ## Installation

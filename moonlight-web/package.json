@@ -3,7 +3,18 @@
   "version": "1.0.0",
   "description": "",
   "main": "web/index.ts",
+  "watch": {
+    "build": {
+      "patterns": [
+        "web"
+      ],
+      "extensions": "ts,html,svg,png",
+      "ignore": "web/api_bindings.d.ts",
+      "runOnChangeOnly": false
+    }
+  },
   "scripts": {
+    "dev": "npm-watch build",
     "build": "cargo test export_bindings && tsc && npm run copy-static",
     "copy-static": "cpx \"web/**/*.{html,css,svg,png}\" dist/"
   },
@@ -11,6 +22,7 @@
   "private": "true",
   "devDependencies": {
     "cpx": "^1.5.0",
+    "npm-watch": "^0.13.0",
     "typescript": "^5.9.2"
   }
 }

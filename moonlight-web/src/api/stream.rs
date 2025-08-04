@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fs::File, io::BufReader, sync::Arc, time::Duration};
 
 use actix_web::{
     Error, HttpRequest, HttpResponse, get, rt as actix_rt,
@@ -13,14 +13,15 @@ use webrtc::{
     api::{
         APIBuilder,
         interceptor_registry::register_default_interceptors,
-        media_engine::{MIME_TYPE_HEVC, MediaEngine},
+        media_engine::{MIME_TYPE_H264, MediaEngine},
     },
     ice_transport::ice_server::RTCIceServer,
     interceptor::registry::Registry,
+    media::{Sample, io::h264_reader::H264Reader},
     peer_connection::{
         configuration::RTCConfiguration, sdp::session_description::RTCSessionDescription,
     },
-    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
+    rtp_transceiver::{rtp_codec::RTCRtpCodecCapability, rtp_sender::RTCRtpSender},
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
@@ -188,19 +189,32 @@ async fn start_connection(
         })
     });
 
-    // Create test data channel
-    let channel = peer.create_data_channel("test", None).await?;
-
     // Create and Add a video track
-    let video_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: MIME_TYPE_HEVC.to_owned(),
-            ..Default::default()
-        },
-        "video".to_owned(),
-        "webrtc-video".to_owned(),
-    ));
-    let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
+    // let video_track = Arc::new(TrackLocalStaticSample::new(
+    //     RTCRtpCodecCapability {
+    //         mime_type: MIME_TYPE_H264.to_owned(),
+    //         ..Default::default()
+    //     },
+    //     "video".to_owned(),
+    //     "webrtc-rs".to_owned(),
+    // ));
+    // let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
+    // test_video(video_track, rtp_sender);
+
+    // Listen test Channel
+    peer.on_data_channel(Box::new(|channel| {
+        let label = channel.label().to_owned();
+        channel.on_message(Box::new(move |message| {
+            warn!("RECEIVED: {}, {:?}", label, str::from_utf8(&message.data));
+
+            Box::pin(async move {})
+        }));
+
+        Box::pin(async move {})
+    }));
+
+    // Test Channel
+    let test_channel = peer.create_data_channel("test2", None).await?;
 
     // Set Offer as Remote
     peer.set_remote_description(offer_description).await?;
@@ -236,6 +250,12 @@ async fn start_connection(
     )
     .await?;
 
+    sleep(Duration::from_secs(4)).await;
+
+    test_channel.send_text("Hello").await?;
+
+    sleep(Duration::from_secs(100)).await;
+
     Ok(())
 }
 
@@ -246,4 +266,62 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
     };
 
     sender.text(json).await
+}
+
+fn test_video(video_track: Arc<TrackLocalStaticSample>, rtp_sender: Arc<RTCRtpSender>) {
+    let video_file_name = "server/output.h264";
+
+    // Read incoming RTCP packets
+    // Before these packets are returned they are processed by interceptors. For things
+    // like NACK this needs to be called.
+    tokio::spawn(async move {
+        let mut rtcp_buf = vec![0u8; 1500];
+        while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {}
+    });
+
+    spawn(async move {
+        // Open a H264 file and start reading using our H264Reader
+        let file = File::open(video_file_name).unwrap();
+        let reader = BufReader::new(file);
+        let mut h264 = H264Reader::new(reader, 1_048_576);
+
+        // Wait for connection established
+        sleep(Duration::from_secs(10)).await;
+
+        println!("play video from disk file {video_file_name}");
+
+        // It is important to use a time.Ticker instead of time.Sleep because
+        // * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
+        // * works around latency issues with Sleep
+        let mut ticker = tokio::time::interval(Duration::from_millis(33));
+        loop {
+            let nal = match h264.next_nal() {
+                Ok(nal) => nal,
+                Err(err) => {
+                    println!("All video frames parsed and sent: {err}");
+                    break;
+                }
+            };
+
+            /*println!(
+                "PictureOrderCount={}, ForbiddenZeroBit={}, RefIdc={}, UnitType={}, data={}",
+                nal.picture_order_count,
+                nal.forbidden_zero_bit,
+                nal.ref_idc,
+                nal.unit_type,
+                nal.data.len()
+            );*/
+
+            video_track
+                .write_sample(&Sample {
+                    data: nal.data.freeze(),
+                    duration: Duration::from_secs(1),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+
+            let _ = ticker.tick().await;
+        }
+    });
 }

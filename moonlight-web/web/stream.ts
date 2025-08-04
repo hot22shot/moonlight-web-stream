@@ -37,9 +37,6 @@ startApp()
 class ViewerApp implements Component {
     private api: Api
 
-    private hostId: number
-    private appId: number
-
     private videoElement = document.createElement("video")
 
     private stream: Stream
@@ -47,15 +44,11 @@ class ViewerApp implements Component {
     constructor(api: Api, hostId: number, appId: number) {
         this.api = api
 
-        this.hostId = hostId
-        this.appId = appId
-
         // Configure stream
         this.stream = new Stream(api, hostId, appId)
         this.stream.addAppInfoListener(this.onAppInfo.bind(this))
 
         // Configure video element
-        this.videoElement.autoplay = true
         this.videoElement.srcObject = this.stream.getMediaStream()
     }
 
@@ -63,7 +56,6 @@ class ViewerApp implements Component {
         const app = event.app
 
         document.title = `Stream: ${app.title}`
-        console.log(app)
     }
 
     mount(parent: HTMLElement): void {
@@ -89,6 +81,8 @@ class Stream {
     private ws: WebSocket
     private rtc: RTCPeerConnection
 
+    private dataChannel: RTCDataChannel
+
     constructor(api: Api, hostId: number, appId: number) {
         this.api = api
         this.hostId = hostId
@@ -107,10 +101,19 @@ class Stream {
             }],
             iceCandidatePoolSize: 10,
         })
-        this.rtc.ontrack = this.onTrack.bind(this)
         this.rtc.onicecandidate = this.onIceCandidate.bind(this)
 
-        this.rtc.ondatachannel = this.onDataChannelCreated.bind(this)
+        // this.rtc.addTransceiver("video", {
+        //     direction: "recvonly",
+        // })
+        // this.rtc.addTransceiver("audio", {
+        //     direction: "recvonly",
+        // })
+        this.dataChannel = this.rtc.createDataChannel("test1")
+
+        this.rtc.ontrack = this.onTrack.bind(this)
+        this.rtc.ondatachannel = this.onDataChannel.bind(this)
+        this.rtc.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
     }
 
     // Send Offer
@@ -122,6 +125,7 @@ class Stream {
 
         await this.rtc.setLocalDescription(offer)
 
+        console.info("sending offer")
         this.sendWsMessage({
             Offer: {
                 credentials: this.api.credentials,
@@ -150,6 +154,8 @@ class Stream {
 
             this.addIceCandidate(candidateJson)
         } else if ("Answer" in message) {
+            console.info("received answer")
+
             // Set Remote Description
             const answer_sdp = message.Answer.answer_sdp
 
@@ -168,7 +174,20 @@ class Stream {
     }
 
     private onTrack(event: RTCTrackEvent) {
-        this.mediaStream.addTrack(event.track)
+        console.log(event)
+        const stream = event.streams[0]
+        if (stream) {
+            stream.getTracks().forEach(track => this.mediaStream.addTrack(track))
+        }
+    }
+    private onDataChannel(event: RTCDataChannelEvent) {
+        console.log(event)
+
+        event.channel.onmessage = msg => {
+            console.info(`RECEIVED: ${event.channel.label}, ${msg.data}`)
+            this.dataChannel.send(msg.data)
+        }
+
     }
     private onIceCandidate(event: RTCPeerConnectionIceEvent) {
         const candidateJson = event.candidate?.toJSON()
@@ -188,6 +207,9 @@ class Stream {
                 candidate
             }
         })
+    }
+    private onConnectionStateChange(event: Event) {
+        console.log(this.rtc.connectionState)
     }
 
     // -- Raw Web Socket stuff
@@ -232,14 +254,10 @@ class Stream {
     private async setRemoteDescription(description: RTCSessionDescriptionInit) {
         await this.rtc.setRemoteDescription(description)
 
-        // add bufferd ice candidates
+        // add buffered ice candidates
         for (const candidate of this.iceCandidateBuffer.splice(0, this.iceCandidateBuffer.length)) {
             this.addIceCandidate(candidate)
         }
-    }
-
-    private onDataChannelCreated(event: RTCDataChannelEvent) {
-        console.info(event)
     }
 
     // -- Class Api
