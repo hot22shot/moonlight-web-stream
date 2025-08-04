@@ -8,14 +8,14 @@ use actix_ws::{Closed, Message, MessageStream, Session};
 use anyhow::anyhow;
 use log::warn;
 use moonlight_common::network::ApiError;
-use tokio::{spawn, task::JoinHandle, time::sleep};
+use tokio::{spawn, sync::Notify, task::JoinHandle, time::sleep};
 use webrtc::{
     api::{
         APIBuilder,
         interceptor_registry::register_default_interceptors,
         media_engine::{MIME_TYPE_H264, MediaEngine},
     },
-    ice_transport::ice_server::RTCIceServer,
+    ice_transport::{ice_connection_state::RTCIceConnectionState, ice_server::RTCIceServer},
     interceptor::registry::Registry,
     media::{Sample, io::h264_reader::H264Reader},
     peer_connection::{
@@ -189,6 +189,21 @@ async fn start_connection(
         })
     });
 
+    // When connected
+    let connected_notify = Arc::new(Notify::new());
+    peer.on_ice_connection_state_change({
+        let connected_notify = connected_notify.clone();
+
+        Box::new(move |state| {
+            if matches!(state, RTCIceConnectionState::Connected) {
+                warn!("CONNECTED!");
+                connected_notify.notify_waiters();
+            }
+
+            Box::pin(async move {})
+        })
+    });
+
     // Create and Add a video track
     let video_track = Arc::new(TrackLocalStaticSample::new(
         RTCRtpCodecCapability {
@@ -199,7 +214,7 @@ async fn start_connection(
         "webrtc-rs".to_owned(),
     ));
     let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
-    test_video(video_track, rtp_sender);
+    test_video(video_track, rtp_sender, connected_notify.clone());
 
     // Listen test Channel
     peer.on_data_channel(Box::new(|channel| {
@@ -214,7 +229,16 @@ async fn start_connection(
     }));
 
     // Test Channel
+    let test_channel_notify = Arc::new(Notify::new());
     let test_channel = peer.create_data_channel("test2", None).await?;
+    test_channel.on_open({
+        let test_channel_notify = test_channel_notify.clone();
+        Box::new(move || {
+            test_channel_notify.notify_waiters();
+
+            Box::pin(async move {})
+        })
+    });
 
     // Set Offer as Remote
     peer.set_remote_description(offer_description).await?;
@@ -250,8 +274,9 @@ async fn start_connection(
     )
     .await?;
 
-    sleep(Duration::from_secs(4)).await;
+    connected_notify.notified().await;
 
+    test_channel_notify.notified().await;
     test_channel.send_text("Hello").await?;
 
     sleep(Duration::from_secs(100)).await;
@@ -268,7 +293,11 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
     sender.text(json).await
 }
 
-fn test_video(video_track: Arc<TrackLocalStaticSample>, rtp_sender: Arc<RTCRtpSender>) {
+fn test_video(
+    video_track: Arc<TrackLocalStaticSample>,
+    rtp_sender: Arc<RTCRtpSender>,
+    start: Arc<Notify>,
+) {
     let video_file_name = "server/output.h264";
 
     // Read incoming RTCP packets
@@ -286,7 +315,7 @@ fn test_video(video_track: Arc<TrackLocalStaticSample>, rtp_sender: Arc<RTCRtpSe
         let mut h264 = H264Reader::new(reader, 1_048_576);
 
         // Wait for connection established
-        sleep(Duration::from_secs(4)).await;
+        start.notified().await;
 
         println!("play video from disk file {video_file_name}");
 

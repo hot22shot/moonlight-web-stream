@@ -49,8 +49,8 @@ class ViewerApp implements Component {
         this.stream.addAppInfoListener(this.onAppInfo.bind(this))
 
         // Configure video element
+        this.videoElement.controls = true
         this.videoElement.playsInline = true
-        this.videoElement.autoplay = true
         this.videoElement.srcObject = this.stream.getMediaStream()
     }
 
@@ -105,6 +105,10 @@ class Stream {
         })
         this.rtc.onicecandidate = this.onIceCandidate.bind(this)
 
+        this.rtc.ontrack = this.onTrack.bind(this)
+        this.rtc.ondatachannel = this.onDataChannel.bind(this)
+        this.rtc.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
+
         this.rtc.addTransceiver("video", {
             direction: "recvonly",
         })
@@ -112,10 +116,6 @@ class Stream {
         //     direction: "recvonly",
         // })
         this.dataChannel = this.rtc.createDataChannel("test1")
-
-        this.rtc.ontrack = this.onTrack.bind(this)
-        this.rtc.ondatachannel = this.onDataChannel.bind(this)
-        this.rtc.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
     }
 
     // Send Offer
@@ -181,7 +181,7 @@ class Stream {
         if (stream) {
             stream.getTracks().forEach(track => this.mediaStream.addTrack(track))
         }
-        this.mediaStream.addTrack(event.track)
+        // this.mediaStream.addTrack(event.track)
     }
     private onDataChannel(event: RTCDataChannelEvent) {
         console.log(event)
