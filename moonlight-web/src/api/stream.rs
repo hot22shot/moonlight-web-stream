@@ -1,10 +1,5 @@
 use std::{
-    fs::File,
-    io::BufReader,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
@@ -21,38 +16,36 @@ use moonlight_common::{
     stream::{Capabilities, ColorRange, Colorspace, MoonlightStream},
     video::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat},
 };
-use slab::Slab;
 use tokio::{
-    runtime::{Handle, Runtime},
+    runtime::Handle,
     spawn,
     sync::{
-        Mutex, Notify, RwLock,
+        Notify,
         mpsc::{Receiver, Sender, channel},
     },
     task::{JoinHandle, spawn_blocking},
-    time::sleep,
 };
 use webrtc::{
     api::{
         APIBuilder,
         interceptor_registry::register_default_interceptors,
-        media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MediaEngine},
+        media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
     },
     ice_transport::{ice_connection_state::RTCIceConnectionState, ice_server::RTCIceServer},
     interceptor::registry::Registry,
-    media::{Sample, io::h264_reader::H264Reader},
+    media::Sample,
     peer_connection::{
         configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
         sdp::session_description::RTCSessionDescription,
     },
-    rtp_transceiver::{rtp_codec::RTCRtpCodecCapability, rtp_sender::RTCRtpSender},
+    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
 use crate::{
     Config,
     api_bindings::{App, RtcIceCandidate, StreamClientMessage, StreamServerMessage},
-    data::{RuntimeApiData, RuntimeApiHost},
+    data::RuntimeApiData,
 };
 
 /// The stream handler WILL authenticate the client because it is a websocket
@@ -343,6 +336,7 @@ async fn start_webrtc(
                     | RTCPeerConnectionState::Failed
                     | RTCPeerConnectionState::Closed
             ) {
+                info!("connection failed!");
                 // If we didn't connect yet
                 connected_notify.notify_waiters();
 
@@ -425,6 +419,8 @@ fn supported_formats_from_mime(mime_type: &str) -> SupportedVideoFormats {
         return SupportedVideoFormats::MASK_H264;
     } else if mime_type.eq_ignore_ascii_case(MIME_TYPE_AV1) {
         return SupportedVideoFormats::MASK_AV1;
+    } else if mime_type.eq_ignore_ascii_case(MIME_TYPE_HEVC) {
+        return SupportedVideoFormats::MASK_H265;
     }
 
     SupportedVideoFormats::empty()
@@ -434,6 +430,7 @@ struct TrackSampleVideoDecoder {
     runtime: Handle,
     video_track: Option<Arc<TrackLocalStaticSample>>,
     supported_video_formats: SupportedVideoFormats,
+    needs_idr: bool,
     frame_time: f32,
     timestamp: u32,
     receiver: Receiver<Arc<TrackLocalStaticSample>>,
@@ -451,6 +448,7 @@ impl TrackSampleVideoDecoder {
         Self {
             runtime: Handle::current(),
             video_track,
+            needs_idr: false,
             supported_video_formats,
             frame_time: 0.0,
             timestamp: 0,
@@ -462,6 +460,7 @@ impl TrackSampleVideoDecoder {
     fn receive_video_tracks(&mut self) {
         while let Ok(video_track) = self.receiver.try_recv() {
             self.video_track = Some(video_track);
+            self.needs_idr = true;
         }
     }
 
@@ -479,8 +478,13 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         redraw_rate: u32,
         flags: (),
     ) -> i32 {
+        info!("Streaming with format: {format:?}");
+
         if !format.contained_in(self.supported_video_formats) {
-            warn!("tried to setup a video stream with a non supported video format");
+            warn!(
+                "tried to setup a video stream with a non supported video format: {format:?}, supported formats: {:?}",
+                self.supported_video_formats
+            );
             return -1;
         }
 
@@ -506,13 +510,15 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             let video_track = video_track.clone();
 
             let data = Bytes::copy_from_slice(buffer.data);
+            let frame_time = self.frame_time;
             let timestamp = self.timestamp;
+
             self.runtime.spawn(async move {
                 video_track
                     .write_sample(&Sample {
                         data,
                         timestamp: SystemTime::now(),
-                        duration: Duration::from_millis(33),
+                        duration: Duration::from_secs_f32(frame_time),
                         packet_timestamp: timestamp,
                         prev_dropped_packets: 0,
                         prev_padding_packets: 0,
@@ -523,11 +529,15 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         }
         self.timestamp += 1;
 
+        if self.needs_idr {
+            self.needs_idr = false;
+            return DecodeResult::NeedIdr;
+        }
         DecodeResult::Ok
     }
 
     fn supported_formats(&self) -> SupportedVideoFormats {
-        SupportedVideoFormats::empty()
+        self.supported_video_formats
     }
     fn capabilities(&self) -> Capabilities {
         Capabilities::empty()

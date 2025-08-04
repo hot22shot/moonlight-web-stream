@@ -110,9 +110,11 @@ class Stream {
         this.rtc.ondatachannel = this.onDataChannel.bind(this)
         this.rtc.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
 
-        this.rtc.addTransceiver("video", {
+        const transceiver = this.rtc.addTransceiver("video", {
             direction: "recvonly",
         })
+        transceiver.receiver.jitterBufferTarget = 0
+
         // this.rtc.addTransceiver("audio", {
         //     direction: "recvonly",
         // })

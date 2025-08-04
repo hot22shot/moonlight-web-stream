@@ -165,7 +165,7 @@ impl ConnectionListener for DebugHandler {
     }
 
     fn log_message(&mut self, message: &str) {
-        println!("Moonlight Log: {message}");
+        println!("Moonlight Log: {}", message.trim());
     }
 
     fn set_hdr_mode(&mut self, hdr_enabled: bool) {
