@@ -50,6 +50,7 @@ class ViewerApp implements Component {
 
         // Configure video element
         this.videoElement.controls = true
+        this.videoElement.autoplay = true
         this.videoElement.playsInline = true
         this.videoElement.srcObject = this.stream.getMediaStream()
     }

@@ -1,25 +1,49 @@
-use std::{fs::File, io::BufReader, sync::Arc, time::Duration};
+use std::{
+    fs::File,
+    io::BufReader,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, SystemTime},
+};
 
 use actix_web::{
     Error, HttpRequest, HttpResponse, get, rt as actix_rt,
-    web::{Data, Payload},
+    web::{Bytes, Data, Payload},
 };
 use actix_ws::{Closed, Message, MessageStream, Session};
 use anyhow::anyhow;
-use log::warn;
-use moonlight_common::network::ApiError;
-use tokio::{spawn, sync::Notify, task::JoinHandle, time::sleep};
+use log::{info, warn};
+use moonlight_common::{
+    debug::{DebugHandler, NullHandler},
+    network::ApiError,
+    stream::{Capabilities, ColorRange, Colorspace, MoonlightStream},
+    video::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat},
+};
+use slab::Slab;
+use tokio::{
+    runtime::{Handle, Runtime},
+    spawn,
+    sync::{
+        Mutex, Notify, RwLock,
+        mpsc::{Receiver, Sender, channel},
+    },
+    task::{JoinHandle, spawn_blocking},
+    time::sleep,
+};
 use webrtc::{
     api::{
         APIBuilder,
         interceptor_registry::register_default_interceptors,
-        media_engine::{MIME_TYPE_H264, MediaEngine},
+        media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MediaEngine},
     },
     ice_transport::{ice_connection_state::RTCIceConnectionState, ice_server::RTCIceServer},
     interceptor::registry::Registry,
     media::{Sample, io::h264_reader::H264Reader},
     peer_connection::{
-        configuration::RTCConfiguration, sdp::session_description::RTCSessionDescription,
+        configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
+        sdp::session_description::RTCSessionDescription,
     },
     rtp_transceiver::{rtp_codec::RTCRtpCodecCapability, rtp_sender::RTCRtpSender},
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
@@ -28,7 +52,7 @@ use webrtc::{
 use crate::{
     Config,
     api_bindings::{App, RtcIceCandidate, StreamClientMessage, StreamServerMessage},
-    data::RuntimeApiData,
+    data::{RuntimeApiData, RuntimeApiHost},
 };
 
 /// The stream handler WILL authenticate the client because it is a websocket
@@ -89,31 +113,24 @@ pub async fn start_stream(
             }
         };
 
-        let app = spawn({
-            let data = data.clone();
+        let video_mime_type = MIME_TYPE_H264;
+        let video_formats = supported_formats_from_mime(video_mime_type);
 
-            async move {
-                let hosts = data.hosts.read().await;
-                let Some(host) = hosts.get(host_id as usize) else {
-                    return Ok(None);
-                };
-                let mut host = host.lock().await;
+        let moonlight = actix_rt::spawn({
+            let hosts = data.clone();
 
-                let Some(result) = host.moonlight.app_list().await else {
-                    return Ok(None);
-                };
-                let app_list = result?;
-
-                let Some(app) = app_list.into_iter().find(|app| app.id == app_id) else {
-                    return Ok(None);
-                };
-
-                Ok(Some(app.into()))
-            }
+            start_moonlight(hosts, host_id as usize, app_id as usize, video_formats)
         });
 
-        if let Err(err) =
-            start_connection(data, app, session.clone(), stream, offer_description).await
+        if let Err(err) = start_webrtc(
+            data,
+            moonlight,
+            session.clone(),
+            stream,
+            offer_description,
+            video_mime_type.to_owned(),
+        )
+        .await
         {
             warn!("stream error: {err:?}");
 
@@ -124,12 +141,78 @@ pub async fn start_stream(
     Ok(response)
 }
 
-async fn start_connection(
+struct MlJoinData {
+    app: App,
+    stream: MoonlightStream,
+    set_video_track: Sender<Arc<TrackLocalStaticSample>>,
+}
+
+async fn start_moonlight(
     data: Data<RuntimeApiData>,
-    app: JoinHandle<Result<Option<App>, ApiError>>,
+    host_id: usize,
+    app_id: usize,
+    supported_video_formats: SupportedVideoFormats,
+) -> Result<Option<MlJoinData>, ApiError> {
+    let hosts = data.hosts.read().await;
+    let Some(host) = hosts.get(host_id) else {
+        return Ok(None);
+    };
+    let mut host = host.lock().await;
+
+    let Some(result) = host.moonlight.app_list().await else {
+        return Ok(None);
+    };
+    let app_list = result?;
+
+    let Some(app) = app_list.into_iter().find(|app| app.id as usize == app_id) else {
+        return Ok(None);
+    };
+
+    // Start stream
+    let video_decoder = TrackSampleVideoDecoder::new(None, supported_video_formats);
+    let set_video_decoder = video_decoder.video_track_setter();
+
+    let stream = match host
+        .moonlight
+        .start_stream(
+            &data.instance,
+            &data.crypto,
+            app_id as u32,
+            1920,
+            1080,
+            60,
+            Colorspace::Rec2020,
+            ColorRange::Full,
+            40000,
+            1024,
+            DebugHandler,
+            video_decoder,
+            NullHandler,
+        )
+        .await
+    {
+        Some(Ok(value)) => value,
+        Some(Err(err)) => {
+            warn!("failed to start moonlight stream: {err:?}");
+            return Ok(None);
+        }
+        None => return Ok(None),
+    };
+
+    Ok(Some(MlJoinData {
+        app: app.into(),
+        stream,
+        set_video_track: set_video_decoder,
+    }))
+}
+
+async fn start_webrtc(
+    data: Data<RuntimeApiData>,
+    app: JoinHandle<Result<Option<MlJoinData>, ApiError>>,
     mut sender: Session,
     receiver: MessageStream,
     offer_description: RTCSessionDescription,
+    video_mime_type: String,
 ) -> Result<(), anyhow::Error> {
     let config = RTCConfiguration {
         // TODO: put this into config
@@ -158,7 +241,7 @@ async fn start_connection(
         .build();
 
     // Create Peer Connection
-    let peer = api.new_peer_connection(config.clone()).await?;
+    let peer = Arc::new(api.new_peer_connection(config.clone()).await?);
 
     // Send ice candidates to client
     peer.on_ice_candidate({
@@ -189,34 +272,26 @@ async fn start_connection(
         })
     });
 
-    // When connected
-    let connected_notify = Arc::new(Notify::new());
-    peer.on_ice_connection_state_change({
-        let connected_notify = connected_notify.clone();
-
-        Box::new(move |state| {
-            if matches!(state, RTCIceConnectionState::Connected) {
-                warn!("CONNECTED!");
-                connected_notify.notify_waiters();
-            }
-
-            Box::pin(async move {})
-        })
-    });
-
-    // Create and Add a video track
+    // - Create and Add a video track
     let video_track = Arc::new(TrackLocalStaticSample::new(
         RTCRtpCodecCapability {
-            mime_type: MIME_TYPE_H264.to_owned(),
+            mime_type: video_mime_type,
             ..Default::default()
         },
         "video".to_owned(),
-        "webrtc-rs".to_owned(),
+        "moonlight".to_owned(),
     ));
     let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
-    test_video(video_track, rtp_sender, connected_notify.clone());
 
-    // Listen test Channel
+    // Read incoming RTCP packets
+    // Before these packets are returned they are processed by interceptors. For things
+    // like NACK this needs to be called.
+    spawn(async move {
+        let mut rtcp_buf = vec![0u8; 1500];
+        while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {}
+    });
+
+    // - Listen test Channel
     peer.on_data_channel(Box::new(|channel| {
         let label = channel.label().to_owned();
         channel.on_message(Box::new(move |message| {
@@ -228,13 +303,51 @@ async fn start_connection(
         Box::pin(async move {})
     }));
 
-    // Test Channel
+    // - Test Channel
     let test_channel_notify = Arc::new(Notify::new());
     let test_channel = peer.create_data_channel("test2", None).await?;
     test_channel.on_open({
         let test_channel_notify = test_channel_notify.clone();
         Box::new(move || {
             test_channel_notify.notify_waiters();
+
+            Box::pin(async move {})
+        })
+    });
+
+    // When connected
+    let connected_notify = Arc::new(Notify::new());
+    peer.on_ice_connection_state_change({
+        let connected_notify = connected_notify.clone();
+
+        Box::new(move |state| {
+            if matches!(state, RTCIceConnectionState::Connected) {
+                connected_notify.notify_waiters();
+                // Connection established: allow audio, video
+            }
+
+            Box::pin(async move {})
+        })
+    });
+
+    // Connection state change
+    let disconnected_notify = Arc::new(Notify::new());
+    peer.on_peer_connection_state_change({
+        let connected_notify = connected_notify.clone();
+        let disconnected_notify = disconnected_notify.clone();
+
+        Box::new(move |state| {
+            if matches!(
+                state,
+                RTCPeerConnectionState::Disconnected
+                    | RTCPeerConnectionState::Failed
+                    | RTCPeerConnectionState::Closed
+            ) {
+                // If we didn't connect yet
+                connected_notify.notify_waiters();
+
+                disconnected_notify.notify_waiters();
+            }
 
             Box::pin(async move {})
         })
@@ -247,7 +360,11 @@ async fn start_connection(
     let answer = peer.create_answer(None).await?;
     peer.set_local_description(answer.clone()).await?;
 
-    let app = match app.await {
+    let MlJoinData {
+        app,
+        stream,
+        set_video_track,
+    } = match app.await {
         Ok(Ok(Some(value))) => value,
         Ok(Ok(None)) => {
             send_ws_message(&mut sender, StreamServerMessage::HostOrAppNotFound).await?;
@@ -276,10 +393,20 @@ async fn start_connection(
 
     connected_notify.notified().await;
 
+    // Send test messages
     test_channel_notify.notified().await;
     test_channel.send_text("Hello").await?;
 
-    sleep(Duration::from_secs(100)).await;
+    // Set video decoder
+    set_video_track.send(video_track).await?;
+
+    disconnected_notify.notified().await;
+    info!("Stopping Stream");
+
+    spawn_blocking(move || {
+        stream.stop();
+        info!("Moonlight Stream Stopped");
+    });
 
     Ok(())
 }
@@ -293,64 +420,116 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
     sender.text(json).await
 }
 
-fn test_video(
-    video_track: Arc<TrackLocalStaticSample>,
-    rtp_sender: Arc<RTCRtpSender>,
-    start: Arc<Notify>,
-) {
-    let video_file_name = "server/output.h264";
+fn supported_formats_from_mime(mime_type: &str) -> SupportedVideoFormats {
+    if mime_type.eq_ignore_ascii_case(MIME_TYPE_H264) {
+        return SupportedVideoFormats::MASK_H264;
+    } else if mime_type.eq_ignore_ascii_case(MIME_TYPE_AV1) {
+        return SupportedVideoFormats::MASK_AV1;
+    }
 
-    // Read incoming RTCP packets
-    // Before these packets are returned they are processed by interceptors. For things
-    // like NACK this needs to be called.
-    tokio::spawn(async move {
-        let mut rtcp_buf = vec![0u8; 1500];
-        while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {}
-    });
+    SupportedVideoFormats::empty()
+}
 
-    spawn(async move {
-        // Open a H264 file and start reading using our H264Reader
-        let file = File::open(video_file_name).unwrap();
-        let reader = BufReader::new(file);
-        let mut h264 = H264Reader::new(reader, 1_048_576);
+struct TrackSampleVideoDecoder {
+    runtime: Handle,
+    video_track: Option<Arc<TrackLocalStaticSample>>,
+    supported_video_formats: SupportedVideoFormats,
+    frame_time: f32,
+    timestamp: u32,
+    receiver: Receiver<Arc<TrackLocalStaticSample>>,
+    sender: Sender<Arc<TrackLocalStaticSample>>,
+}
 
-        // Wait for connection established
-        start.notified().await;
+impl TrackSampleVideoDecoder {
+    // TODO: maybe allow the Moonlight crate to decide the video format?
+    pub fn new(
+        video_track: Option<Arc<TrackLocalStaticSample>>,
+        supported_video_formats: SupportedVideoFormats,
+    ) -> Self {
+        let (sender, receiver) = channel(1);
 
-        println!("play video from disk file {video_file_name}");
-
-        // It is important to use a time.Ticker instead of time.Sleep because
-        // * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
-        // * works around latency issues with Sleep
-        let mut ticker = tokio::time::interval(Duration::from_millis(33));
-        loop {
-            let nal = match h264.next_nal() {
-                Ok(nal) => nal,
-                Err(err) => {
-                    println!("All video frames parsed and sent: {err}");
-                    break;
-                }
-            };
-
-            /*println!(
-                "PictureOrderCount={}, ForbiddenZeroBit={}, RefIdc={}, UnitType={}, data={}",
-                nal.picture_order_count,
-                nal.forbidden_zero_bit,
-                nal.ref_idc,
-                nal.unit_type,
-                nal.data.len()
-            );*/
-
-            video_track
-                .write_sample(&Sample {
-                    data: nal.data.freeze(),
-                    duration: Duration::from_secs(1),
-                    ..Default::default()
-                })
-                .await
-                .unwrap();
-
-            let _ = ticker.tick().await;
+        Self {
+            runtime: Handle::current(),
+            video_track,
+            supported_video_formats,
+            frame_time: 0.0,
+            timestamp: 0,
+            sender,
+            receiver,
         }
-    });
+    }
+
+    fn receive_video_tracks(&mut self) {
+        while let Ok(video_track) = self.receiver.try_recv() {
+            self.video_track = Some(video_track);
+        }
+    }
+
+    pub fn video_track_setter(&self) -> Sender<Arc<TrackLocalStaticSample>> {
+        self.sender.clone()
+    }
+}
+
+impl VideoDecoder for TrackSampleVideoDecoder {
+    fn setup(
+        &mut self,
+        format: VideoFormat,
+        width: u32,
+        height: u32,
+        redraw_rate: u32,
+        flags: (),
+    ) -> i32 {
+        if !format.contained_in(self.supported_video_formats) {
+            warn!("tried to setup a video stream with a non supported video format");
+            return -1;
+        }
+
+        self.frame_time = 1.0 / redraw_rate as f32;
+
+        0
+    }
+    fn start(&mut self) {
+        self.receive_video_tracks();
+    }
+    fn stop(&mut self) {}
+
+    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
+        self.receive_video_tracks();
+
+        let Some(video_track) = self.video_track.as_ref() else {
+            return DecodeResult::Ok;
+        };
+
+        for buffer in unit.buffers {
+            // TODO: maybe add header data? using with_extension
+            // TODO: fill in these values
+            let video_track = video_track.clone();
+
+            let data = Bytes::copy_from_slice(buffer.data);
+            let timestamp = self.timestamp;
+            self.runtime.spawn(async move {
+                video_track
+                    .write_sample(&Sample {
+                        data,
+                        timestamp: SystemTime::now(),
+                        duration: Duration::from_millis(33),
+                        packet_timestamp: timestamp,
+                        prev_dropped_packets: 0,
+                        prev_padding_packets: 0,
+                    })
+                    .await
+                    .unwrap();
+            });
+        }
+        self.timestamp += 1;
+
+        DecodeResult::Ok
+    }
+
+    fn supported_formats(&self) -> SupportedVideoFormats {
+        SupportedVideoFormats::empty()
+    }
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::empty()
+    }
 }

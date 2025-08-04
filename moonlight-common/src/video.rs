@@ -50,6 +50,16 @@ pub enum VideoFormat {
     Av1High10_444 = limelight::VIDEO_FORMAT_AV1_HIGH10_444, // AV1 High 4:4:4 10-bit profile
 }
 
+impl VideoFormat {
+    pub fn contained_in(&self, supported_video_formats: SupportedVideoFormats) -> bool {
+        let Some(single_format) = SupportedVideoFormats::from_bits(*self as u32) else {
+            return false;
+        };
+
+        supported_video_formats.contains(single_format)
+    }
+}
+
 /// These identify codec configuration data in the buffer lists
 /// of frames identified as IDR frames for H.264 and HEVC formats.
 /// For other codecs, all data is marked as BUFFER_TYPE_PICDATA.

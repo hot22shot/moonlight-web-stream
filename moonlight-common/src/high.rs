@@ -7,7 +7,10 @@ use std::{mem::swap, time::Duration};
 use bytes::Bytes;
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
-use tokio::task::block_in_place;
+use tokio::{
+    spawn,
+    task::{block_in_place, spawn_blocking},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -416,6 +419,43 @@ impl MoonlightHost<MaybePaired> {
             MaybePaired::Paired(paired) => Some(&paired.server_certificate),
         }
     }
+
+    pub async fn start_stream(
+        &mut self,
+        instance: &MoonlightInstance,
+        crypto: &MoonlightCrypto,
+        app_id: u32,
+        width: u32,
+        height: u32,
+        fps: u32,
+        color_space: Colorspace,
+        color_range: ColorRange,
+        bitrate: u32,
+        packet_size: u32,
+        connection_listener: impl ConnectionListener + Send + 'static,
+        video_decoder: impl VideoDecoder + Send + 'static,
+        audio_decoder: impl AudioDecoder + Send + 'static,
+    ) -> Option<Result<MoonlightStream, StreamError>> {
+        self.try_exec_paired(async |this| {
+            this.start_stream(
+                instance,
+                crypto,
+                app_id,
+                width,
+                height,
+                fps,
+                color_space,
+                color_range,
+                bitrate,
+                packet_size,
+                connection_listener,
+                video_decoder,
+                audio_decoder,
+            )
+            .await
+        })
+        .await
+    }
 }
 
 impl MoonlightHost<Unpaired> {
@@ -590,13 +630,14 @@ impl MoonlightHost<Paired> {
 
         let app_version = self.version().await?;
         let server_codec_mode_support = self.server_codec_mode_support().await?;
-        let gfe_version = self.gfe_version().await?;
+        let gfe_version = self.gfe_version().await?.to_owned();
 
-        let connection = block_in_place(|| {
+        let instance_clone = instance.clone();
+        let connection = spawn_blocking(move || {
             let server_info = ServerInfo {
                 address: &address,
                 app_version,
-                gfe_version,
+                gfe_version: &gfe_version,
                 rtsp_session_url: &rtsp_session_url,
                 server_codec_mode_support,
             };
@@ -619,14 +660,17 @@ impl MoonlightHost<Paired> {
                 remote_input_aes_iv: aes_iv,
             };
 
-            instance.start_connection(
+            instance_clone.start_connection(
                 server_info,
                 stream_config,
                 connection_listener,
                 video_decoder,
                 audio_decoder,
             )
-        })?;
+        })
+        .await
+        // TODO: remove unwrap
+        .unwrap()?;
 
         Ok(connection)
     }
