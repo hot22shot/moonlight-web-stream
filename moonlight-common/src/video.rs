@@ -64,7 +64,7 @@ impl VideoFormat {
 /// of frames identified as IDR frames for H.264 and HEVC formats.
 /// For other codecs, all data is marked as BUFFER_TYPE_PICDATA.
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, FromPrimitive)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Eq)]
 pub enum BufferType {
     PicData = BUFFER_TYPE_PICDATA,
     Sps = BUFFER_TYPE_SPS,
@@ -79,11 +79,11 @@ pub enum FrameType {
     /// previous P-frames.
     PFrame = FRAME_TYPE_PFRAME,
     /// This is a key frame.
-    //
+    ///
     /// For H.264 and HEVC, this means the frame contains SPS, PPS, and VPS (HEVC only) NALUs
     /// as the first buffers in the list. The I-frame data follows immediately
     /// after the codec configuration NALUs.
-    //
+    ///
     /// For other codecs, any configuration data is not split into separate buffers.
     Idr = FRAME_TYPE_IDR,
 }
@@ -113,18 +113,19 @@ pub struct VideoDecodeUnit<'a> {
     /// long prior to display.
     pub presentation_time_ms: u32,
     /// Determines if this frame is SDR or HDR
-    //
+    ///
     /// Note: This is not currently parsed from the actual bitstream, so if your
     /// client has access to a bitstream parser, prefer that over this field.
     pub hdr_active: bool,
     /// Provides the colorspace of this frame (see COLORSPACE_* defines above)
-    //
+    ///
     /// Note: This is not currently parsed from the actual bitstream, so if your
     /// client has access to a bitstream parser, prefer that over this field.
     pub color_space: Colorspace,
     pub buffers: &'a [VideoDataBuffer<'a>],
 }
 pub struct VideoDataBuffer<'a> {
+    /// Buffer type (listed above, only set for H.264 and HEVC formats)
     pub ty: BufferType,
     pub data: &'a [u8],
 }

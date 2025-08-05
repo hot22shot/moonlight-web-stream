@@ -65,9 +65,11 @@ high = [
     "reqwest/native-tls",
 ]
 
+# TODO: add a stream features which requires the sys crate so we can make requests without compiling the sys crate
 # Crypto
 crypto = ["moonlight-common-sys/crypto"]
 
+# TODO: make it possible to use different request backends
 # Network
 network = [
     "dep:tokio",

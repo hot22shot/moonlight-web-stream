@@ -1,11 +1,8 @@
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
+use std::{sync::Arc, time::Duration};
 
 use actix_web::{
     Error, HttpRequest, HttpResponse, get, rt as actix_rt,
-    web::{Bytes, Data, Payload},
+    web::{Data, Payload},
 };
 use actix_ws::{Closed, Message, MessageStream, Session};
 use anyhow::anyhow;
@@ -13,16 +10,12 @@ use log::{debug, info, warn};
 use moonlight_common::{
     debug::{DebugHandler, NullHandler},
     network::ApiError,
-    stream::{Capabilities, ColorRange, Colorspace, MoonlightStream},
-    video::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat},
+    stream::{ColorRange, Colorspace, MoonlightStream},
+    video::SupportedVideoFormats,
 };
 use tokio::{
-    runtime::Handle,
     spawn,
-    sync::{
-        Mutex, Notify,
-        mpsc::{Receiver, Sender, channel},
-    },
+    sync::{Mutex, Notify, mpsc::Sender},
     task::{JoinHandle, spawn_blocking},
 };
 use webrtc::{
@@ -33,7 +26,6 @@ use webrtc::{
     },
     ice_transport::{ice_connection_state::RTCIceConnectionState, ice_server::RTCIceServer},
     interceptor::registry::Registry,
-    media::Sample,
     peer_connection::{
         configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
         sdp::session_description::RTCSessionDescription,
@@ -44,9 +36,12 @@ use webrtc::{
 
 use crate::{
     Config,
+    api::stream::video::H264TrackSampleVideoDecoder,
     api_bindings::{App, RtcIceCandidate, StreamClientMessage, StreamServerMessage},
     data::RuntimeApiData,
 };
+
+mod video;
 
 /// The stream handler WILL authenticate the client because it is a websocket
 #[get("/stream")]
@@ -162,7 +157,7 @@ async fn start_moonlight(
     };
 
     // Start stream
-    let video_decoder = TrackSampleVideoDecoder::new(None, supported_video_formats);
+    let video_decoder = H264TrackSampleVideoDecoder::new(None);
     let set_video_decoder = video_decoder.video_track_setter();
 
     let stream = match host
@@ -176,7 +171,7 @@ async fn start_moonlight(
             60,
             Colorspace::Rec709,
             ColorRange::Limited,
-            100000,
+            10000,
             4096,
             DebugHandler,
             video_decoder,
@@ -376,7 +371,7 @@ async fn start_webrtc(
                     if let Some(stream) = stream.take() {
                         let _ = spawn_blocking(move || {
                             stream.stop();
-                            info!("[Stream]: Moonlight Stream Stopped");
+                            info!("[Stream]: Moonlight Stream Stopped (State: {state})");
                         })
                         .await;
                     }
@@ -432,146 +427,4 @@ fn supported_formats_from_mime(mime_type: &str) -> SupportedVideoFormats {
     }
 
     SupportedVideoFormats::empty()
-}
-
-struct TrackSampleVideoDecoder {
-    runtime: Handle,
-    video_track: Option<Arc<TrackLocalStaticSample>>,
-    supported_video_formats: SupportedVideoFormats,
-    needs_idr: bool,
-    frame_time: f32,
-    timestamp: u32,
-    receiver: Receiver<Arc<TrackLocalStaticSample>>,
-    sender: Sender<Arc<TrackLocalStaticSample>>,
-}
-
-impl TrackSampleVideoDecoder {
-    // TODO: maybe allow the Moonlight crate to decide the video format?
-    pub fn new(
-        video_track: Option<Arc<TrackLocalStaticSample>>,
-        supported_video_formats: SupportedVideoFormats,
-    ) -> Self {
-        let (sender, receiver) = channel(1);
-
-        Self {
-            runtime: Handle::current(),
-            video_track,
-            needs_idr: false,
-            supported_video_formats,
-            frame_time: 0.0,
-            timestamp: 0,
-            sender,
-            receiver,
-        }
-    }
-
-    fn receive_video_tracks(&mut self) {
-        while let Ok(video_track) = self.receiver.try_recv() {
-            self.video_track = Some(video_track);
-            self.needs_idr = true;
-        }
-    }
-
-    pub fn video_track_setter(&self) -> Sender<Arc<TrackLocalStaticSample>> {
-        self.sender.clone()
-    }
-}
-
-fn ensure_annexb(buffer: &[u8]) -> Bytes {
-    // If already Annex-B (starts with 00 00 00 01 or 00 00 01), just copy
-    if buffer.starts_with(&[0, 0, 0, 1]) || buffer.starts_with(&[0, 0, 1]) {
-        return Bytes::copy_from_slice(buffer);
-    }
-
-    // Otherwise assume it's AVCC (length-prefixed) and convert to Annex-B
-    let mut out = Vec::new();
-    let mut offset = 0;
-    while offset + 4 <= buffer.len() {
-        let nal_size = u32::from_be_bytes(buffer[offset..offset + 4].try_into().unwrap()) as usize;
-        offset += 4;
-        if offset + nal_size > buffer.len() {
-            break;
-        }
-
-        out.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        out.extend_from_slice(&buffer[offset..offset + nal_size]);
-        offset += nal_size;
-    }
-    Bytes::from(out)
-}
-
-impl VideoDecoder for TrackSampleVideoDecoder {
-    fn setup(
-        &mut self,
-        format: VideoFormat,
-        width: u32,
-        height: u32,
-        redraw_rate: u32,
-        flags: (),
-    ) -> i32 {
-        info!("[Stream] Streaming with format: {format:?}");
-
-        if !format.contained_in(self.supported_video_formats) {
-            warn!(
-                "tried to setup a video stream with a non supported video format: {format:?}, supported formats: {:?}",
-                self.supported_video_formats
-            );
-            return -1;
-        }
-
-        self.frame_time = 1.0 / redraw_rate as f32;
-
-        0
-    }
-    fn start(&mut self) {
-        self.receive_video_tracks();
-    }
-    fn stop(&mut self) {}
-
-    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        // Maybe this will help: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/binding/video/MediaCodecDecoderRenderer.java#L1397
-        self.receive_video_tracks();
-
-        let Some(video_track) = self.video_track.as_ref() else {
-            return DecodeResult::Ok;
-        };
-
-        for buffer in unit.buffers {
-            // TODO: maybe add header data? using with_extension
-            // TODO: fill in these values
-            let video_track = video_track.clone();
-
-            let data = ensure_annexb(buffer.data);
-            let frame_time = self.frame_time;
-            let timestamp = self.timestamp;
-
-            self.runtime.spawn(async move {
-                video_track
-                    .write_sample(&Sample {
-                        data,
-                        timestamp: SystemTime::now(),
-                        duration: Duration::from_secs_f32(frame_time),
-                        packet_timestamp: timestamp,
-                        prev_dropped_packets: 0,
-                        prev_padding_packets: 0,
-                    })
-                    .await
-                    .unwrap();
-            });
-        }
-        self.timestamp += 1;
-
-        if self.needs_idr {
-            self.needs_idr = false;
-            return DecodeResult::NeedIdr;
-        }
-        DecodeResult::Ok
-    }
-
-    fn supported_formats(&self) -> SupportedVideoFormats {
-        self.supported_video_formats
-    }
-    fn capabilities(&self) -> Capabilities {
-        Capabilities::empty()
-    }
 }
