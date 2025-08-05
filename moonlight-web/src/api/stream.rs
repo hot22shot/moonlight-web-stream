@@ -265,7 +265,7 @@ async fn start_webrtc(
         RTCRtpCodecCapability {
             mime_type: video_mime_type,
             clock_rate: 90000,
-            sdp_fmtp_line: "packetization-mode=1;profile-level-id=42e01f".to_owned(),
+            sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
             ..Default::default()
         },
         "video".to_owned(),

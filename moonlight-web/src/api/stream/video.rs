@@ -63,6 +63,35 @@ impl H264TrackSampleVideoDecoder {
     }
 }
 
+fn split_annexb_nals(data: &[u8]) -> Vec<&[u8]> {
+    let mut nal_units = Vec::new();
+    let mut i = 0;
+
+    while i + 3 < data.len() {
+        let start = if &data[i..i + 3] == [0, 0, 1] {
+            i
+        } else if i + 4 <= data.len() && &data[i..i + 4] == [0, 0, 0, 1] {
+            i
+        } else {
+            i += 1;
+            continue;
+        };
+
+        let next = (i + 3..data.len())
+            .find(|&j| {
+                j + 3 < data.len()
+                    && (&data[j..j + 3] == [0, 0, 1]
+                        || (j + 4 < data.len() && &data[j..j + 4] == [0, 0, 0, 1]))
+            })
+            .unwrap_or(data.len());
+
+        nal_units.push(&data[start..next]);
+        i = next;
+    }
+
+    nal_units
+}
+
 impl VideoDecoder for H264TrackSampleVideoDecoder {
     fn setup(
         &mut self,
@@ -101,55 +130,74 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
             return DecodeResult::Ok;
         }
 
-        // Maybe this will help: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/binding/video/MediaCodecDecoderRenderer.java#L1397
         self.receive_video_tracks();
-
         let Some(video_track) = self.video_track.as_ref() else {
             return DecodeResult::Ok;
         };
 
-        for buffer in unit.buffers {
-            let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
-            self.last_frame_number = unit.frame_number;
+        let frame_time = self.frame_time;
+        let packet_timestamp = unit.frame_number as u32;
+        let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
+        self.last_frame_number = unit.frame_number;
 
-            let mut buffer_data = buffer.data;
+        match unit.frame_type {
+            FrameType::Idr => {
+                let mut full_frame = Vec::new();
+                for buffer in unit.buffers {
+                    full_frame.extend_from_slice(buffer.data);
+                }
 
-            // https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/binding/video/MediaCodecDecoderRenderer.java#L1473
-            // H264 SPS
-            // if buffer.ty == BufferType::Sps {
-            //     // numSpsIn++; ?
+                if full_frame.is_empty() {
+                    warn!("Frame had no data");
+                    return DecodeResult::Ok;
+                }
 
-            //     // Skip to the start of the NALU data
-            //     let start_sequence_len = if buffer_data[2] == 0x01 { 3 } else { 4 };
-            //     buffer_data = &buffer_data[(start_sequence_len + 1)..];
-            // }
+                let data = Bytes::from(full_frame);
 
-            // TODO: fill in these values
+                let video_track = video_track.clone();
+                self.runtime.spawn(async move {
+                    if let Err(err) = video_track
+                        .write_sample(&Sample {
+                            data,
+                            timestamp: SystemTime::now(),
+                            duration: Duration::from_secs_f32(frame_time),
+                            packet_timestamp,
+                            prev_dropped_packets,
+                            prev_padding_packets: 0,
+                        })
+                        .await
+                    {
+                        warn!("write_sample failed: {err}");
+                    }
+                });
+            }
+            FrameType::PFrame => {
+                let data = Bytes::from(full_frame);
+                let video_track = video_track.clone();
 
-            let data = Bytes::copy_from_slice(buffer_data);
-            let frame_time = self.frame_time;
-            let packet_timestamp = unit.frame_number as u32;
-
-            let video_track = video_track.clone();
-            self.runtime.spawn(async move {
-                video_track
-                    .write_sample(&Sample {
-                        data,
-                        timestamp: SystemTime::now(),
-                        duration: Duration::from_secs_f32(frame_time),
-                        packet_timestamp,
-                        prev_dropped_packets,
-                        prev_padding_packets: 0,
-                    })
-                    .await
-                    .unwrap();
-            });
+                self.runtime.spawn(async move {
+                    if let Err(err) = video_track
+                        .write_sample(&Sample {
+                            data,
+                            timestamp: SystemTime::now(),
+                            duration: Duration::from_secs_f32(frame_time),
+                            packet_timestamp,
+                            prev_dropped_packets,
+                            prev_padding_packets: 0,
+                        })
+                        .await
+                    {
+                        warn!("write_sample failed: {err}");
+                    }
+                });
+            }
         }
 
         if self.needs_idr {
             self.needs_idr = false;
             return DecodeResult::NeedIdr;
         }
+
         DecodeResult::Ok
     }
 

@@ -29,6 +29,7 @@ async-stream = "0.3.6"
 
 ts-rs = "11.0.1"
 futures = "0.3.31"
+h264-reader = "0.8.0"
 
 [features]
 
