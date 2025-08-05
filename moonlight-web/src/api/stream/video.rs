@@ -172,24 +172,26 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                 });
             }
             FrameType::PFrame => {
-                let data = Bytes::from(full_frame);
-                let video_track = video_track.clone();
+                for buffer in unit.buffers {
+                    let data = Bytes::copy_from_slice(buffer.data);
+                    let video_track = video_track.clone();
 
-                self.runtime.spawn(async move {
-                    if let Err(err) = video_track
-                        .write_sample(&Sample {
-                            data,
-                            timestamp: SystemTime::now(),
-                            duration: Duration::from_secs_f32(frame_time),
-                            packet_timestamp,
-                            prev_dropped_packets,
-                            prev_padding_packets: 0,
-                        })
-                        .await
-                    {
-                        warn!("write_sample failed: {err}");
-                    }
-                });
+                    self.runtime.spawn(async move {
+                        if let Err(err) = video_track
+                            .write_sample(&Sample {
+                                data,
+                                timestamp: SystemTime::now(),
+                                duration: Duration::from_secs_f32(frame_time),
+                                packet_timestamp,
+                                prev_dropped_packets,
+                                prev_padding_packets: 0,
+                            })
+                            .await
+                        {
+                            warn!("write_sample failed: {err}");
+                        }
+                    });
+                }
             }
         }
 
