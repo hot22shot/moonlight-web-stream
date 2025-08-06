@@ -17,9 +17,7 @@ use tokio::{
     sync::mpsc::{Receiver, Sender, channel},
 };
 use webrtc::{
-    media::{Sample, io::h264_reader::NAL},
-    rtp::packetizer::Depacketizer,
-    track::track_local::track_local_static_sample::TrackLocalStaticSample,
+    media::Sample, track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
 pub struct H264TrackSampleVideoDecoder {
@@ -190,7 +188,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
             }
         });
 
-        if unit.frame_number.is_multiple_of(10){
+        if unit.frame_number % 10 == 0 {
             self.needs_idr = true;
         }
 
