@@ -228,7 +228,8 @@ async fn start(
     let audio_track = Arc::new(TrackLocalStaticSample::new(
         RTCRtpCodecCapability {
             mime_type: MIME_TYPE_OPUS.to_string(),
-            clock_rate: 90000,
+            clock_rate: 48000,
+            channels: 2,
             ..Default::default()
         },
         "audio".to_owned(),

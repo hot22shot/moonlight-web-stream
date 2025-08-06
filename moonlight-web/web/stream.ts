@@ -126,10 +126,10 @@ class Stream {
         })
         videoTransceiver.receiver.jitterBufferTarget = 0
 
-        const audioTransceiver = this.pc.addTransceiver("audio", {
-            direction: "recvonly",
-        })
-        audioTransceiver.receiver.jitterBufferTarget = 0
+        // const audioTransceiver = this.pc.addTransceiver("audio", {
+        //     direction: "recvonly",
+        // })
+        // audioTransceiver.receiver.jitterBufferTarget = 0
 
         this.dataChannel = this.pc.createDataChannel("test1")
     }

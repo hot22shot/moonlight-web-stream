@@ -1,4 +1,4 @@
-use std::{io::Cursor, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use actix_web::web::Bytes;
 use log::warn;
@@ -8,11 +8,7 @@ use moonlight_common::{
 };
 use tokio::runtime::Handle;
 use webrtc::{
-    media::{
-        Sample,
-        io::{ogg_reader::OggReader, ogg_writer::OggWriter},
-    },
-    track::track_local::track_local_static_sample::TrackLocalStaticSample,
+    media::Sample, track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
 use crate::api::stream::StreamState;
@@ -21,8 +17,7 @@ pub struct OpusTrackSampleAudioDecoder {
     runtime: Handle,
     audio_track: Arc<TrackLocalStaticSample>,
     state: Arc<StreamState>,
-    reader: Option<OggReader<Cursor<Bytes>>>,
-    last_granule: u64,
+    config: Option<OpusMultistreamConfig>,
 }
 
 impl OpusTrackSampleAudioDecoder {
@@ -31,8 +26,7 @@ impl OpusTrackSampleAudioDecoder {
             runtime: Handle::current(),
             audio_track,
             state,
-            reader: None,
-            last_granule: 0,
+            config: None,
         }
     }
 }
@@ -44,18 +38,6 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
         stream_config: OpusMultistreamConfig,
         ar_flags: (),
     ) -> i32 {
-        let mut config_data = Cursor::new(Vec::new());
-        let _ = OggWriter::new(
-            &mut config_data,
-            stream_config.sample_rate,
-            stream_config.channel_count as u8,
-        )
-        .unwrap();
-
-        let config_data = Cursor::new(Bytes::from(config_data.into_inner()));
-        let (reader, _) = OggReader::new(config_data, true).unwrap();
-        self.reader = Some(reader);
-
         0
     }
 
@@ -66,41 +48,32 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
     }
 
     fn decode_and_play_sample(&mut self, data: &[u8]) {
-        if self.state.stop.is_reached() {
+        if self.state.stop.is_reached() || !self.state.connected.is_reached() {
             return;
         }
 
-        if !self.state.connected.is_reached() {
-            return;
-        }
-
-        let Some(reader) = self.reader.as_mut() else {
+        let Some(_config) = self.config.as_ref() else {
             return;
         };
 
+        // Assume Opus packet represents 20ms
+        let duration = Duration::from_millis(20);
+
         let data = Bytes::copy_from_slice(data);
-        reader.reset_reader(Box::new(move |_| Cursor::new(data.clone())));
+        let audio_track = self.audio_track.clone();
 
-        while let Ok((page_data, page_header)) = reader.parse_next_page() {
-            // The amount of samples is the difference between the last and current timestamp
-            let sample_count = page_header.granule_position - self.last_granule;
-            self.last_granule = page_header.granule_position;
-            let sample_duration = Duration::from_millis(sample_count * 1000 / 48000);
+        self.runtime.spawn(async move {
+            let sample = Sample {
+                data,
+                duration,
+                // Time should be set if you want fine-grained sync
+                ..Default::default()
+            };
 
-            let audio_track = self.audio_track.clone();
-            // self.runtime.spawn(async move {
-            //     if let Err(err) = audio_track
-            //         .write_sample(&Sample {
-            //             data: page_data.into(),
-            //             duration: sample_duration,
-            //             ..Default::default()
-            //         })
-            //         .await
-            //     {
-            //         warn!("[Stream]: audio_track.write_sample failed: {err}");
-            //     }
-            // });
-        }
+            if let Err(err) = audio_track.write_sample(&sample).await {
+                warn!("[Stream]: audio_track.write_sample failed: {err}");
+            }
+        });
     }
 
     fn config(&self) -> AudioConfig {
