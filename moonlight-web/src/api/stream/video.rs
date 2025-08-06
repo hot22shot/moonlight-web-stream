@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use actix_web::web::Bytes;
+use actix_web::{rt::System, web::Bytes};
 use log::{info, warn};
 use moonlight_common::{
     stream::Capabilities,
@@ -85,6 +85,8 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
         let mut full_frame = Vec::new();
 
         let frame_time = self.frame_time;
+        let timestamp =
+            SystemTime::UNIX_EPOCH + Duration::from_millis(unit.presentation_time_ms as u64);
         let packet_timestamp = unit.frame_number as u32 * (90000 / 60); // assuming 60 FPS
         let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
         self.last_frame_number = unit.frame_number;
@@ -109,7 +111,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                     if let Err(err) = video_track
                         .write_sample(&Sample {
                             data,
-                            timestamp: SystemTime::now(),
+                            timestamp,
                             duration: Duration::from_secs_f32(frame_time),
                             packet_timestamp,
                             prev_dropped_packets,
@@ -138,7 +140,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                         if let Err(err) = video_track
                             .write_sample(&Sample {
                                 data: nal.data.into(),
-                                timestamp: SystemTime::now(),
+                                timestamp,
                                 duration: Duration::from_secs_f32(frame_time),
                                 packet_timestamp,
                                 ..Default::default()
