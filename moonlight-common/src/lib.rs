@@ -89,6 +89,7 @@ pub struct MoonlightInstance {
 }
 
 impl MoonlightInstance {
+    // TODO: don't error but use global handle
     pub fn global() -> Result<Self, Error> {
         let handle = Handle::aquire().ok_or(Error::InstanceAlreadyExists)?;
 
