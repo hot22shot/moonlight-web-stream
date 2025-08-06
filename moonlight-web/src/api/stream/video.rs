@@ -1,4 +1,5 @@
 use std::{
+    io::{BufReader, Cursor},
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -17,7 +18,8 @@ use tokio::{
     sync::mpsc::{Receiver, Sender, channel},
 };
 use webrtc::{
-    media::Sample, track::track_local::track_local_static_sample::TrackLocalStaticSample,
+    media::{Sample, io::h264_reader::H264Reader},
+    track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
 pub struct H264TrackSampleVideoDecoder {
@@ -59,35 +61,6 @@ impl H264TrackSampleVideoDecoder {
     pub fn video_track_setter(&self) -> Sender<Arc<TrackLocalStaticSample>> {
         self.sender.clone()
     }
-}
-
-fn split_annexb_nals(data: &[u8]) -> Vec<&[u8]> {
-    let mut nal_units = Vec::new();
-    let mut i = 0;
-
-    while i + 3 < data.len() {
-        let start = if &data[i..i + 3] == [0, 0, 1] {
-            i
-        } else if i + 4 <= data.len() && &data[i..i + 4] == [0, 0, 0, 1] {
-            i
-        } else {
-            i += 1;
-            continue;
-        };
-
-        let next = (i + 3..data.len())
-            .find(|&j| {
-                j + 3 < data.len()
-                    && (&data[j..j + 3] == [0, 0, 1]
-                        || (j + 4 < data.len() && &data[j..j + 4] == [0, 0, 0, 1]))
-            })
-            .unwrap_or(data.len());
-
-        nal_units.push(&data[start..next]);
-        i = next;
-    }
-
-    nal_units
 }
 
 impl VideoDecoder for H264TrackSampleVideoDecoder {
@@ -135,9 +108,13 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
 
         let mut full_frame = Vec::new();
 
+        let frame_time = self.frame_time;
+        let packet_timestamp = unit.frame_number as u32 * (90000 / 60); // assuming 60 FPS
+        let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
+        self.last_frame_number = unit.frame_number;
+
         match unit.frame_type {
             FrameType::Idr => {
-                // Include SPS/PPS/VPS (if any) first
                 for buffer in unit.buffers {
                     match buffer.ty {
                         BufferType::Sps
@@ -148,48 +125,56 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                         }
                     }
                 }
+
+                let data = Bytes::from(full_frame);
+                let video_track = video_track.clone();
+
+                self.runtime.spawn(async move {
+                    if let Err(err) = video_track
+                        .write_sample(&Sample {
+                            data,
+                            timestamp: SystemTime::now(),
+                            duration: Duration::from_secs_f32(frame_time),
+                            packet_timestamp,
+                            prev_dropped_packets,
+                            prev_padding_packets: 0,
+                        })
+                        .await
+                    {
+                        warn!("write_sample failed: {err}");
+                    }
+                });
             }
             FrameType::PFrame => {
-                // Only include PicData
                 for buffer in unit.buffers {
-                    if buffer.ty == BufferType::PicData {
-                        full_frame.extend_from_slice(buffer.data);
-                    }
+                    full_frame.extend_from_slice(buffer.data);
+                }
+
+                let reader = Cursor::new(full_frame);
+                // TODO: capacity?
+                let mut nal_reader = H264Reader::new(reader, 1_048_576);
+                let video_track = video_track.clone();
+
+                while let Ok(nal) = nal_reader.next_nal() {
+                    println!("nal: {:?}", nal.unit_type);
+                    let video_track = video_track.clone();
+
+                    self.runtime.spawn(async move {
+                        if let Err(err) = video_track
+                            .write_sample(&Sample {
+                                data: nal.data.into(),
+                                timestamp: SystemTime::now(),
+                                duration: Duration::from_secs_f32(frame_time),
+                                packet_timestamp,
+                                ..Default::default()
+                            })
+                            .await
+                        {
+                            warn!("write_sample failed: {err}");
+                        }
+                    });
                 }
             }
-        }
-
-        if full_frame.is_empty() {
-            warn!("Empty frame at #{}", unit.frame_number);
-            return DecodeResult::Ok;
-        }
-
-        let frame_time = self.frame_time;
-        let packet_timestamp = unit.frame_number as u32 * (90000 / 60); // assuming 60 FPS
-        let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
-        self.last_frame_number = unit.frame_number;
-
-        let data = Bytes::from(full_frame);
-        let video_track = video_track.clone();
-
-        self.runtime.spawn(async move {
-            if let Err(err) = video_track
-                .write_sample(&Sample {
-                    data,
-                    timestamp: SystemTime::now(),
-                    duration: Duration::from_secs_f32(frame_time),
-                    packet_timestamp,
-                    prev_dropped_packets,
-                    prev_padding_packets: 0,
-                })
-                .await
-            {
-                warn!("write_sample failed: {err}");
-            }
-        });
-
-        if unit.frame_number % 10 == 0 {
-            self.needs_idr = true;
         }
 
         if self.needs_idr {
