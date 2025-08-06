@@ -32,7 +32,9 @@ use webrtc::{
     api::{
         APIBuilder,
         interceptor_registry::register_default_interceptors,
-        media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
+        media_engine::{
+            MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MIME_TYPE_OPUS, MediaEngine,
+        },
     },
     ice_transport::{
         ice_candidate::RTCIceCandidateInit, ice_connection_state::RTCIceConnectionState,
@@ -51,7 +53,7 @@ use webrtc::{
 
 use crate::{
     Config,
-    api::stream::video::H264TrackSampleVideoDecoder,
+    api::stream::{audio::OpusTrackSampleAudioDecoder, video::H264TrackSampleVideoDecoder},
     api_bindings::{
         App, RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
         StreamServerMessage, StreamSignalingMessage,
@@ -59,6 +61,7 @@ use crate::{
     data::RuntimeApiData,
 };
 
+mod audio;
 mod connection;
 mod video;
 
@@ -200,7 +203,19 @@ async fn start(
         todo!()
     };
 
-    // Start stream
+    // Send App Update
+    spawn({
+        let mut sender = ws_sender.clone();
+        async move {
+            let _ = send_ws_message(
+                &mut sender,
+                StreamServerMessage::UpdateApp { app: app.into() },
+            )
+            .await;
+        }
+    });
+
+    // Create video stream
     let video_track = Arc::new(TrackLocalStaticSample::new(
         RTCRtpCodecCapability {
             mime_type: video_mime_type,
@@ -213,17 +228,17 @@ async fn start(
     ));
     let video_decoder = H264TrackSampleVideoDecoder::new(video_track.clone(), state.clone());
 
-    // Send App Update
-    spawn({
-        let mut sender = ws_sender.clone();
-        async move {
-            let _ = send_ws_message(
-                &mut sender,
-                StreamServerMessage::UpdateApp { app: app.into() },
-            )
-            .await;
-        }
-    });
+    // Create audio stream
+    let audio_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_OPUS.to_string(),
+            clock_rate: 90000,
+            ..Default::default()
+        },
+        "audio".to_owned(),
+        "moonlight".to_owned(),
+    ));
+    let audio_decoder = OpusTrackSampleAudioDecoder::new(audio_track.clone(), state.clone());
 
     let stream = match host
         .moonlight
@@ -240,7 +255,7 @@ async fn start(
             4096,
             DebugHandler,
             video_decoder,
-            NullHandler,
+            audio_decoder,
         )
         .await
     {
@@ -426,15 +441,26 @@ async fn start(
         });
     };
 
-    // -- Create and Add a video track
-    let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
+    // -- Add a video track
+    let video_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
 
     // Read incoming RTCP packets
     // Before these packets are returned they are processed by interceptors. For things
     // like NACK this needs to be called.
     spawn(async move {
         let mut rtcp_buf = vec![0u8; 1500];
-        while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {}
+        while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
+    });
+
+    // -- Add a audio track
+    let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+
+    // Read incoming RTCP packets
+    // Before these packets are returned they are processed by interceptors. For things
+    // like NACK this needs to be called.
+    spawn(async move {
+        let mut rtcp_buf = vec![0u8; 1500];
+        while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
     });
 
     // - Listen test Channel
@@ -522,7 +548,10 @@ async fn start(
     });
 
     state.stop.when_reached().await;
-    info!("[Stream]: Stopping Stream");
+    info!("[Stream]: Stream Stopped");
+    if let Err(err) = peer.close().await {
+        warn!("[Stream]: failed to close stream: {err:?}");
+    }
 
     Ok(())
 }

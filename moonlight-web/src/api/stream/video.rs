@@ -119,7 +119,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                         })
                         .await
                     {
-                        warn!("write_sample failed: {err}");
+                        warn!("[Stream]: video_track.write_sample failed: {err}");
                     }
                 });
             }

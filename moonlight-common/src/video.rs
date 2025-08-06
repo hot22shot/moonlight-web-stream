@@ -12,6 +12,8 @@ use num_derive::FromPrimitive;
 
 use crate::stream::{Capabilities, Colorspace};
 
+// TODO: make time values into Duration or other fitting values
+
 bitflags! {
     #[derive(Debug, Clone, Copy, Default)]
     pub struct SupportedVideoFormats: u32 {

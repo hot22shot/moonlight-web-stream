@@ -121,14 +121,16 @@ class Stream {
         this.pc.ondatachannel = this.onDataChannel.bind(this)
         this.pc.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
 
-        const transceiver = this.pc.addTransceiver("video", {
+        const videoTransceiver = this.pc.addTransceiver("video", {
             direction: "recvonly",
         })
-        transceiver.receiver.jitterBufferTarget = 0
+        videoTransceiver.receiver.jitterBufferTarget = 0
 
-        // this.rtc.addTransceiver("audio", {
-        //     direction: "recvonly",
-        // })
+        const audioTransceiver = this.pc.addTransceiver("audio", {
+            direction: "recvonly",
+        })
+        audioTransceiver.receiver.jitterBufferTarget = 0
+
         this.dataChannel = this.pc.createDataChannel("test1")
     }
 
