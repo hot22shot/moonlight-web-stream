@@ -1,6 +1,7 @@
 use moonlight_common::network::ServerState;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
@@ -167,6 +168,47 @@ pub struct GetAppImageQuery {
     pub app_id: u32,
 }
 
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum RtcSdpType {
+    Offer,
+    Answer,
+    Pranswer,
+    Rollback,
+    Unspecified,
+}
+
+impl From<RtcSdpType> for RTCSdpType {
+    fn from(value: RtcSdpType) -> Self {
+        match value {
+            RtcSdpType::Offer => RTCSdpType::Offer,
+            RtcSdpType::Answer => RTCSdpType::Answer,
+            RtcSdpType::Pranswer => RTCSdpType::Pranswer,
+            RtcSdpType::Rollback => RTCSdpType::Rollback,
+            RtcSdpType::Unspecified => RTCSdpType::Unspecified,
+        }
+    }
+}
+impl From<RTCSdpType> for RtcSdpType {
+    fn from(value: RTCSdpType) -> Self {
+        match value {
+            RTCSdpType::Offer => RtcSdpType::Offer,
+            RTCSdpType::Answer => RtcSdpType::Answer,
+            RTCSdpType::Pranswer => RtcSdpType::Pranswer,
+            RTCSdpType::Rollback => RtcSdpType::Rollback,
+            RTCSdpType::Unspecified => RtcSdpType::Unspecified,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub struct RtcSessionDescription {
+    pub ty: RtcSdpType,
+    pub sdp: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
 pub struct RtcIceCandidate {
@@ -178,16 +220,20 @@ pub struct RtcIceCandidate {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
+pub enum StreamSignalingMessage {
+    Description(RtcSessionDescription),
+    AddIceCandidate(RtcIceCandidate),
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = "../web/api_bindings.d.ts")]
 pub enum StreamClientMessage {
-    Offer {
+    AuthenticateAndInit {
         credentials: String,
         host_id: u32,
         app_id: u32,
-        offer_sdp: String,
     },
-    AddIceCandidate {
-        candidate: RtcIceCandidate,
-    },
+    Signaling(StreamSignalingMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -195,6 +241,6 @@ pub enum StreamClientMessage {
 pub enum StreamServerMessage {
     InternalServerError,
     HostOrAppNotFound,
-    Answer { app: App, answer_sdp: String },
-    AddIceCandidate { candidate: RtcIceCandidate },
+    UpdateApp { app: App },
+    Signaling(StreamSignalingMessage),
 }

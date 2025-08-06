@@ -1,7 +1,7 @@
 import { Api, getApi } from "./api.js";
 import { Component, ComponentHost } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { App, RtcIceCandidate, StreamClientMessage, StreamServerMessage } from "./api_bindings.js";
+import { App, RtcIceCandidate, RtcSessionDescription, StreamClientMessage, StreamServerMessage } from "./api_bindings.js";
 import { showMessage } from "./component/modal/index.js";
 
 async function startApp() {
@@ -82,7 +82,8 @@ class Stream {
     private mediaStream: MediaStream = new MediaStream()
 
     private ws: WebSocket
-    private rtc: RTCPeerConnection
+
+    private pc: RTCPeerConnection
 
     private dataChannel: RTCDataChannel
 
@@ -97,20 +98,30 @@ class Stream {
         this.ws.onmessage = this.onWsMessage.bind(this);
         this.ws.onopen = this.onWsConnect.bind(this)
 
+        this.sendWsMessage({
+            AuthenticateAndInit: {
+                credentials: this.api.credentials,
+                host_id: this.hostId,
+                app_id: this.appId,
+            }
+        })
+
         // Configure web rtc
-        this.rtc = new RTCPeerConnection({
+        // Note: We're the polite peer
+        this.pc = new RTCPeerConnection({
             iceServers: [{
                 urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
             }],
             iceCandidatePoolSize: 10,
         })
-        this.rtc.onicecandidate = this.onIceCandidate.bind(this)
+        this.pc.onnegotiationneeded = this.onNegotiationNeeded.bind(this)
+        this.pc.onicecandidate = this.onIceCandidate.bind(this)
 
-        this.rtc.ontrack = this.onTrack.bind(this)
-        this.rtc.ondatachannel = this.onDataChannel.bind(this)
-        this.rtc.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
+        this.pc.ontrack = this.onTrack.bind(this)
+        this.pc.ondatachannel = this.onDataChannel.bind(this)
+        this.pc.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
 
-        const transceiver = this.rtc.addTransceiver("video", {
+        const transceiver = this.pc.addTransceiver("video", {
             direction: "recvonly",
         })
         transceiver.receiver.jitterBufferTarget = 0
@@ -118,27 +129,12 @@ class Stream {
         // this.rtc.addTransceiver("audio", {
         //     direction: "recvonly",
         // })
-        this.dataChannel = this.rtc.createDataChannel("test1")
+        this.dataChannel = this.pc.createDataChannel("test1")
     }
 
-    // Send Offer
-    private async onWsConnect() {
-        const offer = await this.rtc.createOffer()
-        if (!offer || !offer.sdp) {
-            throw "failed to create offer"
-        }
-
-        await this.rtc.setLocalDescription(offer)
-
-        console.info("sending offer")
-        this.sendWsMessage({
-            Offer: {
-                credentials: this.api.credentials,
-                offer_sdp: offer.sdp,
-                host_id: this.hostId,
-                app_id: this.appId,
-            }
-        })
+    private async onNegotiationNeeded() {
+        await this.pc.setLocalDescription()
+        this.sendLocalDescription()
     }
 
     private onMessage(message: StreamServerMessage) {
@@ -148,34 +144,59 @@ class Stream {
                 await showMessage(message)
                 window.close()
             })()
-        } else if ("AddIceCandidate" in message) {
-            const candidate = message.AddIceCandidate.candidate;
-            const candidateJson: RTCIceCandidateInit = {
-                candidate: candidate.candidate,
-                sdpMid: candidate.sdp_mid,
-                sdpMLineIndex: candidate.sdp_mline_index,
-                usernameFragment: candidate.username_fragment
-            }
-
-            this.addIceCandidate(candidateJson)
-        } else if ("Answer" in message) {
-            console.info("received answer")
-
-            // Set Remote Description
-            const answer_sdp = message.Answer.answer_sdp
-
-            this.setRemoteDescription({
-                type: "answer",
-                sdp: answer_sdp
-            })
-
+        } else if ("UpdateApp" in message) {
             // Dispatch app event
-            const app = message.Answer.app
+            const app = message.UpdateApp.app
 
             let event: any = new Event("stream-appinfo")
             event["app"] = app
             this.eventTarget.dispatchEvent(event)
+        } else if ("Signaling" in message) {
+            if ("Description" in message.Signaling) {
+                const descriptionRaw = message.Signaling.Description
+                const description = {
+                    type: descriptionRaw.ty as RTCSdpType,
+                    sdp: descriptionRaw.sdp,
+                }
+
+                this.handleSignaling(description, null)
+
+            } else if ("AddIceCandidate" in message.Signaling) {
+                const candidateRaw = message.Signaling.AddIceCandidate;
+                const candidate: RTCIceCandidateInit = {
+                    candidate: candidateRaw.candidate,
+                    sdpMid: candidateRaw.sdp_mid,
+                    sdpMLineIndex: candidateRaw.sdp_mline_index,
+                    usernameFragment: candidateRaw.username_fragment
+                }
+
+                this.handleSignaling(null, candidate)
+            }
         }
+    }
+    private async handleSignaling(description: RTCSessionDescriptionInit | null, candidate: RTCIceCandidateInit | null) {
+        if (description) {
+            await this.setRemoteDescription(description)
+
+            if (description.type == "offer") {
+                await this.pc.setLocalDescription()
+                this.sendLocalDescription()
+            }
+        } else if (candidate) {
+            this.pc.addIceCandidate(candidate)
+        }
+    }
+    private sendLocalDescription() {
+        const description = this.pc.localDescription as RTCSessionDescription;
+
+        this.sendWsMessage({
+            Signaling: {
+                Description: {
+                    ty: description.type,
+                    sdp: description.sdp
+                }
+            }
+        })
     }
 
     private onTrack(event: RTCTrackEvent) {
@@ -209,13 +230,13 @@ class Stream {
         }
 
         this.sendWsMessage({
-            AddIceCandidate: {
-                candidate
+            Signaling: {
+                AddIceCandidate: candidate
             }
         })
     }
     private onConnectionStateChange(event: Event) {
-        console.log(this.rtc.connectionState)
+        console.log(this.pc.connectionState)
     }
 
     // -- Raw Web Socket stuff
@@ -223,16 +244,16 @@ class Stream {
     private sendWsMessage(message: StreamClientMessage) {
         if (this.ws.readyState == WebSocket.OPEN) {
             this.ws.send(JSON.stringify(message))
-
-            if (this.wsMessageBuffer.length != 0) {
-                for (const message of this.wsMessageBuffer.splice(0, this.wsMessageBuffer.length)) {
-                    this.ws.send(JSON.stringify(message))
-                }
-            }
         } else {
             this.wsMessageBuffer.push(message)
         }
     }
+    private async onWsConnect() {
+        for (const message of this.wsMessageBuffer.splice(0, this.wsMessageBuffer.length)) {
+            this.ws.send(JSON.stringify(message))
+        }
+    }
+
     private onWsMessage(event: MessageEvent) {
         const data = event.data
         if (typeof data != "string") {
@@ -250,15 +271,15 @@ class Stream {
     // -- Raw Peer Connection stuff
     private iceCandidateBuffer: Array<RTCIceCandidateInit> = []
     private addIceCandidate(candidate: RTCIceCandidateInit) {
-        if (this.rtc.remoteDescription != null) {
-            this.rtc.addIceCandidate(candidate)
+        if (this.pc.remoteDescription != null) {
+            this.pc.addIceCandidate(candidate)
         } else {
             this.iceCandidateBuffer.push(candidate)
         }
     }
 
     private async setRemoteDescription(description: RTCSessionDescriptionInit) {
-        await this.rtc.setRemoteDescription(description)
+        await this.pc.setRemoteDescription(description)
 
         // add buffered ice candidates
         for (const candidate of this.iceCandidateBuffer.splice(0, this.iceCandidateBuffer.length)) {

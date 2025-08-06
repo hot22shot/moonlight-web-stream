@@ -2,6 +2,7 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc::SendError,
     },
     time::Duration,
 };
@@ -21,7 +22,10 @@ use moonlight_common::{
 };
 use tokio::{
     spawn,
-    sync::{Mutex, Notify, mpsc::Sender},
+    sync::{
+        Mutex, Notify,
+        mpsc::{Sender, channel},
+    },
     task::{JoinHandle, spawn_blocking},
 };
 use webrtc::{
@@ -30,11 +34,16 @@ use webrtc::{
         interceptor_registry::register_default_interceptors,
         media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
     },
-    ice_transport::{ice_connection_state::RTCIceConnectionState, ice_server::RTCIceServer},
+    ice_transport::{
+        ice_candidate::RTCIceCandidateInit, ice_connection_state::RTCIceConnectionState,
+        ice_server::RTCIceServer,
+    },
     interceptor::registry::Registry,
     peer_connection::{
-        configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
-        sdp::session_description::RTCSessionDescription,
+        configuration::RTCConfiguration,
+        peer_connection_state::RTCPeerConnectionState,
+        sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
+        signaling_state::RTCSignalingState,
     },
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
@@ -43,10 +52,14 @@ use webrtc::{
 use crate::{
     Config,
     api::stream::video::H264TrackSampleVideoDecoder,
-    api_bindings::{App, RtcIceCandidate, StreamClientMessage, StreamServerMessage},
+    api_bindings::{
+        App, RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
+        StreamServerMessage, StreamSignalingMessage,
+    },
     data::RuntimeApiData,
 };
 
+mod connection;
 mod video;
 
 // TODO: fix "integrity check failed" sometimes: maybe helpful: https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation
@@ -80,34 +93,26 @@ pub async fn start_stream(
             break;
         }
 
-        let message: StreamClientMessage = match serde_json::from_str(&message) {
+        let message = match serde_json::from_str::<StreamClientMessage>(&message) {
             Ok(value) => value,
             Err(_) => {
                 return;
             }
         };
 
-        let StreamClientMessage::Offer {
+        let StreamClientMessage::AuthenticateAndInit {
             credentials,
             host_id,
             app_id,
-            offer_sdp,
         } = message
         else {
+            let _ = session.close(None).await;
             return;
         };
 
         if credentials != config.credentials {
             return;
         }
-
-        let offer_description = match RTCSessionDescription::offer(offer_sdp) {
-            Ok(value) => value,
-            Err(err) => {
-                warn!("failed to create session description from offer: {err}");
-                return;
-            }
-        };
 
         let video_mime_type = MIME_TYPE_H264;
         let video_formats = supported_formats_from_mime(video_mime_type);
@@ -118,7 +123,6 @@ pub async fn start_stream(
             app_id as usize,
             session.clone(),
             stream,
-            offer_description,
             video_mime_type.to_owned(),
         )
         .await
@@ -172,9 +176,8 @@ async fn start(
     data: Data<RuntimeApiData>,
     host_id: usize,
     app_id: usize,
-    mut sender: Session,
-    receiver: MessageStream,
-    offer_description: RTCSessionDescription,
+    ws_sender: Session,
+    mut ws_receiver: MessageStream,
     video_mime_type: String,
 ) -> Result<(), anyhow::Error> {
     let state = Arc::new(StreamState {
@@ -209,6 +212,18 @@ async fn start(
         "moonlight".to_owned(),
     ));
     let video_decoder = H264TrackSampleVideoDecoder::new(video_track.clone(), state.clone());
+
+    // Send App Update
+    spawn({
+        let mut sender = ws_sender.clone();
+        async move {
+            let _ = send_ws_message(
+                &mut sender,
+                StreamServerMessage::UpdateApp { app: app.into() },
+            )
+            .await;
+        }
+    });
 
     let stream = match host
         .moonlight
@@ -267,36 +282,151 @@ async fn start(
     // -- Create and Configure Peer
     let peer = Arc::new(api.new_peer_connection(config.clone()).await?);
 
-    // Send ice candidates to client
-    peer.on_ice_candidate({
-        let sender = sender.clone();
+    // -- Handle Signaling: We're the impolite peer
+    {
+        let making_offer = Arc::new(AtomicBool::new(false));
 
-        Box::new(move |candidate| {
-            let mut sender = sender.clone();
-            Box::pin(async move {
-                let Some(candidate) = candidate else {
-                    return;
-                };
+        actix_rt::spawn({
+            let mut ws_sender = ws_sender.clone();
+            let peer = peer.clone();
+            let making_offer = making_offer.clone();
 
-                let Ok(candidate_json) = candidate.to_json() else {
-                    return;
-                };
+            async move {
+                while let Some(Ok(Message::Text(text))) = ws_receiver.recv().await {
+                    let Ok(message) = serde_json::from_str::<StreamClientMessage>(&text) else {
+                        warn!("[Stream]: failed to deserialize from json");
+                        continue;
+                    };
 
-                let message = StreamServerMessage::AddIceCandidate {
-                    candidate: RtcIceCandidate {
-                        candidate: candidate_json.candidate,
-                        sdp_mid: candidate_json.sdp_mid,
-                        sdp_mline_index: candidate_json.sdp_mline_index,
-                        username_fragment: candidate_json.username_fragment,
-                    },
-                };
+                    match message {
+                        StreamClientMessage::Signaling(StreamSignalingMessage::Description(
+                            description,
+                        )) => {
+                            let making_offer = making_offer.load(Ordering::Acquire);
 
-                let _ = send_ws_message(&mut sender, message).await;
+                            let ready_for_offer = !making_offer
+                                && peer.signaling_state() == RTCSignalingState::Stable;
+
+                            let offer_collision =
+                                description.ty == RtcSdpType::Offer && !ready_for_offer;
+
+                            if offer_collision {
+                                continue;
+                            }
+
+                            let description = match &description.ty {
+                                RtcSdpType::Offer => RTCSessionDescription::offer(description.sdp),
+                                RtcSdpType::Answer => {
+                                    RTCSessionDescription::answer(description.sdp)
+                                }
+                                RtcSdpType::Pranswer => {
+                                    RTCSessionDescription::pranswer(description.sdp)
+                                }
+                                _ => {
+                                    warn!(
+                                        "[Stream]: failed to handle RTCSdpType {:?}",
+                                        description.ty
+                                    );
+                                    continue;
+                                }
+                            };
+                            let Ok(description) = description else {
+                                warn!("[Stream]: Received invalid RTCSessionDescription");
+                                continue;
+                            };
+
+                            if let Err(err) = peer.set_remote_description(description).await {
+                                warn!("[Stream]: failed to set remote description: {err:?}");
+                                continue;
+                            }
+
+                            let local_description = match peer.create_answer(None).await {
+                                Err(err) => {
+                                    warn!("[Stream]: failed to create answer: {err:?}");
+                                    continue;
+                                }
+                                Ok(value) => value,
+                            };
+                            if let Err(err) =
+                                peer.set_local_description(local_description.clone()).await
+                            {
+                                warn!("[Stream]: failed to set local description: {err:?}");
+                                continue;
+                            }
+
+                            let _ = send_ws_message(
+                                &mut ws_sender,
+                                StreamServerMessage::Signaling(
+                                    StreamSignalingMessage::Description(RtcSessionDescription {
+                                        ty: local_description.sdp_type.into(),
+                                        sdp: local_description.sdp,
+                                    }),
+                                ),
+                            )
+                            .await;
+                        }
+                        StreamClientMessage::Signaling(
+                            StreamSignalingMessage::AddIceCandidate(description),
+                        ) => {
+                            if let Err(err) = peer
+                                .add_ice_candidate(RTCIceCandidateInit {
+                                    candidate: description.candidate,
+                                    sdp_mid: description.sdp_mid,
+                                    sdp_mline_index: description.sdp_mline_index,
+                                    username_fragment: description.username_fragment,
+                                })
+                                .await
+                            {
+                                warn!("[Stream]: failed to add ice candidate: {err:?}");
+                                continue;
+                            }
+                        }
+                        // This should already be done
+                        StreamClientMessage::AuthenticateAndInit { .. } => {}
+                    }
+                }
+            }
+        });
+
+        peer.on_negotiation_needed({
+            // TODO
+            Box::new(move || {
+                // TDOO
+
+                Box::pin(async move {})
             })
-        })
-    });
+        });
 
-    // - Create and Add a video track
+        peer.on_ice_candidate({
+            let sender = ws_sender.clone();
+
+            Box::new(move |candidate| {
+                let mut sender = sender.clone();
+                Box::pin(async move {
+                    let Some(candidate) = candidate else {
+                        return;
+                    };
+
+                    let Ok(candidate_json) = candidate.to_json() else {
+                        return;
+                    };
+
+                    let message = StreamServerMessage::Signaling(
+                        StreamSignalingMessage::AddIceCandidate(RtcIceCandidate {
+                            candidate: candidate_json.candidate,
+                            sdp_mid: candidate_json.sdp_mid,
+                            sdp_mline_index: candidate_json.sdp_mline_index,
+                            username_fragment: candidate_json.username_fragment,
+                        }),
+                    );
+
+                    let _ = send_ws_message(&mut sender, message).await;
+                })
+            })
+        });
+    };
+
+    // -- Create and Add a video track
     let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
 
     // Read incoming RTCP packets
@@ -364,21 +494,21 @@ async fn start(
         })
     });
 
-    // Set Offer as Remote
-    peer.set_remote_description(offer_description).await?;
+    // // Set Offer as Remote
+    // peer.set_remote_description(offer_description).await?;
 
-    // Create and Send Answer
-    let answer = peer.create_answer(None).await?;
-    peer.set_local_description(answer.clone()).await?;
+    // // Create and Send Answer
+    // let answer = peer.create_answer(None).await?;
+    // peer.set_local_description(answer.clone()).await?;
 
-    send_ws_message(
-        &mut sender,
-        StreamServerMessage::Answer {
-            answer_sdp: answer.sdp,
-            app: app.into(),
-        },
-    )
-    .await?;
+    // send_ws_message(
+    //     &mut ws_sender,
+    //     StreamServerMessage::Answer {
+    //         answer_sdp: answer.sdp,
+    //         app: app.into(),
+    //     },
+    // )
+    // .await?;
 
     spawn({
         let state = state.clone();
@@ -399,7 +529,7 @@ async fn start(
 
 async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> Result<(), Closed> {
     let Ok(json) = serde_json::to_string(&message) else {
-        warn!("stream failed to serialize to json");
+        warn!("[Stream]: failed to serialize to json");
         return Ok(());
     };
 

@@ -6,9 +6,10 @@
   "watch": {
     "build": {
       "patterns": [
+        "src",
         "web"
       ],
-      "extensions": "ts,html,svg,png",
+      "extensions": "ts,html,svg,png,rs",
       "ignore": "web/api_bindings.d.ts",
       "runOnChangeOnly": false
     }
