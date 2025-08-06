@@ -168,12 +168,6 @@ struct StreamState {
     pub stop: StreamStage,
 }
 
-struct MlJoinData {
-    app: App,
-    stream: MoonlightStream,
-    set_video_track: Sender<Arc<TrackLocalStaticSample>>,
-}
-
 async fn start(
     data: Data<RuntimeApiData>,
     host_id: usize,
