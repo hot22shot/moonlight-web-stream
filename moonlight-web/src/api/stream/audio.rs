@@ -67,19 +67,18 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
         let data = Bytes::copy_from_slice(data);
         let audio_track = self.audio_track.clone();
 
-        // TODO
-        // self.runtime.spawn(async move {
-        //     if let Err(err) = audio_track
-        //         .write_sample(&Sample {
-        //             data,
-        //             duration,
-        //             ..Default::default()
-        //         })
-        //         .await
-        //     {
-        //         warn!("[Stream]: audio_track.write_sample failed: {err}");
-        //     }
-        // });
+        self.runtime.spawn(async move {
+            if let Err(err) = audio_track
+                .write_sample(&Sample {
+                    data,
+                    duration,
+                    ..Default::default()
+                })
+                .await
+            {
+                warn!("[Stream]: audio_track.write_sample failed: {err}");
+            }
+        });
     }
 
     fn config(&self) -> AudioConfig {

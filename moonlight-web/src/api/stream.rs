@@ -115,16 +115,12 @@ pub async fn start_stream(
             return;
         }
 
-        let video_mime_type = MIME_TYPE_H264;
-        let video_formats = supported_formats_from_mime(video_mime_type);
-
         if let Err(err) = start(
             data,
             host_id as usize,
             app_id as usize,
             session.clone(),
             stream,
-            video_mime_type.to_owned(),
         )
         .await
         {
@@ -182,7 +178,6 @@ async fn start(
     app_id: usize,
     ws_sender: Session,
     mut ws_receiver: MessageStream,
-    video_mime_type: String,
 ) -> Result<(), anyhow::Error> {
     let state = Arc::new(StreamState {
         connected: StreamStage::new("connected"),
@@ -219,7 +214,7 @@ async fn start(
     // Create video stream
     let video_track = Arc::new(TrackLocalStaticSample::new(
         RTCRtpCodecCapability {
-            mime_type: video_mime_type,
+            mime_type: MIME_TYPE_H264.to_string(),
             clock_rate: 90000,
             sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
             ..Default::default()
@@ -476,16 +471,16 @@ async fn start(
         while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
     });
 
-    // // -- Add a audio track
-    // let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+    // -- Add a audio track
+    let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
 
-    // // Read incoming RTCP packets
-    // // Before these packets are returned they are processed by interceptors. For things
-    // // like NACK this needs to be called.
-    // spawn(async move {
-    //     let mut rtcp_buf = vec![0u8; 1500];
-    //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
-    // });
+    // Read incoming RTCP packets
+    // Before these packets are returned they are processed by interceptors. For things
+    // like NACK this needs to be called.
+    spawn(async move {
+        let mut rtcp_buf = vec![0u8; 1500];
+        while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
+    });
 
     // - Listen test Channel
     peer.on_data_channel(Box::new(|channel| {
