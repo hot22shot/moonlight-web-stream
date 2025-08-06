@@ -1,4 +1,10 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use actix_web::{
     Error, HttpRequest, HttpResponse, get, rt as actix_rt,
@@ -131,6 +137,42 @@ pub async fn start_stream(
     Ok(response)
 }
 
+struct StreamStage {
+    notify: Notify,
+    state: AtomicBool,
+}
+
+impl StreamStage {
+    pub fn new() -> Self {
+        Self {
+            notify: Notify::new(),
+            state: AtomicBool::new(false),
+        }
+    }
+
+    pub fn is_reached(&self) -> bool {
+        self.state.load(Ordering::Acquire)
+    }
+    pub async fn when_reached(&self) {
+        let future = self.notify.notified();
+        if self.is_reached() {
+            return;
+        }
+
+        future.await;
+    }
+
+    pub fn set_reached(&self) {
+        self.state.store(true, Ordering::Release);
+        self.notify.notify_waiters();
+    }
+}
+
+struct StreamState {
+    pub connected: StreamStage,
+    pub stop: StreamStage,
+}
+
 struct MlJoinData {
     app: App,
     stream: MoonlightStream,
@@ -204,6 +246,11 @@ async fn start_webrtc(
     offer_description: RTCSessionDescription,
     video_mime_type: String,
 ) -> Result<(), anyhow::Error> {
+    let state = Arc::new(StreamState {
+        connected: StreamStage::new(),
+        stop: StreamStage::new(),
+    });
+
     let config = RTCConfiguration {
         // TODO: put this into config
         ice_servers: vec![RTCIceServer {
@@ -308,22 +355,37 @@ async fn start_webrtc(
     });
     let test_channel_notify = spawn(async move { test_channel_notify.notified().await });
 
-    // When connected
-    let connected_notify = Arc::new(Notify::new());
+    // Connection state change
     peer.on_ice_connection_state_change({
-        let connected_notify = connected_notify.clone();
+        let state = state.clone();
 
-        Box::new(move |state| {
-            if matches!(state, RTCIceConnectionState::Connected) {
-                // Connection established: allow audio, video
-                connected_notify.notify_waiters();
+        Box::new(move |peer_state| {
+            if matches!(peer_state, RTCIceConnectionState::Connected) {
+                state.connected.set_reached();
             }
 
             Box::pin(async move {})
         })
     });
+    peer.on_peer_connection_state_change({
+        let state = state.clone();
 
-    let connected_notify = spawn(async move { connected_notify.notified().await });
+        Box::new(move |peer_state| {
+            if matches!(
+                peer_state,
+                RTCPeerConnectionState::Disconnected
+                    | RTCPeerConnectionState::Failed
+                    | RTCPeerConnectionState::Closed
+            ) {
+                // Sometimes we don't connect before failing
+                state.connected.set_reached();
+
+                state.stop.set_reached();
+            }
+
+            Box::pin(async move {})
+        })
+    });
 
     // Set Offer as Remote
     peer.set_remote_description(offer_description).await?;
@@ -354,36 +416,6 @@ async fn start_webrtc(
         }
     };
 
-    // Connection state change
-    peer.on_peer_connection_state_change({
-        let stream = Arc::new(Mutex::new(Some(stream)));
-
-        Box::new(move |state| {
-            if matches!(
-                state,
-                RTCPeerConnectionState::Disconnected
-                    | RTCPeerConnectionState::Failed
-                    | RTCPeerConnectionState::Closed
-            ) {
-                let stream = stream.clone();
-
-                return Box::pin(async move {
-                    let mut stream = stream.lock().await;
-
-                    if let Some(stream) = stream.take() {
-                        let _ = spawn_blocking(move || {
-                            stream.stop();
-                            info!("[Stream]: Moonlight Stream Stopped (State: {state})");
-                        })
-                        .await;
-                    }
-                });
-            }
-
-            Box::pin(async move {})
-        })
-    });
-
     send_ws_message(
         &mut sender,
         StreamServerMessage::Answer {
@@ -393,18 +425,23 @@ async fn start_webrtc(
     )
     .await?;
 
-    connected_notify.await?;
+    spawn({
+        let state = state.clone();
+        state.connected.when_reached().await;
 
-    debug!("[Stream]: SETTINGS VIDEO TRACK1");
-    // Send test messages
-    test_channel_notify.await?;
-    test_channel.send_text("Hello").await?;
+        async move {
+            // Send test messages
+            let _ = test_channel_notify.await;
+            let _ = test_channel.send_text("Hello").await;
 
-    // Set video decoder
-    set_video_track
-        .send_timeout(video_track, Duration::from_secs(2))
-        .await?;
+            // Set video decoder
+            let _ = set_video_track
+                .send_timeout(video_track, Duration::from_secs(2))
+                .await;
+        }
+    });
 
+    state.stop.when_reached().await;
     info!("[Stream]: Stopping Stream");
 
     Ok(())

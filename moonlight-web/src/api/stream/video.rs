@@ -156,7 +156,6 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                 let video_track = video_track.clone();
 
                 while let Ok(nal) = nal_reader.next_nal() {
-                    println!("nal: {:?}", nal.unit_type);
                     let video_track = video_track.clone();
 
                     self.runtime.spawn(async move {
