@@ -65,8 +65,6 @@ mod audio;
 mod connection;
 mod video;
 
-// TODO: fix "integrity check failed" sometimes: maybe helpful: https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation
-
 /// The stream handler WILL authenticate the client because it is a websocket
 #[get("/stream")]
 pub async fn start_stream(
@@ -140,13 +138,15 @@ pub async fn start_stream(
 }
 
 struct StreamStage {
+    name: &'static str,
     notify: Notify,
     state: AtomicBool,
 }
 
 impl StreamStage {
-    pub fn new() -> Self {
+    pub fn new(name: &'static str) -> Self {
         Self {
+            name,
             notify: Notify::new(),
             state: AtomicBool::new(false),
         }
@@ -165,6 +165,7 @@ impl StreamStage {
     }
 
     pub fn set_reached(&self) {
+        info!("[Stream]: signal \"{}\" called", self.name);
         self.state.store(true, Ordering::Release);
         self.notify.notify_waiters();
     }
@@ -184,8 +185,8 @@ async fn start(
     video_mime_type: String,
 ) -> Result<(), anyhow::Error> {
     let state = Arc::new(StreamState {
-        connected: StreamStage::new(),
-        stop: StreamStage::new(),
+        connected: StreamStage::new("connected"),
+        stop: StreamStage::new("stop"),
     });
 
     let hosts = data.hosts.read().await;
@@ -404,11 +405,34 @@ async fn start(
         });
 
         peer.on_negotiation_needed({
-            // TODO
-            Box::new(move || {
-                // TDOO
+            let peer = peer.clone();
+            let making_offer = making_offer.clone();
 
-                Box::pin(async move {})
+            Box::new(move || {
+                let peer = peer.clone();
+                let making_offer = making_offer.clone();
+
+                Box::pin(async move {
+                    making_offer.store(true, Ordering::Release);
+
+                    let local_description = match peer.create_offer(None).await {
+                        Err(err) => {
+                            making_offer.store(false, Ordering::Release);
+
+                            warn!("[Stream]: failed to create offer: {err:?}");
+                            return;
+                        }
+                        Ok(value) => value,
+                    };
+                    if let Err(err) = peer.set_local_description(local_description).await {
+                        making_offer.store(false, Ordering::Release);
+
+                        warn!("[Stream]: failed to set local description: {err:?}");
+                        return;
+                    }
+
+                    making_offer.store(false, Ordering::Release);
+                })
             })
         });
 
@@ -452,16 +476,16 @@ async fn start(
         while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
     });
 
-    // -- Add a audio track
-    let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+    // // -- Add a audio track
+    // let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
 
-    // Read incoming RTCP packets
-    // Before these packets are returned they are processed by interceptors. For things
-    // like NACK this needs to be called.
-    spawn(async move {
-        let mut rtcp_buf = vec![0u8; 1500];
-        while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
-    });
+    // // Read incoming RTCP packets
+    // // Before these packets are returned they are processed by interceptors. For things
+    // // like NACK this needs to be called.
+    // spawn(async move {
+    //     let mut rtcp_buf = vec![0u8; 1500];
+    //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
+    // });
 
     // - Listen test Channel
     peer.on_data_channel(Box::new(|channel| {
@@ -506,8 +530,8 @@ async fn start(
         Box::new(move |peer_state| {
             if matches!(
                 peer_state,
-                RTCPeerConnectionState::Disconnected
-                    | RTCPeerConnectionState::Failed
+                RTCPeerConnectionState::Failed
+                    | RTCPeerConnectionState::Disconnected
                     | RTCPeerConnectionState::Closed
             ) {
                 // Sometimes we don't connect before failing
@@ -519,22 +543,6 @@ async fn start(
             Box::pin(async move {})
         })
     });
-
-    // // Set Offer as Remote
-    // peer.set_remote_description(offer_description).await?;
-
-    // // Create and Send Answer
-    // let answer = peer.create_answer(None).await?;
-    // peer.set_local_description(answer.clone()).await?;
-
-    // send_ws_message(
-    //     &mut ws_sender,
-    //     StreamServerMessage::Answer {
-    //         answer_sdp: answer.sdp,
-    //         app: app.into(),
-    //     },
-    // )
-    // .await?;
 
     spawn({
         let state = state.clone();
