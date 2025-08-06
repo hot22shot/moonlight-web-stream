@@ -135,64 +135,63 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
             return DecodeResult::Ok;
         };
 
-        let frame_time = self.frame_time;
-        let packet_timestamp = unit.frame_number as u32;
-        let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
-        self.last_frame_number = unit.frame_number;
+        let mut full_frame = Vec::new();
 
         match unit.frame_type {
             FrameType::Idr => {
-                let mut full_frame = Vec::new();
+                // Include SPS/PPS/VPS (if any) first
                 for buffer in unit.buffers {
-                    full_frame.extend_from_slice(buffer.data);
-                }
-
-                if full_frame.is_empty() {
-                    warn!("Frame had no data");
-                    return DecodeResult::Ok;
-                }
-
-                let data = Bytes::from(full_frame);
-
-                let video_track = video_track.clone();
-                self.runtime.spawn(async move {
-                    if let Err(err) = video_track
-                        .write_sample(&Sample {
-                            data,
-                            timestamp: SystemTime::now(),
-                            duration: Duration::from_secs_f32(frame_time),
-                            packet_timestamp,
-                            prev_dropped_packets,
-                            prev_padding_packets: 0,
-                        })
-                        .await
-                    {
-                        warn!("write_sample failed: {err}");
+                    match buffer.ty {
+                        BufferType::Sps
+                        | BufferType::Pps
+                        | BufferType::Vps
+                        | BufferType::PicData => {
+                            full_frame.extend_from_slice(buffer.data);
+                        }
                     }
-                });
+                }
             }
             FrameType::PFrame => {
+                // Only include PicData
                 for buffer in unit.buffers {
-                    let data = Bytes::copy_from_slice(buffer.data);
-                    let video_track = video_track.clone();
-
-                    self.runtime.spawn(async move {
-                        if let Err(err) = video_track
-                            .write_sample(&Sample {
-                                data,
-                                timestamp: SystemTime::now(),
-                                duration: Duration::from_secs_f32(frame_time),
-                                packet_timestamp,
-                                prev_dropped_packets,
-                                prev_padding_packets: 0,
-                            })
-                            .await
-                        {
-                            warn!("write_sample failed: {err}");
-                        }
-                    });
+                    if buffer.ty == BufferType::PicData {
+                        full_frame.extend_from_slice(buffer.data);
+                    }
                 }
             }
+        }
+
+        if full_frame.is_empty() {
+            warn!("Empty frame at #{}", unit.frame_number);
+            return DecodeResult::Ok;
+        }
+
+        let frame_time = self.frame_time;
+        let packet_timestamp = unit.frame_number as u32 * (90000 / 60); // assuming 60 FPS
+        let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
+        self.last_frame_number = unit.frame_number;
+
+        let data = Bytes::from(full_frame);
+        let video_track = video_track.clone();
+
+        self.runtime.spawn(async move {
+            if let Err(err) = video_track
+                .write_sample(&Sample {
+                    data,
+                    timestamp: SystemTime::now(),
+                    duration: Duration::from_secs_f32(frame_time),
+                    packet_timestamp,
+                    prev_dropped_packets,
+                    prev_padding_packets: 0,
+                })
+                .await
+            {
+                warn!("write_sample failed: {err}");
+            }
+        });
+
+        if unit.frame_number.is_multiple_of(10){
+            self.needs_idr = true;
         }
 
         if self.needs_idr {

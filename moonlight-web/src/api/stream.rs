@@ -43,6 +43,8 @@ use crate::{
 
 mod video;
 
+// TODO: fix "integrity check failed" sometimes: maybe helpful: https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation
+
 /// The stream handler WILL authenticate the client because it is a websocket
 #[get("/stream")]
 pub async fn start_stream(

@@ -33,7 +33,7 @@ async fn main() -> std::io::Result<()> {
     )
     .expect("failed to init logger");
 
-    let address = "127.0.0.1";
+    let address = "192.168.178.119";
     let port = 8080;
 
     println!("Starting server on http://{address}:{port}");
