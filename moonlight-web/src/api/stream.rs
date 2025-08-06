@@ -112,15 +112,10 @@ pub async fn start_stream(
         let video_mime_type = MIME_TYPE_H264;
         let video_formats = supported_formats_from_mime(video_mime_type);
 
-        let moonlight = actix_rt::spawn({
-            let hosts = data.clone();
-
-            start_moonlight(hosts, host_id as usize, app_id as usize, video_formats)
-        });
-
-        if let Err(err) = start_webrtc(
+        if let Err(err) = start(
             data,
-            moonlight,
+            host_id as usize,
+            app_id as usize,
             session.clone(),
             stream,
             offer_description,
@@ -179,30 +174,38 @@ struct MlJoinData {
     set_video_track: Sender<Arc<TrackLocalStaticSample>>,
 }
 
-async fn start_moonlight(
+async fn start(
     data: Data<RuntimeApiData>,
     host_id: usize,
     app_id: usize,
-    supported_video_formats: SupportedVideoFormats,
-) -> Result<Option<MlJoinData>, ApiError> {
+    mut sender: Session,
+    receiver: MessageStream,
+    offer_description: RTCSessionDescription,
+    video_mime_type: String,
+) -> Result<(), anyhow::Error> {
+    let state = Arc::new(StreamState {
+        connected: StreamStage::new(),
+        stop: StreamStage::new(),
+    });
+
     let hosts = data.hosts.read().await;
     let Some(host) = hosts.get(host_id) else {
-        return Ok(None);
+        todo!()
     };
     let mut host = host.lock().await;
 
     let Some(result) = host.moonlight.app_list().await else {
-        return Ok(None);
+        todo!()
     };
     let app_list = result?;
 
     let Some(app) = app_list.into_iter().find(|app| app.id as usize == app_id) else {
-        return Ok(None);
+        todo!()
     };
 
     // Start stream
     let video_decoder = H264TrackSampleVideoDecoder::new(None);
-    let set_video_decoder = video_decoder.video_track_setter();
+    let set_video_track = video_decoder.video_track_setter();
 
     let stream = match host
         .moonlight
@@ -226,31 +229,12 @@ async fn start_moonlight(
         Some(Ok(value)) => value,
         Some(Err(err)) => {
             warn!("[Stream]: failed to start moonlight stream: {err:?}");
-            return Ok(None);
+            todo!()
         }
-        None => return Ok(None),
+        None => todo!(),
     };
 
-    Ok(Some(MlJoinData {
-        app: app.into(),
-        stream,
-        set_video_track: set_video_decoder,
-    }))
-}
-
-async fn start_webrtc(
-    data: Data<RuntimeApiData>,
-    app: JoinHandle<Result<Option<MlJoinData>, ApiError>>,
-    mut sender: Session,
-    receiver: MessageStream,
-    offer_description: RTCSessionDescription,
-    video_mime_type: String,
-) -> Result<(), anyhow::Error> {
-    let state = Arc::new(StreamState {
-        connected: StreamStage::new(),
-        stop: StreamStage::new(),
-    });
-
+    // -- Configure WebRTC
     let config = RTCConfiguration {
         // TODO: put this into config
         ice_servers: vec![RTCIceServer {
@@ -277,7 +261,7 @@ async fn start_webrtc(
         .with_interceptor_registry(registry)
         .build();
 
-    // Create Peer Connection
+    // -- Create and Configure Peer
     let peer = Arc::new(api.new_peer_connection(config.clone()).await?);
 
     // Send ice candidates to client
@@ -394,33 +378,11 @@ async fn start_webrtc(
     let answer = peer.create_answer(None).await?;
     peer.set_local_description(answer.clone()).await?;
 
-    let MlJoinData {
-        app,
-        stream,
-        set_video_track,
-    } = match app.await {
-        Ok(Ok(Some(value))) => value,
-        Ok(Ok(None)) => {
-            send_ws_message(&mut sender, StreamServerMessage::HostOrAppNotFound).await?;
-
-            let _ = peer.close().await;
-            return Err(anyhow!("app not found"));
-        }
-        Ok(Err(err)) => {
-            let _ = peer.close().await;
-            return Err(anyhow!("error whilst getting app: {err:?}"));
-        }
-        Err(err) => {
-            let _ = peer.close().await;
-            return Err(anyhow!("error whilst getting app: {err:?}"));
-        }
-    };
-
     send_ws_message(
         &mut sender,
         StreamServerMessage::Answer {
             answer_sdp: answer.sdp,
-            app,
+            app: app.into(),
         },
     )
     .await?;
