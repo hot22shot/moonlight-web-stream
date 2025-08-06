@@ -1,4 +1,8 @@
-use std::{io::ErrorKind, path::Path};
+use std::{
+    io::ErrorKind,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    path::Path,
+};
 use tokio::fs;
 
 use actix_web::{
@@ -33,17 +37,15 @@ async fn main() -> std::io::Result<()> {
     )
     .expect("failed to init logger");
 
-    let address = "127.0.0.1";
-    let port = 8080;
-
-    println!("Starting server on http://{address}:{port}");
-
+    // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
         panic!("enter your credentials in the config (server/config.json)");
     }
     let config = Data::new(config);
+    let bind_address = config.bind_address;
 
+    // Load Data
     let data = read_or_default::<ApiData>(&config.data_path).await;
     let data = RuntimeApiData::load(
         &config,
@@ -51,6 +53,8 @@ async fn main() -> std::io::Result<()> {
         MoonlightInstance::global().expect("failed to initialize moonlight"),
     )
     .await;
+
+    // Get socket address
 
     HttpServer::new(move || {
         App::new()
@@ -63,7 +67,7 @@ async fn main() -> std::io::Result<()> {
             )
             .service(web_service())
     })
-    .bind((address, port))?
+    .bind(bind_address)?
     .run()
     .await
 }
@@ -99,6 +103,8 @@ pub struct Config {
     credentials: String,
     #[serde(default = "data_path_default")]
     data_path: String,
+    #[serde(default = "default_bind_address")]
+    bind_address: SocketAddr,
     #[serde(default = "moonlight_default_http_port_default")]
     moonlight_default_http_port: u16,
     #[serde(default = "default_pair_device_name")]
@@ -110,6 +116,7 @@ impl Default for Config {
         Self {
             credentials: "default".to_string(),
             data_path: data_path_default(),
+            bind_address: default_bind_address(),
             moonlight_default_http_port: moonlight_default_http_port_default(),
             pair_device_name: default_pair_device_name(),
         }
@@ -118,6 +125,10 @@ impl Default for Config {
 
 fn data_path_default() -> String {
     "server/data.json".to_string()
+}
+
+fn default_bind_address() -> SocketAddr {
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8080))
 }
 
 fn moonlight_default_http_port_default() -> u16 {
