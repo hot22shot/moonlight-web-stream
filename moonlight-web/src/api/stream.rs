@@ -204,8 +204,17 @@ async fn start(
     };
 
     // Start stream
-    let video_decoder = H264TrackSampleVideoDecoder::new(None);
-    let set_video_track = video_decoder.video_track_setter();
+    let video_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: video_mime_type,
+            clock_rate: 90000,
+            sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
+            ..Default::default()
+        },
+        "video".to_owned(),
+        "moonlight".to_owned(),
+    ));
+    let video_decoder = H264TrackSampleVideoDecoder::new(video_track.clone(), state.clone());
 
     let stream = match host
         .moonlight
@@ -294,16 +303,6 @@ async fn start(
     });
 
     // - Create and Add a video track
-    let video_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: video_mime_type,
-            clock_rate: 90000,
-            sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
-            ..Default::default()
-        },
-        "video".to_owned(),
-        "moonlight".to_owned(),
-    ));
     let rtp_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
 
     // Read incoming RTCP packets
@@ -395,11 +394,6 @@ async fn start(
             // Send test messages
             let _ = test_channel_notify.await;
             let _ = test_channel.send_text("Hello").await;
-
-            // Set video decoder
-            let _ = set_video_track
-                .send_timeout(video_track, Duration::from_secs(2))
-                .await;
         }
     });
 

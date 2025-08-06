@@ -13,21 +13,18 @@ use moonlight_common::{
         VideoFormat,
     },
 };
-use tokio::{
-    runtime::Handle,
-    sync::mpsc::{Receiver, Sender, channel},
-};
+use tokio::runtime::Handle;
 use webrtc::{
     media::{Sample, io::h264_reader::H264Reader},
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
+use crate::api::stream::StreamState;
+
 pub struct H264TrackSampleVideoDecoder {
     runtime: Handle,
-    video_track: Option<Arc<TrackLocalStaticSample>>,
-    receiver: Receiver<Arc<TrackLocalStaticSample>>,
-    sender: Sender<Arc<TrackLocalStaticSample>>,
-    stopped: bool,
+    video_track: Arc<TrackLocalStaticSample>,
+    state: Arc<StreamState>,
     // Video important
     needs_idr: bool,
     frame_time: f32,
@@ -36,30 +33,15 @@ pub struct H264TrackSampleVideoDecoder {
 
 impl H264TrackSampleVideoDecoder {
     // TODO: maybe allow the Moonlight crate to decide the video format?
-    pub fn new(video_track: Option<Arc<TrackLocalStaticSample>>) -> Self {
-        let (sender, receiver) = channel(1);
-
+    pub fn new(video_track: Arc<TrackLocalStaticSample>, state: Arc<StreamState>) -> Self {
         Self {
             runtime: Handle::current(),
             video_track,
+            state,
             needs_idr: false,
             frame_time: 0.0,
-            sender,
-            receiver,
-            stopped: false,
             last_frame_number: 0,
         }
-    }
-
-    fn receive_video_tracks(&mut self) {
-        while let Ok(video_track) = self.receiver.try_recv() {
-            self.video_track = Some(video_track);
-            self.needs_idr = true;
-        }
-    }
-
-    pub fn video_track_setter(&self) -> Sender<Arc<TrackLocalStaticSample>> {
-        self.sender.clone()
     }
 }
 
@@ -86,25 +68,19 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
 
         0
     }
-    fn start(&mut self) {
-        self.receive_video_tracks();
-    }
+    fn start(&mut self) {}
     fn stop(&mut self) {
-        self.stopped = true;
-        self.video_track = None;
-
-        // TODO: call the RTC Peer to stop
+        self.state.stop.set_reached();
     }
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        if self.stopped {
+        if self.state.stop.is_reached() {
             return DecodeResult::Ok;
         }
 
-        self.receive_video_tracks();
-        let Some(video_track) = self.video_track.as_ref() else {
+        if !self.state.connected.is_reached() {
             return DecodeResult::Ok;
-        };
+        }
 
         let mut full_frame = Vec::new();
 
@@ -127,7 +103,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                 }
 
                 let data = Bytes::from(full_frame);
-                let video_track = video_track.clone();
+                let video_track = self.video_track.clone();
 
                 self.runtime.spawn(async move {
                     if let Err(err) = video_track
@@ -153,7 +129,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                 let len = full_frame.len();
                 let reader = Cursor::new(full_frame);
                 let mut nal_reader = H264Reader::new(reader, len);
-                let video_track = video_track.clone();
+                let video_track = self.video_track.clone();
 
                 while let Ok(nal) = nal_reader.next_nal() {
                     let video_track = video_track.clone();
