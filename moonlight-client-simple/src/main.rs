@@ -14,7 +14,7 @@ use tokio::{
     time::sleep,
 };
 
-use crate::gstreamer::GStreamerVideoHandler;
+use crate::gstreamer::{GStreamerVideoHandler, gstreamer_pipeline};
 
 mod gstreamer;
 
@@ -126,7 +126,7 @@ async fn main() {
     // Creating gstreamer stuff
     gstreamer::init();
 
-    let video_decoder = GStreamerVideoHandler::new().unwrap();
+    let (video_decoder, audio_decoder) = gstreamer_pipeline().unwrap();
 
     // Start the stream (only 1 stream per program is allowed)
     let stream = host
@@ -143,7 +143,7 @@ async fn main() {
             1024,
             DebugHandler,
             video_decoder,
-            NullHandler,
+            audio_decoder,
         )
         .await
         .unwrap();
