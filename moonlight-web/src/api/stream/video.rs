@@ -150,9 +150,9 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                     full_frame.extend_from_slice(buffer.data);
                 }
 
+                let len = full_frame.len();
                 let reader = Cursor::new(full_frame);
-                // TODO: capacity?
-                let mut nal_reader = H264Reader::new(reader, 1_048_576);
+                let mut nal_reader = H264Reader::new(reader, len);
                 let video_track = video_track.clone();
 
                 while let Ok(nal) = nal_reader.next_nal() {
