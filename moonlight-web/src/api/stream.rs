@@ -248,7 +248,7 @@ async fn start(
             60,
             Colorspace::Rec709,
             ColorRange::Limited,
-            10000,
+            1000,
             4096,
             DebugHandler,
             video_decoder,

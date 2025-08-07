@@ -1,5 +1,8 @@
+use std::{io::Write, str::FromStr};
+
 use gstreamer::{
-    Buffer, BufferFlags, Caps, ClockTime, Element, ElementFactory, Format, Pipeline, State,
+    Buffer, BufferFlags, Caps, ClockTime, DebugGraphDetails, Element, ElementFactory, Format,
+    Pipeline, State,
     event::Eos,
     glib::{self, object::ObjectExt},
     prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManual},
@@ -42,6 +45,9 @@ pub fn gstreamer_pipeline()
     pipeline.add(&audio_sink)?;
 
     audio_output.link(&audio_sink)?;
+
+    let dot_data = pipeline.debug_to_dot_data(DebugGraphDetails::all());
+    std::fs::write("appimages/pipeline.dot", dot_data).unwrap();
 
     Ok((video_decoder, audio_decoder))
 }
@@ -148,26 +154,38 @@ pub struct GStreamerAudioHandler {
 
 impl GStreamerAudioHandler {
     pub fn new(pipeline: Pipeline) -> Result<(Self, Element), glib::BoolError> {
-        let app_src = AppSrc::builder().name("moonlight audio packets").build();
+        let app_src = AppSrc::builder().name("moonlight_pcm_input").build();
         app_src.set_is_live(true);
-        app_src.set_format(Format::Buffers);
+        app_src.set_format(Format::Time);
         app_src.set_block(false);
         app_src.set_do_timestamp(true);
-        app_src.set_min_latency(-1);
 
-        let parse = ElementFactory::make_with_name("opusparse", Some("opus parse"))?;
-        let decode = ElementFactory::make_with_name("opusdec", Some("decode audio"))?;
-        let convert = ElementFactory::make_with_name("audioconvert", Some("convert audio"))?;
+        let opusparse = ElementFactory::make_with_name("opusparse", Some("audio parse")).unwrap();
+        let opusdec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
+        let audioconvert =
+            ElementFactory::make_with_name("audioconvert", Some("audio convert")).unwrap();
+        let audioresample =
+            ElementFactory::make_with_name("audioresample", Some("audio resample")).unwrap();
 
-        pipeline
-            .add_many([app_src.as_ref(), &parse, &decode, &convert])
-            .unwrap();
+        pipeline.add_many([
+            app_src.as_ref(),
+            // &opusparse,
+            &opusdec,
+            &audioconvert,
+            &audioresample,
+        ])?;
+        Element::link_many([
+            app_src.as_ref(),
+            // &opusparse,
+            &opusdec,
+            &audioconvert,
+            &audioresample,
+        ])?;
 
-        app_src.link(&parse)?;
-        parse.link(&decode)?;
-        decode.link(&convert)?;
+        // Configure appsrc caps (must match Opus stream properties)
+        // This will be set later in setup()
 
-        Ok((Self { pipeline, app_src }, convert))
+        Ok((Self { pipeline, app_src }, audioresample))
     }
 }
 
@@ -178,29 +196,12 @@ impl AudioDecoder for GStreamerAudioHandler {
         stream_config: OpusMultistreamConfig,
         ar_flags: (),
     ) -> i32 {
-        let OpusMultistreamConfig {
-            sample_rate,
-            channel_count,
-            coupled_streams,
-            mapping,
-            ..
-        } = stream_config;
+        let caps_str = "audio/x-opus, rate=48000, channels=2, channel-mapping-family=0";
 
-        let stream_count = coupled_streams + (channel_count - 2 * coupled_streams);
-
-        // GStreamer expects just the used portion of mapping
-        let mapping_slice = &mapping[..channel_count as usize];
-        let mapping_buffer = Buffer::from_slice(mapping_slice.to_vec());
-
-        let caps = Caps::builder("audio/x-opus")
-            .field("rate", 48000i32)
-            .field("channels", 2i32)
-            .field("stream-count", 1i32)
-            .field("coupled-count", 1i32)
-            .field("channel-mapping-family", 0i32)
-            .build();
-
+        let caps = Caps::from_str(&caps_str).unwrap();
         self.app_src.set_caps(Some(&caps));
+
+        // self.audio_config = Some(audio_config);
 
         0
     }
@@ -215,14 +216,11 @@ impl AudioDecoder for GStreamerAudioHandler {
     }
 
     fn decode_and_play_sample(&mut self, data: &[u8]) {
-        let mut gst_buffer = Buffer::with_size(data.len()).unwrap();
-        {
-            let buffer_mut = gst_buffer.get_mut().unwrap();
+        let mut buffer = Buffer::with_size(data.len()).unwrap();
+        let buffer_mut = buffer.get_mut().unwrap();
 
-            buffer_mut.copy_from_slice(0, data).unwrap();
-        }
-
-        self.app_src.push_buffer(gst_buffer).unwrap();
+        let _ = buffer_mut.copy_from_slice(0, data);
+        let _ = self.app_src.push_buffer(buffer);
     }
 
     fn config(&self) -> AudioConfig {
