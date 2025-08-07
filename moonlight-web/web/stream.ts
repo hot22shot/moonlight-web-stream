@@ -1,8 +1,9 @@
 import { Api, getApi } from "./api.js";
-import { Component, ComponentHost } from "./component/index.js";
+import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { App, RtcIceCandidate, RtcSessionDescription, StreamClientMessage, StreamServerMessage } from "./api_bindings.js";
 import { showMessage } from "./component/modal/index.js";
+import { setSidebar, Sidebar } from "./component/sidebar/index.js";
 
 async function startApp() {
     const api = await getApi()
@@ -29,7 +30,7 @@ async function startApp() {
 
     // Start and Mount App
     const app = new ViewerApp(api, hostId, appId)
-    const root = new ComponentHost(rootElement, app)
+    app.mount(rootElement)
 }
 
 startApp()
@@ -37,12 +38,17 @@ startApp()
 class ViewerApp implements Component {
     private api: Api
 
+    private sidebar: ViewerSidebar
     private videoElement = document.createElement("video")
 
     private stream: Stream
 
     constructor(api: Api, hostId: number, appId: number) {
         this.api = api
+
+        // Configure sidebar
+        this.sidebar = new ViewerSidebar()
+        setSidebar(this.sidebar)
 
         // Configure stream
         this.stream = new Stream(api, hostId, appId)
@@ -66,6 +72,29 @@ class ViewerApp implements Component {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.videoElement)
+    }
+}
+
+class ViewerSidebar implements Component, Sidebar {
+
+    private test: HTMLElement = document.createElement("p")
+
+    constructor() {
+        this.test.innerText = "TEST"
+    }
+
+    extended(): void {
+
+    }
+    unextend(): void {
+
+    }
+
+    mount(parent: HTMLElement): void {
+        parent.appendChild(this.test)
+    }
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.test)
     }
 }
 
@@ -126,6 +155,7 @@ class Stream {
         })
         videoTransceiver.receiver.jitterBufferTarget = 0
 
+        // TODO: audio
         // const audioTransceiver = this.pc.addTransceiver("audio", {
         //     direction: "recvonly",
         // })

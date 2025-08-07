@@ -243,13 +243,13 @@ async fn start(
             &data.instance,
             &data.crypto,
             app_id as u32,
-            1920,
-            1080,
+            1280,
+            720,
             60,
             Colorspace::Rec709,
             ColorRange::Limited,
             1000,
-            4096,
+            8192,
             DebugHandler,
             video_decoder,
             audio_decoder,
@@ -472,16 +472,17 @@ async fn start(
         while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
     });
 
+    // TODO: audio
     // -- Add a audio track
-    let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+    // let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
 
-    // Read incoming RTCP packets
-    // Before these packets are returned they are processed by interceptors. For things
-    // like NACK this needs to be called.
-    spawn(async move {
-        let mut rtcp_buf = vec![0u8; 1500];
-        while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
-    });
+    // // Read incoming RTCP packets
+    // // Before these packets are returned they are processed by interceptors. For things
+    // // like NACK this needs to be called.
+    // spawn(async move {
+    //     let mut rtcp_buf = vec![0u8; 1500];
+    //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
+    // });
 
     // - Listen test Channel
     peer.on_data_channel(Box::new(|channel| {

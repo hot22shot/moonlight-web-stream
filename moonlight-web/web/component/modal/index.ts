@@ -7,8 +7,8 @@ export interface Modal<Output> extends Component {
 }
 
 let modalUsed = false
-let modalBackground = document.getElementById("modal-overlay")
-let modalParent = document.getElementById("modal-parent")
+const modalBackground = document.getElementById("modal-overlay")
+const modalParent = document.getElementById("modal-parent")
 let previousModal: Modal<unknown> | null = null
 
 // Don't allow context menu event through this background

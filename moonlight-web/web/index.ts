@@ -1,7 +1,7 @@
 import { Api, getApi, apiPutHost } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
-import { Component, ComponentEvent, ComponentHost } from "./component/index.js";
+import { Component, ComponentEvent } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
@@ -24,7 +24,7 @@ async function startApp() {
     }
 
     const app = new MainApp(api)
-    const root = new ComponentHost(rootElement, app)
+    app.mount(rootElement)
 
     app.forceFetch()
 

@@ -100,6 +100,40 @@ button:hover {
     transition: all 0.1s linear, opacity 0.1s ease-out;
 }
 
+/** Sidebar */
+.sidebar-background {
+    position: fixed;
+    top: 50%;
+    transform: translate(calc(-100% + 30px), 0);
+    z-index: 1;
+    display: flex;
+    flex-direction: row-reverse;
+    gap: 5px;
+    /** animation */
+    transition: all 0.2s 0s linear;
+}
+
+.sidebar-background.sidebar-show {
+    /** animation */
+    transform: translate(0, 0);
+}
+
+.sidebar-button {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-background .sidebar-button-image {
+    rotate: 180deg;
+}
+
+.sidebar-background.sidebar-show .sidebar-button-image {
+    rotate: 0deg;
+}
+
 /** Errors */
 .error-list {
     visibility: hidden;
@@ -230,6 +264,6 @@ button:hover {
     top: 0;
     bottom: 0;
     text-align: center;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
 }

@@ -87,7 +87,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
         let frame_time = self.frame_time;
         let timestamp =
             SystemTime::UNIX_EPOCH + Duration::from_millis(unit.presentation_time_ms as u64);
-        let packet_timestamp = unit.frame_number as u32 * (90000 / 60); // assuming 60 FPS
+        let packet_timestamp = unit.frame_number as u32;
         let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
         self.last_frame_number = unit.frame_number;
 

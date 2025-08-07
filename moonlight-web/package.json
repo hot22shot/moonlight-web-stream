@@ -4,19 +4,21 @@
   "description": "",
   "main": "web/index.ts",
   "watch": {
-    "build": {
+    "build-light": {
       "patterns": [
         "src",
         "web"
       ],
-      "extensions": "ts,html,svg,png,rs",
+      "extensions": "ts,html,css,svg,png,rs",
       "ignore": "web/api_bindings.d.ts",
       "runOnChangeOnly": false
     }
   },
   "scripts": {
-    "dev": "npm-watch build",
-    "build": "cargo test export_bindings && tsc && npm run copy-static",
+    "dev": "npm-watch build-light",
+    "build": "npm run generate-bindings && npm run build-light",
+    "build-light": "tsc && npm run copy-static",
+    "generate-bindings": "cargo test export_bindings",
     "copy-static": "cpx \"web/**/*.{html,css,svg,png}\" dist/"
   },
   "license": "GPL-3.0-or-later",
