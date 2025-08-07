@@ -160,30 +160,33 @@ impl GStreamerAudioHandler {
         app_src.set_block(false);
         app_src.set_do_timestamp(true);
 
-        let opusparse = ElementFactory::make_with_name("opusparse", Some("audio parse")).unwrap();
-        let opusdec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
-        let audioconvert =
-            ElementFactory::make_with_name("audioconvert", Some("audio convert")).unwrap();
-        let audioresample =
-            ElementFactory::make_with_name("audioresample", Some("audio resample")).unwrap();
+        // Create the queue with 20ms min-threshold-time
+        let queue = ElementFactory::make_with_name("queue", Some("audio_delay_queue")).unwrap();
+        queue.set_property("min-threshold-time", 40_000_000u64); // 20ms
 
+        let opusdec = ElementFactory::make_with_name("opusdec", Some("audio_decode")).unwrap();
+        let audioconvert =
+            ElementFactory::make_with_name("audioconvert", Some("audio_convert")).unwrap();
+        let audioresample =
+            ElementFactory::make_with_name("audioresample", Some("audio_resample")).unwrap();
+
+        // Add elements to the pipeline
         pipeline.add_many([
             app_src.as_ref(),
-            // &opusparse,
-            &opusdec,
-            &audioconvert,
-            &audioresample,
-        ])?;
-        Element::link_many([
-            app_src.as_ref(),
-            // &opusparse,
+            &queue,
             &opusdec,
             &audioconvert,
             &audioresample,
         ])?;
 
-        // Configure appsrc caps (must match Opus stream properties)
-        // This will be set later in setup()
+        // Link elements in order: appsrc -> queue -> opusdec -> audioconvert -> audioresample
+        Element::link_many([
+            app_src.as_ref(),
+            &queue,
+            &opusdec,
+            &audioconvert,
+            &audioresample,
+        ])?;
 
         Ok((Self { pipeline, app_src }, audioresample))
     }
@@ -196,7 +199,11 @@ impl AudioDecoder for GStreamerAudioHandler {
         stream_config: OpusMultistreamConfig,
         ar_flags: (),
     ) -> i32 {
-        let caps_str = "audio/x-opus, rate=48000, channels=2, channel-mapping-family=0";
+        println!("{audio_config:?}, {stream_config:?}");
+        let caps_str = format!(
+            "audio/x-opus, rate={}, channels={}, channel-mapping-family=0",
+            stream_config.sample_rate, stream_config.channel_count
+        );
 
         let caps = Caps::from_str(&caps_str).unwrap();
         self.app_src.set_caps(Some(&caps));

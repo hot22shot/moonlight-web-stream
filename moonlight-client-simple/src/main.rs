@@ -139,7 +139,7 @@ async fn main() {
             60,
             Colorspace::Rec2020,
             ColorRange::Full,
-            40000,
+            4000,
             1024,
             DebugHandler,
             video_decoder,
