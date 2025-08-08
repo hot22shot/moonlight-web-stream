@@ -134,6 +134,12 @@ button:hover {
     rotate: 0deg;
 }
 
+.sidebar-content {
+    background-color: rgb(86, 92, 100);
+    border-radius: 5px;
+    padding: 10px 10px 10px 10px;
+}
+
 /** Errors */
 .error-list {
     visibility: hidden;
