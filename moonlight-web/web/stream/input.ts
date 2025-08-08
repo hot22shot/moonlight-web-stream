@@ -32,8 +32,13 @@ export class StreamInput {
             return
         }
 
+        console.info(this.dataBuffer)
         this.dataBuffer.flip()
-        channel.send(this.dataBuffer.getReadBuffer())
+        const buffer = this.dataBuffer.getReadBuffer()
+        if (buffer.length == 0) {
+            throw "illegal buffer size"
+        }
+        channel.send(buffer.buffer)
     }
 
     private onError(error: RTCErrorEvent) {
@@ -59,26 +64,27 @@ export class StreamInput {
     }
 
     onKeyDown(event: KeyboardEvent) {
-        this.dataBuffer.reset()
-        this.encodeKeyEvent(true, event)
-
-        this.trySendChannel(this.keyboardChannel)
+        this.sendKeyEvent(true, event)
     }
     onKeyUp(event: KeyboardEvent) {
-        this.dataBuffer.reset()
-        this.encodeKeyEvent(false, event)
-
-        this.trySendChannel(this.keyboardChannel)
+        this.sendKeyEvent(false, event)
     }
 
-    private encodeKeyEvent(isDown: boolean, event: KeyboardEvent) {
+    private sendKeyEvent(isDown: boolean, event: KeyboardEvent) {
+        this.dataBuffer.reset()
+
         if (this.keyboardConfig.type == "updown") {
             this.dataBuffer.putU8(0)
             this.dataBuffer.putBool(isDown)
-
         } else if (this.keyboardConfig.type == "text") {
+            if (!isDown) {
+                return
+            }
+
             this.dataBuffer.putU8(1)
             this.dataBuffer.putUtf8(event.key)
         }
+
+        this.trySendChannel(this.keyboardChannel)
     }
 }

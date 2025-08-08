@@ -37,7 +37,7 @@ export class ByteBuffer {
 
     putUtf8(text: string) {
         const encoder = new TextEncoder()
-        const result = encoder.encodeInto(text, this.buffer)
+        const result = encoder.encodeInto(text, this.buffer.subarray(this.position))
 
         this.bytesUsed(result.written, false)
         if (result.read != text.length) {

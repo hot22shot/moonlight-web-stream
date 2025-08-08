@@ -92,9 +92,16 @@ class ViewerApp implements Component {
 class ViewerSidebar implements Component, Sidebar {
 
     private test: HTMLElement = document.createElement("p")
+    private keyboardButton = document.createElement("button")
+    private keyboardHiddenInput = document.createElement("textarea")
 
     constructor() {
         this.test.innerText = "TEST"
+
+        this.keyboardButton.innerText = "Keyboard"
+        this.keyboardButton.addEventListener("click", async () => {
+            this.keyboardHiddenInput.focus()
+        })
     }
 
     extended(): void {
@@ -106,8 +113,12 @@ class ViewerSidebar implements Component, Sidebar {
 
     mount(parent: HTMLElement): void {
         parent.appendChild(this.test)
+        parent.appendChild(this.keyboardButton)
+        parent.appendChild(this.keyboardHiddenInput)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.test)
+        parent.removeChild(this.keyboardButton)
+        parent.removeChild(this.keyboardHiddenInput)
     }
 }
