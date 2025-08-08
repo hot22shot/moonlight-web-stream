@@ -15,7 +15,7 @@ use moonlight_common::{
     stream::{ColorRange, Colorspace},
     video::SupportedVideoFormats,
 };
-use tokio::{spawn, sync::Notify};
+use tokio::{spawn, sync::Notify, task::spawn_blocking};
 use webrtc::{
     api::{
         APIBuilder,
@@ -204,69 +204,6 @@ async fn start(
             .await;
         }
     });
-
-    // Create video stream
-    let video_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: MIME_TYPE_H264.to_string(),
-            clock_rate: 90000,
-            sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
-            ..Default::default()
-        },
-        "video".to_owned(),
-        "moonlight".to_owned(),
-    ));
-    let video_decoder = H264TrackSampleVideoDecoder::new(video_track.clone(), state.clone());
-
-    // Create audio stream
-    let audio_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: MIME_TYPE_OPUS.to_string(),
-            clock_rate: 48000,
-            channels: 2,
-            ..Default::default()
-        },
-        "audio".to_owned(),
-        "moonlight".to_owned(),
-    ));
-    let audio_decoder = OpusTrackSampleAudioDecoder::new(audio_track.clone(), state.clone());
-
-    let stream = match host
-        .moonlight
-        .start_stream(
-            &data.instance,
-            &data.crypto,
-            app_id as u32,
-            1280,
-            720,
-            60,
-            Colorspace::Rec709,
-            ColorRange::Limited,
-            1000,
-            8192,
-            DebugHandler,
-            video_decoder,
-            audio_decoder,
-        )
-        .await
-    {
-        Some(Ok(value)) => value,
-        Some(Err(err)) => {
-            warn!("[Stream]: failed to start moonlight stream: {err:?}");
-
-            #[allow(clippy::single_match)]
-            match err {
-                StreamError::Moonlight(moonlight_common::Error::ConnectionAlreadyExists) => {
-                    let _ = send_ws_message(&mut ws_sender, StreamServerMessage::AlreadyStreaming)
-                        .await;
-                }
-                _ => {}
-            }
-
-            return Err(err.into());
-        }
-        None => todo!(),
-    };
 
     // -- Configure WebRTC
     let config = RTCConfiguration {
@@ -465,7 +402,49 @@ async fn start(
         });
     };
 
-    // -- Add a video track
+    // Connection state change
+    peer.on_ice_connection_state_change({
+        let state = state.clone();
+
+        Box::new(move |peer_state| {
+            if matches!(peer_state, RTCIceConnectionState::Connected) {
+                state.connected.set_reached();
+            }
+
+            Box::pin(async move {})
+        })
+    });
+    peer.on_peer_connection_state_change({
+        let state = state.clone();
+
+        Box::new(move |peer_state| {
+            if matches!(
+                peer_state,
+                RTCPeerConnectionState::Failed
+                    | RTCPeerConnectionState::Disconnected
+                    | RTCPeerConnectionState::Closed
+            ) {
+                state.stop.set_reached();
+
+                // Sometimes we don't connect before failing
+                state.connected.set_reached();
+            }
+
+            Box::pin(async move {})
+        })
+    });
+
+    // -- Create and Add a video track
+    let video_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_H264.to_string(),
+            clock_rate: 90000,
+            sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
+            ..Default::default()
+        },
+        "video".to_owned(),
+        "moonlight".to_owned(),
+    ));
     let video_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
 
     // Read incoming RTCP packets
@@ -477,7 +456,17 @@ async fn start(
     });
 
     // TODO: audio
-    // -- Add a audio track
+    // -- Create and Add a audio track
+    let audio_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_OPUS.to_string(),
+            clock_rate: 48000,
+            channels: 2,
+            ..Default::default()
+        },
+        "audio".to_owned(),
+        "moonlight".to_owned(),
+    ));
     // let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
 
     // // Read incoming RTCP packets
@@ -513,42 +502,13 @@ async fn start(
     });
     let test_channel_notify = spawn(async move { test_channel_notify.notified().await });
 
-    // Connection state change
-    peer.on_ice_connection_state_change({
-        let state = state.clone();
-
-        Box::new(move |peer_state| {
-            if matches!(peer_state, RTCIceConnectionState::Connected) {
-                state.connected.set_reached();
-            }
-
-            Box::pin(async move {})
-        })
-    });
-    peer.on_peer_connection_state_change({
-        let state = state.clone();
-
-        Box::new(move |peer_state| {
-            if matches!(
-                peer_state,
-                RTCPeerConnectionState::Failed
-                    | RTCPeerConnectionState::Disconnected
-                    | RTCPeerConnectionState::Closed
-            ) {
-                // Sometimes we don't connect before failing
-                state.connected.set_reached();
-
-                state.stop.set_reached();
-            }
-
-            Box::pin(async move {})
-        })
-    });
+    state.connected.when_reached().await;
+    if state.stop.is_reached() {
+        info!("[Stream]: Immediate Stop");
+        return Ok(());
+    }
 
     spawn({
-        let state = state.clone();
-        state.connected.when_reached().await;
-
         async move {
             // Send test messages
             let _ = test_channel_notify.await;
@@ -556,11 +516,61 @@ async fn start(
         }
     });
 
+    // Start Moonlight Stream
+    let video_decoder = H264TrackSampleVideoDecoder::new(video_track.clone(), state.clone());
+    let audio_decoder = OpusTrackSampleAudioDecoder::new(audio_track.clone(), state.clone());
+
+    let stream = match host
+        .moonlight
+        .start_stream(
+            &data.instance,
+            &data.crypto,
+            app_id as u32,
+            1280,
+            720,
+            60,
+            Colorspace::Rec709,
+            ColorRange::Limited,
+            1000,
+            8192,
+            DebugHandler,
+            video_decoder,
+            audio_decoder,
+        )
+        .await
+    {
+        Some(Ok(value)) => value,
+        Some(Err(err)) => {
+            warn!("[Stream]: failed to start moonlight stream: {err:?}");
+
+            #[allow(clippy::single_match)]
+            match err {
+                StreamError::Moonlight(moonlight_common::Error::ConnectionAlreadyExists) => {
+                    let _ = send_ws_message(&mut ws_sender, StreamServerMessage::AlreadyStreaming)
+                        .await;
+                }
+                _ => {}
+            }
+
+            return Err(err.into());
+        }
+        None => todo!(),
+    };
+
     state.stop.when_reached().await;
     info!("[Stream]: Stream Stopped");
     if let Err(err) = peer.close().await {
         warn!("[Stream]: failed to close stream: {err:?}");
     }
+
+    spawn(async move {
+        let _ = send_ws_message(&mut ws_sender, StreamServerMessage::PeerDisconnect).await;
+    });
+
+    spawn_blocking(move || {
+        stream.stop();
+    })
+    .await?;
 
     Ok(())
 }

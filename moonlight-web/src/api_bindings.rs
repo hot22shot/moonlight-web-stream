@@ -245,4 +245,5 @@ pub enum StreamServerMessage {
     AlreadyStreaming,
     UpdateApp { app: App },
     Signaling(StreamSignalingMessage),
+    PeerDisconnect,
 }

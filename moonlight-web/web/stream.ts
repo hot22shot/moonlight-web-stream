@@ -174,7 +174,12 @@ class Stream {
             (async () => {
                 // TODO: make an error event for this
                 await showMessage(message)
-                window.close()
+
+                if (message == "PeerDisconnect") {
+                    location.reload()
+                } else {
+                    window.close()
+                }
             })()
         } else if ("UpdateApp" in message) {
             // Dispatch app event
