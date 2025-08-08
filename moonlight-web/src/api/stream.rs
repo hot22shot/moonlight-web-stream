@@ -582,6 +582,9 @@ async fn start(
         }
         None => todo!(),
     };
+    drop(host);
+    drop(hosts);
+
     let stream = Arc::new(stream);
 
     input.set_stream(stream.clone()).await;
