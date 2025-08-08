@@ -31,14 +31,20 @@ where
     // TODO: better error?
     // TODO: is this correct?
     pub fn get_utf8(&mut self, characters: usize) -> Result<&str, ()> {
+        if characters == 0 {
+            return Ok("");
+        }
+
         let Some(chunk) = &self.buffer.as_ref()[self.position..].utf8_chunks().next() else {
             return Err(());
         };
-        let Some((end_index, _)) = chunk.valid().char_indices().take(characters).next() else {
+        let Some((end_char_index, end_char)) = chunk.valid().char_indices().nth(characters - 1)
+        else {
             return Err(());
         };
+        let output = &chunk.valid()[0..end_char_index + (end_char.len_utf8())];
 
-        Ok(&chunk.valid()[0..end_index])
+        Ok(output)
     }
 
     pub fn reset(&mut self) {

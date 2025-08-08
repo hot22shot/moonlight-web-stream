@@ -32,9 +32,8 @@ export class StreamInput {
             return
         }
 
-        console.info(`SENDING TO ${channel.label}`)
+        this.dataBuffer.flip()
         channel.send(this.dataBuffer.getReadBuffer())
-        channel.send("TEST")
     }
 
     private onError(error: RTCErrorEvent) {

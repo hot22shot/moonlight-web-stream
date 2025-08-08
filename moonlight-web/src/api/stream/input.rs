@@ -1,12 +1,9 @@
 use std::{pin::Pin, sync::Arc};
 
-use log::{debug, info};
+use log::info;
 use moonlight_common::stream::MoonlightStream;
 use tokio::sync::RwLock;
-use webrtc::{
-    data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage},
-    media::audio::buffer::info,
-};
+use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 
 use crate::api::stream::buffer::ByteBuffer;
 
@@ -67,12 +64,10 @@ impl StreamInput {
         let f = Arc::new(f);
 
         Box::new(move |message| {
-            info!("MSG");
             let inner = inner.clone();
 
             let f = f.clone();
             Box::pin(async move {
-                info!("MSG");
                 let stream = inner.moonlight.read().await;
                 if let Some(stream) = stream.as_ref() {
                     f(stream, message);
@@ -93,9 +88,11 @@ impl StreamInput {
 
         let ty = buffer.get_u8();
         if ty == 0 {
+            info!("updown");
             todo!()
         } else {
             let key = buffer.get_utf8(1).unwrap();
+            info!("text: \"{key}\"");
 
             stream.send_text(key).unwrap();
         }

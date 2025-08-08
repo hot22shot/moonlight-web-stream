@@ -357,12 +357,7 @@ async fn start(
     peer.on_data_channel({
         let input = input.clone();
         Box::new(move |data_channel| {
-            // input.on_data_channel(data_channel);
-            data_channel.on_message(Box::new(move |message| {
-                Box::pin(async move {
-                    info!("[Stream]: {:?}", message.data);
-                })
-            }));
+            input.on_data_channel(data_channel);
 
             Box::pin(async move {})
         })
