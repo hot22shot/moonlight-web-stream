@@ -1,10 +1,6 @@
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc::SendError,
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use actix_web::{
@@ -12,22 +8,14 @@ use actix_web::{
     web::{Data, Payload},
 };
 use actix_ws::{Closed, Message, MessageStream, Session};
-use anyhow::anyhow;
 use log::{debug, info, warn};
 use moonlight_common::{
-    debug::{DebugHandler, NullHandler},
-    network::ApiError,
-    stream::{ColorRange, Colorspace, MoonlightStream},
+    debug::DebugHandler,
+    high::StreamError,
+    stream::{ColorRange, Colorspace},
     video::SupportedVideoFormats,
 };
-use tokio::{
-    spawn,
-    sync::{
-        Mutex, Notify,
-        mpsc::{Sender, channel},
-    },
-    task::{JoinHandle, spawn_blocking},
-};
+use tokio::{spawn, sync::Notify};
 use webrtc::{
     api::{
         APIBuilder,
@@ -176,7 +164,7 @@ async fn start(
     data: Data<RuntimeApiData>,
     host_id: usize,
     app_id: usize,
-    ws_sender: Session,
+    mut ws_sender: Session,
     mut ws_receiver: MessageStream,
 ) -> Result<(), anyhow::Error> {
     let state = Arc::new(StreamState {
@@ -186,16 +174,22 @@ async fn start(
 
     let hosts = data.hosts.read().await;
     let Some(host) = hosts.get(host_id) else {
+        let _ = send_ws_message(&mut ws_sender, StreamServerMessage::HostNotFound).await;
+
         todo!()
     };
     let mut host = host.lock().await;
 
     let Some(result) = host.moonlight.app_list().await else {
+        let _ = send_ws_message(&mut ws_sender, StreamServerMessage::AppNotFound).await;
+
         todo!()
     };
     let app_list = result?;
 
     let Some(app) = app_list.into_iter().find(|app| app.id as usize == app_id) else {
+        let _ = send_ws_message(&mut ws_sender, StreamServerMessage::InternalServerError).await;
+
         todo!()
     };
 
@@ -259,7 +253,17 @@ async fn start(
         Some(Ok(value)) => value,
         Some(Err(err)) => {
             warn!("[Stream]: failed to start moonlight stream: {err:?}");
-            todo!()
+
+            #[allow(clippy::single_match)]
+            match err {
+                StreamError::Moonlight(moonlight_common::Error::ConnectionAlreadyExists) => {
+                    let _ = send_ws_message(&mut ws_sender, StreamServerMessage::AlreadyStreaming)
+                        .await;
+                }
+                _ => {}
+            }
+
+            return Err(err.into());
         }
         None => todo!(),
     };

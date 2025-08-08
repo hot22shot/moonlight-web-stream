@@ -240,7 +240,9 @@ pub enum StreamClientMessage {
 #[ts(export, export_to = "../web/api_bindings.d.ts")]
 pub enum StreamServerMessage {
     InternalServerError,
-    HostOrAppNotFound,
+    HostNotFound,
+    AppNotFound,
+    AlreadyStreaming,
     UpdateApp { app: App },
     Signaling(StreamSignalingMessage),
 }
