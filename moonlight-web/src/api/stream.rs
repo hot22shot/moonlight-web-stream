@@ -30,10 +30,8 @@ use webrtc::{
     },
     interceptor::registry::Registry,
     peer_connection::{
-        configuration::RTCConfiguration,
-        peer_connection_state::RTCPeerConnectionState,
-        sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
-        signaling_state::RTCSignalingState,
+        configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
+        sdp::session_description::RTCSessionDescription, signaling_state::RTCSignalingState,
     },
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
@@ -41,16 +39,20 @@ use webrtc::{
 
 use crate::{
     Config,
-    api::stream::{audio::OpusTrackSampleAudioDecoder, video::H264TrackSampleVideoDecoder},
+    api::stream::{
+        audio::OpusTrackSampleAudioDecoder, input::StreamInput, video::H264TrackSampleVideoDecoder,
+    },
     api_bindings::{
-        App, RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
+        RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
         StreamServerMessage, StreamSignalingMessage,
     },
     data::RuntimeApiData,
 };
 
 mod audio;
+mod buffer;
 mod connection;
+mod input;
 mod video;
 
 /// The stream handler WILL authenticate the client because it is a websocket
@@ -208,13 +210,52 @@ async fn start(
     // -- Configure WebRTC
     let config = RTCConfiguration {
         // TODO: put this into config
-        ice_servers: vec![RTCIceServer {
-            urls: vec![
-                "stun:stun.l.google.com:19302".to_owned(),
-                "stun:stun2.l.google.com:19302".to_owned(),
-            ],
-            ..Default::default()
-        }],
+        ice_servers: vec![
+            RTCIceServer {
+                urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun.l.google.com:5349".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun1.l.google.com:3478".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun1.l.google.com:5349".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun2.l.google.com:5349".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun3.l.google.com:3478".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun3.l.google.com:5349".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun4.l.google.com:19302".to_owned()],
+                ..Default::default()
+            },
+            RTCIceServer {
+                urls: vec!["stun:stun4.l.google.com:5349".to_owned()],
+                ..Default::default()
+            },
+        ],
         ..Default::default()
     };
 
@@ -234,6 +275,93 @@ async fn start(
 
     // -- Create and Configure Peer
     let peer = Arc::new(api.new_peer_connection(config.clone()).await?);
+
+    // Connection state change
+    peer.on_ice_connection_state_change({
+        let state = state.clone();
+
+        Box::new(move |peer_state| {
+            if matches!(peer_state, RTCIceConnectionState::Connected) {
+                state.connected.set_reached();
+            }
+
+            Box::pin(async move {})
+        })
+    });
+    peer.on_peer_connection_state_change({
+        let state = state.clone();
+
+        Box::new(move |peer_state| {
+            if matches!(
+                peer_state,
+                RTCPeerConnectionState::Failed
+                    | RTCPeerConnectionState::Disconnected
+                    | RTCPeerConnectionState::Closed
+            ) {
+                state.stop.set_reached();
+
+                // Sometimes we don't connect before failing
+                state.connected.set_reached();
+            }
+
+            Box::pin(async move {})
+        })
+    });
+
+    // -- Create and Add a video track
+    let video_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_H264.to_string(),
+            clock_rate: 90000,
+            sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
+            ..Default::default()
+        },
+        "video".to_owned(),
+        "moonlight".to_owned(),
+    ));
+    let video_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
+
+    // Read incoming RTCP packets
+    // Before these packets are returned they are processed by interceptors. For things
+    // like NACK this needs to be called.
+    spawn(async move {
+        let mut rtcp_buf = vec![0u8; 1500];
+        while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
+    });
+
+    // TODO: audio
+    // -- Create and Add a audio track
+    let audio_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_OPUS.to_string(),
+            clock_rate: 48000,
+            channels: 2,
+            ..Default::default()
+        },
+        "audio".to_owned(),
+        "moonlight".to_owned(),
+    ));
+    // let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+
+    // // Read incoming RTCP packets
+    // // Before these packets are returned they are processed by interceptors. For things
+    // // like NACK this needs to be called.
+    // spawn(async move {
+    //     let mut rtcp_buf = vec![0u8; 1500];
+    //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
+    // });
+
+    // -- Createa and Configure Input
+    let input = Arc::new(StreamInput::new());
+
+    peer.on_data_channel({
+        let input = input.clone();
+        Box::new(move |data_channel| {
+            input.on_data_channel(data_channel);
+
+            Box::pin(async move {})
+        })
+    });
 
     // -- Handle Signaling: We're the impolite peer
     {
@@ -402,119 +530,16 @@ async fn start(
         });
     };
 
-    // Connection state change
-    peer.on_ice_connection_state_change({
-        let state = state.clone();
-
-        Box::new(move |peer_state| {
-            if matches!(peer_state, RTCIceConnectionState::Connected) {
-                state.connected.set_reached();
-            }
-
-            Box::pin(async move {})
-        })
-    });
-    peer.on_peer_connection_state_change({
-        let state = state.clone();
-
-        Box::new(move |peer_state| {
-            if matches!(
-                peer_state,
-                RTCPeerConnectionState::Failed
-                    | RTCPeerConnectionState::Disconnected
-                    | RTCPeerConnectionState::Closed
-            ) {
-                state.stop.set_reached();
-
-                // Sometimes we don't connect before failing
-                state.connected.set_reached();
-            }
-
-            Box::pin(async move {})
-        })
-    });
-
-    // -- Create and Add a video track
-    let video_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: MIME_TYPE_H264.to_string(),
-            clock_rate: 90000,
-            sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
-            ..Default::default()
-        },
-        "video".to_owned(),
-        "moonlight".to_owned(),
-    ));
-    let video_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
-
-    // Read incoming RTCP packets
-    // Before these packets are returned they are processed by interceptors. For things
-    // like NACK this needs to be called.
-    spawn(async move {
-        let mut rtcp_buf = vec![0u8; 1500];
-        while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
-    });
-
-    // TODO: audio
-    // -- Create and Add a audio track
-    let audio_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: MIME_TYPE_OPUS.to_string(),
-            clock_rate: 48000,
-            channels: 2,
-            ..Default::default()
-        },
-        "audio".to_owned(),
-        "moonlight".to_owned(),
-    ));
-    // let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
-
-    // // Read incoming RTCP packets
-    // // Before these packets are returned they are processed by interceptors. For things
-    // // like NACK this needs to be called.
-    // spawn(async move {
-    //     let mut rtcp_buf = vec![0u8; 1500];
-    //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
-    // });
-
-    // - Listen test Channel
-    peer.on_data_channel(Box::new(|channel| {
-        let label = channel.label().to_owned();
-        channel.on_message(Box::new(move |message| {
-            debug!("RECEIVED: {}, {:?}", label, str::from_utf8(&message.data));
-
-            Box::pin(async move {})
-        }));
-
-        Box::pin(async move {})
-    }));
-
-    // - Test Channel
-    let test_channel_notify = Arc::new(Notify::new());
-    let test_channel = peer.create_data_channel("test2", None).await?;
-    test_channel.on_open({
-        let test_channel_notify = test_channel_notify.clone();
-        Box::new(move || {
-            test_channel_notify.notify_waiters();
-
-            Box::pin(async move {})
-        })
-    });
-    let test_channel_notify = spawn(async move { test_channel_notify.notified().await });
-
+    // -- When peer connected
     state.connected.when_reached().await;
     if state.stop.is_reached() {
         info!("[Stream]: Immediate Stop");
+
+        spawn(async move {
+            let _ = send_ws_message(&mut ws_sender, StreamServerMessage::PeerDisconnect).await;
+        });
         return Ok(());
     }
-
-    spawn({
-        async move {
-            // Send test messages
-            let _ = test_channel_notify.await;
-            let _ = test_channel.send_text("Hello").await;
-        }
-    });
 
     // Start Moonlight Stream
     let video_decoder = H264TrackSampleVideoDecoder::new(video_track.clone(), state.clone());
@@ -556,19 +581,24 @@ async fn start(
         }
         None => todo!(),
     };
+    let stream = Arc::new(stream);
+
+    input.set_stream(stream.clone()).await;
 
     state.stop.when_reached().await;
     info!("[Stream]: Stream Stopped");
     if let Err(err) = peer.close().await {
         warn!("[Stream]: failed to close stream: {err:?}");
     }
+    peer.on_data_channel(Box::new(move |_| Box::pin(async move {})));
 
     spawn(async move {
         let _ = send_ws_message(&mut ws_sender, StreamServerMessage::PeerDisconnect).await;
     });
 
+    drop(input);
     spawn_blocking(move || {
-        stream.stop();
+        drop(stream);
     })
     .await?;
 

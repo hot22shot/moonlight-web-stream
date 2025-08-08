@@ -7,14 +7,17 @@ use moonlight_common_sys::limelight::{
     CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC, CAPABILITY_SLOW_OPUS_DECODER,
     CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION, COLOR_RANGE_FULL, COLOR_RANGE_LIMITED,
     COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL, ENCFLG_AUDIO,
-    ENCFLG_NONE, ENCFLG_VIDEO, LI_ERR_UNSUPPORTED, LI_FF_CONTROLLER_TOUCH_EVENTS,
-    LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
+    ENCFLG_NONE, ENCFLG_VIDEO, KEY_ACTION_DOWN, KEY_ACTION_UP, LI_ERR_UNSUPPORTED,
+    LI_FF_CONTROLLER_TOUCH_EVENTS, LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo,
+    LiGetHostFeatureFlags, LiSendKeyboardEvent, LiSendKeyboardEvent2,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
-    LiSendTouchEvent, LiStartConnection, LiStopConnection, PAUDIO_RENDERER_CALLBACKS,
+    LiSendTouchEvent, LiSendUtf8TextEvent, LiStartConnection, LiStopConnection, MODIFIER_ALT,
+    MODIFIER_CTRL, MODIFIER_META, MODIFIER_SHIFT, PAUDIO_RENDERER_CALLBACKS,
     PCONNECTION_LISTENER_CALLBACKS, PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION,
     PSTREAM_CONFIGURATION, SCM_AV1_HIGH8_444, SCM_AV1_HIGH10_444, SCM_AV1_MAIN8, SCM_AV1_MAIN10,
     SCM_H264, SCM_H264_HIGH8_444, SCM_HEVC, SCM_HEVC_MAIN10, SCM_HEVC_REXT8_444,
-    SCM_HEVC_REXT10_444, STREAM_CFG_AUTO, STREAM_CFG_LOCAL, STREAM_CFG_REMOTE,
+    SCM_HEVC_REXT10_444, SS_KBE_FLAG_NON_NORMALIZED, STREAM_CFG_AUTO, STREAM_CFG_LOCAL,
+    STREAM_CFG_REMOTE,
 };
 use num_derive::FromPrimitive;
 
@@ -155,6 +158,30 @@ pub struct EstimatedRttInfo {
 
 pub struct MoonlightStream {
     handle: Arc<Handle>,
+}
+
+#[repr(i8)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
+pub enum KeyAction {
+    Up = KEY_ACTION_UP as i8,
+    Down = KEY_ACTION_DOWN as i8,
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct KeyModifiers: i8 {
+        const SHIFT = MODIFIER_SHIFT as i8;
+        const CTRL = MODIFIER_CTRL as i8;
+        const ALT= MODIFIER_ALT as i8;
+        const META= MODIFIER_META as i8;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct KeyFlags: i8 {
+        const NON_NORMALIZED = SS_KBE_FLAG_NON_NORMALIZED as i8;
+    }
 }
 
 impl MoonlightStream {
@@ -365,6 +392,7 @@ impl MoonlightStream {
     /// To determine if LiSendTouchEvent() is supported without calling it, call LiGetHostFeatureFlags()
     /// and check for the LI_FF_PEN_TOUCH_EVENTS flag.
     pub fn send_touch(
+        &self,
         pointer_id: u32,
         x: f32,
         y: f32,
@@ -384,6 +412,63 @@ impl MoonlightStream {
                 contact_area_major,
                 contact_area_minor,
                 rotation.unwrap_or(LI_ROT_UNKNOWN as u16),
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function queues a keyboard event to be sent to the remote server.
+    /// Key codes are Win32 Virtual Key (VK) codes and interpreted as keys on
+    /// a US English layout.
+    pub fn send_keyboard_event(
+        &self,
+        key_code: i16,
+        key_action: KeyAction,
+        modifiers: KeyModifiers,
+    ) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendKeyboardEvent(
+                key_code,
+                key_action as i8,
+                modifiers.bits(),
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// Similar to LiSendKeyboardEvent() but allows the client to inform the host that
+    /// the keycode was not mapped to a standard US English scancode and should be
+    /// interpreted as-is. This is a Sunshine protocol extension.
+    pub fn send_keyboard_event_non_standard(
+        &self,
+        key_code: i16,
+        key_action: KeyAction,
+        modifiers: KeyModifiers,
+        flags: KeyFlags,
+    ) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendKeyboardEvent2(
+                key_code,
+                key_action as i8,
+                modifiers.bits(),
+                flags.bits(),
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function queues an UTF-8 encoded text to be sent to the remote server.
+    pub fn send_text(&self, text: &str) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendUtf8TextEvent(
+                text.as_ptr() as *const i8,
+                text.len() as u32,
             )) {
                 return Err(err);
             }
