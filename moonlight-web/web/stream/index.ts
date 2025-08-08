@@ -42,18 +42,18 @@ export class Stream {
         // Configure web rtc
         // Note: We're the polite peer
         this.peer = new RTCPeerConnection({
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun.l.google.com:5349" },
-                { urls: "stun:stun1.l.google.com:3478" },
-                { urls: "stun:stun1.l.google.com:5349" },
-                { urls: "stun:stun2.l.google.com:19302" },
-                { urls: "stun:stun2.l.google.com:5349" },
-                { urls: "stun:stun3.l.google.com:3478" },
-                { urls: "stun:stun3.l.google.com:5349" },
-                { urls: "stun:stun4.l.google.com:19302" },
-                { urls: "stun:stun4.l.google.com:5349" }
-            ],
+            // iceServers: [
+            //     { urls: "stun:stun.l.google.com:19302" },
+            //     { urls: "stun:stun.l.google.com:5349" },
+            //     { urls: "stun:stun1.l.google.com:3478" },
+            //     { urls: "stun:stun1.l.google.com:5349" },
+            //     { urls: "stun:stun2.l.google.com:19302" },
+            //     { urls: "stun:stun2.l.google.com:5349" },
+            //     { urls: "stun:stun3.l.google.com:3478" },
+            //     { urls: "stun:stun3.l.google.com:5349" },
+            //     { urls: "stun:stun4.l.google.com:19302" },
+            //     { urls: "stun:stun4.l.google.com:5349" }
+            // ],
         })
         this.peer.onnegotiationneeded = this.onNegotiationNeeded.bind(this)
         this.peer.onicecandidate = this.onIceCandidate.bind(this)

@@ -8,7 +8,7 @@ use actix_web::{
     web::{Data, Payload},
 };
 use actix_ws::{Closed, Message, MessageStream, Session};
-use log::{debug, info, warn};
+use log::{info, warn};
 use moonlight_common::{
     debug::DebugHandler,
     high::StreamError,
@@ -210,52 +210,52 @@ async fn start(
     // -- Configure WebRTC
     let config = RTCConfiguration {
         // TODO: put this into config
-        ice_servers: vec![
-            RTCIceServer {
-                urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun.l.google.com:5349".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun1.l.google.com:3478".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun1.l.google.com:5349".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun2.l.google.com:5349".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun3.l.google.com:3478".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun3.l.google.com:5349".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun4.l.google.com:19302".to_owned()],
-                ..Default::default()
-            },
-            RTCIceServer {
-                urls: vec!["stun:stun4.l.google.com:5349".to_owned()],
-                ..Default::default()
-            },
-        ],
+        // ice_servers: vec![
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun.l.google.com:5349".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun1.l.google.com:3478".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun1.l.google.com:5349".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun2.l.google.com:5349".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun3.l.google.com:3478".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun3.l.google.com:5349".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun4.l.google.com:19302".to_owned()],
+        //         ..Default::default()
+        //     },
+        //     RTCIceServer {
+        //         urls: vec!["stun:stun4.l.google.com:5349".to_owned()],
+        //         ..Default::default()
+        //     },
+        // ],
         ..Default::default()
     };
 
@@ -351,7 +351,8 @@ async fn start(
     //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
     // });
 
-    // -- Createa and Configure Input
+    // -- Create and Configure Input
+    let channel = peer.create_data_channel("none", None).await?;
     let input = Arc::new(StreamInput::new());
 
     peer.on_data_channel({
