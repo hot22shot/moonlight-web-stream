@@ -108,6 +108,7 @@ button:hover {
     z-index: 1;
     display: flex;
     flex-direction: row-reverse;
+    align-items: center;
     gap: 5px;
     /** animation */
     transition: all 0.2s 0s linear;
@@ -128,6 +129,7 @@ button:hover {
 
 .sidebar-background .sidebar-button-image {
     rotate: 180deg;
+    transition: all 0.3s linear;
 }
 
 .sidebar-background.sidebar-show .sidebar-button-image {
