@@ -352,15 +352,31 @@ async fn start(
     // });
 
     // -- Create and Configure Input
-    let channel = peer.create_data_channel("none", None).await?;
     let input = Arc::new(StreamInput::new());
 
     peer.on_data_channel({
         let input = input.clone();
         Box::new(move |data_channel| {
-            input.on_data_channel(data_channel);
+            // input.on_data_channel(data_channel);
+            data_channel.on_message(Box::new(move |message| {
+                Box::pin(async move {
+                    info!("[Stream]: {:?}", message.data);
+                })
+            }));
 
             Box::pin(async move {})
+        })
+    });
+
+    let none = peer.create_data_channel("none", None).await?;
+    none.on_open({
+        let none = none.clone();
+        Box::new(move || {
+            let none = none.clone();
+
+            Box::pin(async move {
+                none.send_text("Test").await.unwrap();
+            })
         })
     });
 

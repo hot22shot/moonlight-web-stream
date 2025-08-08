@@ -159,6 +159,8 @@ export class Stream {
     private onDataChannel(event: RTCDataChannelEvent) {
         // TODO: remove
         console.log(event)
+
+        event.channel.onmessage = msg => console.log(`Msg from ${event.channel.label}`, msg.data)
     }
     private onIceCandidate(event: RTCPeerConnectionIceEvent) {
         const candidateJson = event.candidate?.toJSON()

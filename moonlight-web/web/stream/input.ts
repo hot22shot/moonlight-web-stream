@@ -34,6 +34,11 @@ export class StreamInput {
 
         console.info(`SENDING TO ${channel.label}`)
         channel.send(this.dataBuffer.getReadBuffer())
+        channel.send("TEST")
+    }
+
+    private onError(error: RTCErrorEvent) {
+        console.error("RTC Data Channel Error", error)
     }
 
     // -- Keyboard
@@ -46,10 +51,12 @@ export class StreamInput {
         if (!config.enabled) {
             return null
         }
-
-        return this.peer.createDataChannel("keyboard", {
+        const dataChannel = this.peer.createDataChannel("keyboard", {
             ordered: config.ordered
         })
+        dataChannel.onerror = this.onError.bind(this)
+
+        return dataChannel
     }
 
     onKeyDown(event: KeyboardEvent) {
