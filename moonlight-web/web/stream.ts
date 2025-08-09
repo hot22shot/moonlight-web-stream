@@ -131,6 +131,7 @@ class ViewerSidebar implements Component, Sidebar {
             this.keyboardHiddenInput.focus()
         })
 
+        this.lockMouseButton.innerText = "Lock Mouse"
         this.lockMouseButton.addEventListener("click", async () => {
             setSidebarExtended(false)
 
