@@ -1,11 +1,11 @@
-import { ByteBuffer } from "./buffer"
-import { trySendChannel } from "./input"
+import { ByteBuffer } from "./buffer.js"
+import { trySendChannel } from "./input.js"
 
 export type TouchConfig = {
     enabled: boolean
 }
 
-export class StreamMouse {
+export class StreamTouch {
     private peer: RTCPeerConnection
 
     private buffer: ByteBuffer
@@ -46,25 +46,42 @@ export class StreamMouse {
     }
 
     onTouchStart(event: TouchEvent) {
-        // this.sendTouch(true, event.tou)
-    }
-    onTouchEnd(event: TouchEvent) {
-        // this.sendTouch(false, event)
+        for (const touch of event.changedTouches) {
+            this.sendTouch(0, touch)
+        }
     }
     onTouchMove(event: TouchEvent) {
-        // this.sendTouch(false, event)
+        for (const touch of event.changedTouches) {
+            this.sendTouch(1, touch)
+        }
+    }
+    onTouchEnd(event: TouchEvent) {
+        for (const touch of event.changedTouches) {
+            this.sendTouch(2, touch)
+        }
     }
 
     private onMessage(event: MessageEvent) {
         const data = event.data
         const buffer = new ByteBuffer(data)
+        this.supported = buffer.getBool()
     }
 
-    private sendTouch(isDown: boolean, event: Touch) {
+    private sendTouch(type: number, touch: Touch) {
         this.buffer.reset()
 
-        this.buffer.putU8(1) // TODO: remove this for two channels
-        this.buffer.putBool(isDown)
+        this.buffer.putU8(type)
+
+        this.buffer.putU32(touch.identifier)
+        // TODO: find out correct position value
+        this.buffer.putF32(touch.clientX / 1000)
+        this.buffer.putF32(touch.clientY / 1000)
+
+        this.buffer.putF32(touch.force)
+
+        this.buffer.putF32(touch.radiusX)
+        this.buffer.putF32(touch.radiusY)
+        this.buffer.putU16(touch.rotationAngle)
 
         trySendChannel(this.channel, this.buffer)
     }

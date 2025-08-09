@@ -72,6 +72,17 @@ where
         Ok(output)
     }
 
+    pub fn get_u32(&mut self) -> u32 {
+        let mut buffer = [0u8; 4];
+        self.get_u8_array(&mut buffer);
+
+        if self.little_endian {
+            u32::from_le_bytes(buffer)
+        } else {
+            u32::from_be_bytes(buffer)
+        }
+    }
+
     pub fn get_f32(&mut self) -> f32 {
         let mut buffer = [0u8; 4];
         self.get_u8_array(&mut buffer);

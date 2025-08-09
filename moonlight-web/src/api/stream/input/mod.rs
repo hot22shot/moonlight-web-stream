@@ -1,8 +1,9 @@
 use std::{pin::Pin, sync::Arc};
 
 use log::{info, warn};
-use moonlight_common::stream::{
-    KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
+use moonlight_common::{
+    input::TouchEventType,
+    stream::{KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction},
 };
 use num_traits::FromPrimitive;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
@@ -80,7 +81,35 @@ impl StreamInput {
     }
 
     fn on_touch_message(stream: &MoonlightStream, message: DataChannelMessage) {
-        todo!()
+        let mut buffer = ByteBuffer::new(message.data);
+
+        let event_type = match buffer.get_u8() {
+            0 => TouchEventType::Down,
+            1 => TouchEventType::Move,
+            2 => TouchEventType::Cancel,
+            _ => {
+                warn!("[Stream Input]: received invalid touch event type");
+                return;
+            }
+        };
+        let pointer_id = buffer.get_u32();
+        let x = buffer.get_f32();
+        let y = buffer.get_f32();
+        let pressure_or_distance = buffer.get_f32();
+        let contact_area_major = buffer.get_f32();
+        let contact_area_minor = buffer.get_f32();
+        let rotation = buffer.get_u16();
+
+        let _ = stream.send_touch(
+            pointer_id,
+            x,
+            y,
+            pressure_or_distance,
+            contact_area_major,
+            contact_area_minor,
+            Some(rotation),
+            event_type,
+        );
     }
 
     fn on_mouse_message(stream: &MoonlightStream, message: DataChannelMessage) {

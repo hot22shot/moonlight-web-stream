@@ -65,6 +65,10 @@ class ViewerApp implements Component {
         document.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
         document.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
         document.addEventListener("mousemove", this.onMouseMove.bind(this))
+
+        document.addEventListener("touchstart", this.onTouchStart.bind(this))
+        document.addEventListener("touchend", this.onTouchEnd.bind(this))
+        document.addEventListener("touchmove", this.onTouchMove.bind(this))
     }
 
     private async startStream(hostId: number, appId: number) {
@@ -105,6 +109,24 @@ class ViewerApp implements Component {
     private onMouseMove(event: MouseEvent) {
         event.preventDefault()
         this.stream?.getInput().getMouse().onMouseMove(event)
+    }
+
+    // Touch
+    private onTouchStart(event: TouchEvent) {
+        this.stream?.getInput().getTouch().onTouchStart(event)
+    }
+    private onTouchEnd(event: TouchEvent) {
+        this.stream?.getInput().getTouch().onTouchEnd(event)
+    }
+    private onTouchMove(event: TouchEvent) {
+        // Prevent browser pull down refresh
+        for (const touch of event.changedTouches) {
+            if (touch.clientY > 0) {
+                event.preventDefault()
+            }
+        }
+
+        this.stream?.getInput().getTouch().onTouchMove(event)
     }
 
     mount(parent: HTMLElement): void {

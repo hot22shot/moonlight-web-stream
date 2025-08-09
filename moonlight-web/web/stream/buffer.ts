@@ -50,6 +50,12 @@ export class ByteBuffer {
         this.bytesUsed(2, false)
     }
 
+    putU32(data: number) {
+        const view = new DataView(this.buffer.buffer)
+        view.setUint32(this.position, data, this.littleEndian)
+        this.bytesUsed(4, false)
+    }
+
     putUtf8(text: string) {
         const encoder = new TextEncoder()
         const result = encoder.encodeInto(text, this.buffer.subarray(this.position))
@@ -76,6 +82,9 @@ export class ByteBuffer {
         const byte = view.getUint8(this.position)
         this.bytesUsed(1, true)
         return byte
+    }
+    getBool(): boolean {
+        return this.getU8() != 0
     }
 
     reset() {

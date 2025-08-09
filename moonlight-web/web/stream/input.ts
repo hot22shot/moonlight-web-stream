@@ -1,6 +1,7 @@
 import { ByteBuffer } from "./buffer.js"
 import { StreamKeyboard } from "./keyboard.js"
 import { StreamMouse } from "./mouse.js"
+import { StreamTouch } from "./touch.js"
 
 
 export function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
@@ -25,12 +26,14 @@ export class StreamInput {
 
     private keyboard: StreamKeyboard
     private mouse: StreamMouse
+    private touch: StreamTouch
 
     constructor(peer: RTCPeerConnection) {
         this.peer = peer
 
         this.keyboard = new StreamKeyboard(peer, this.buffer)
         this.mouse = new StreamMouse(peer, this.buffer)
+        this.touch = new StreamTouch(peer, this.buffer)
     }
 
     getKeyboard(): StreamKeyboard {
@@ -39,6 +42,10 @@ export class StreamInput {
 
     getMouse(): StreamMouse {
         return this.mouse
+    }
+
+    getTouch(): StreamTouch {
+        return this.touch
     }
 
 }
