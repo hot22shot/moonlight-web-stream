@@ -3,6 +3,22 @@ import { App, RtcIceCandidate, StreamClientMessage, StreamServerMessage } from "
 import { showMessage } from "../component/modal/index.js"
 import { StreamInput } from "./input.js"
 
+const POLITE = true
+
+export function startStream(api: Api, hostId: number, appId: number): Promise<Stream> {
+    return new Promise((resolve, reject) => {
+        const ws = new WebSocket("/api/stream")
+        ws.onopen = () => {
+            const stream = new Stream(ws, api, hostId, appId)
+
+            resolve(stream)
+        };
+        ws.onerror = (error) => {
+            reject(error);
+        };
+    })
+}
+
 export type AppInfoEvent = { app: App } & Event
 export type AppInfoEventListener = (event: AppInfoEvent) => void
 
@@ -19,17 +35,20 @@ export class Stream {
     private ws: WebSocket
 
     private peer: RTCPeerConnection
+    // Signaling
+    private makingOffer = false
+    private ignoreOffer = false
+    private isSettingRemoteAnswerPending = false
 
-    constructor(api: Api, hostId: number, appId: number) {
+    constructor(ws: WebSocket, api: Api, hostId: number, appId: number) {
         this.api = api
         this.hostId = hostId
         this.appId = appId
 
         // Configure web socket
-        this.ws = new WebSocket("/api/stream")
+        this.ws = ws
         this.ws.onerror = this.onError.bind(this)
         this.ws.onmessage = this.onWsMessage.bind(this);
-        this.ws.onopen = this.onWsConnect.bind(this)
 
         this.sendWsMessage({
             AuthenticateAndInit: {
@@ -40,7 +59,6 @@ export class Stream {
         })
 
         // Configure web rtc
-        // Note: We're the polite peer
         this.peer = new RTCPeerConnection({
             // iceServers: [
             //     { urls: "stun:stun.l.google.com:19302" },
@@ -76,23 +94,16 @@ export class Stream {
         this.input = new StreamInput(this.peer)
     }
 
-    private async onNegotiationNeeded() {
-        await this.peer.setLocalDescription()
-        this.sendLocalDescription()
-    }
-
-    private onMessage(message: StreamServerMessage) {
+    private async onMessage(message: StreamServerMessage) {
         if (typeof message == "string") {
-            (async () => {
-                // TODO: make an error event for this
-                await showMessage(message)
+            // TODO: make an error event for this
+            await showMessage(message)
 
-                if (message == "PeerDisconnect") {
-                    location.reload()
-                } else {
-                    window.close()
-                }
-            })()
+            if (message == "PeerDisconnect") {
+                location.reload()
+            } else {
+                window.close()
+            }
         } else if ("UpdateApp" in message) {
             // Dispatch app event
             const app = message.UpdateApp.app
@@ -108,8 +119,7 @@ export class Stream {
                     sdp: descriptionRaw.sdp,
                 }
 
-                this.handleSignaling(description, null)
-
+                await this.handleSignaling(description, null)
             } else if ("AddIceCandidate" in message.Signaling) {
                 const candidateRaw = message.Signaling.AddIceCandidate;
                 const candidate: RTCIceCandidateInit = {
@@ -119,20 +129,52 @@ export class Stream {
                     usernameFragment: candidateRaw.username_fragment
                 }
 
-                this.handleSignaling(null, candidate)
+                await this.handleSignaling(null, candidate)
             }
+        }
+    }
+
+    // -- Signaling
+    private async onNegotiationNeeded() {
+        try {
+            this.makingOffer = true
+
+            await this.peer.setLocalDescription()
+            await this.sendLocalDescription()
+        } catch (err) {
+            console.error(err);
+        } finally {
+            this.makingOffer = false
         }
     }
     private async handleSignaling(description: RTCSessionDescriptionInit | null, candidate: RTCIceCandidateInit | null) {
         if (description) {
-            await this.setRemoteDescription(description)
+            const readyForOffer =
+                !this.makingOffer &&
+                (this.peer.signalingState === "stable" || this.isSettingRemoteAnswerPending);
+            const offerCollision = description.type === "offer" && !readyForOffer;
 
-            if (description.type == "offer") {
-                await this.peer.setLocalDescription()
-                this.sendLocalDescription()
+            this.ignoreOffer = !POLITE && offerCollision;
+            if (this.ignoreOffer) {
+                return;
+            }
+
+            this.isSettingRemoteAnswerPending = description.type === "answer";
+            await this.peer.setRemoteDescription(description)
+            this.isSettingRemoteAnswerPending = false
+
+            if (description.type === "offer") {
+                await this.peer.setLocalDescription();
+                await this.sendLocalDescription()
             }
         } else if (candidate) {
-            this.peer.addIceCandidate(candidate)
+            try {
+                this.peer.addIceCandidate(candidate)
+            } catch (err) {
+                if (!this.ignoreOffer) {
+                    throw err;
+                }
+            }
         }
     }
     private sendLocalDescription() {
@@ -146,21 +188,6 @@ export class Stream {
                 }
             }
         })
-    }
-
-    private onTrack(event: RTCTrackEvent) {
-        console.log(event)
-        const stream = event.streams[0]
-        if (stream) {
-            stream.getTracks().forEach(track => this.mediaStream.addTrack(track))
-        }
-        // this.mediaStream.addTrack(event.track)
-    }
-    private onDataChannel(event: RTCDataChannelEvent) {
-        // TODO: remove
-        console.log(event)
-
-        event.channel.onmessage = msg => console.log(`Msg from ${event.channel.label}`, msg.data)
     }
     private onIceCandidate(event: RTCPeerConnectionIceEvent) {
         const candidateJson = event.candidate?.toJSON()
@@ -181,56 +208,43 @@ export class Stream {
             }
         })
     }
+
+    // -- Track and Data Channels
+    private onTrack(event: RTCTrackEvent) {
+        console.log(event)
+        const stream = event.streams[0]
+        if (stream) {
+            stream.getTracks().forEach(track => this.mediaStream.addTrack(track))
+        }
+        // this.mediaStream.addTrack(event.track)
+    }
+    private onDataChannel(event: RTCDataChannelEvent) {
+        // TODO: remove
+        console.log(event)
+
+        event.channel.onmessage = msg => console.log(`Msg from ${event.channel.label}`, msg.data)
+    }
     private onConnectionStateChange(event: Event) {
         console.log(this.peer.connectionState)
     }
 
     // -- Raw Web Socket stuff
-    private wsMessageBuffer: Array<StreamClientMessage> = []
     private sendWsMessage(message: StreamClientMessage) {
-        if (this.ws.readyState == WebSocket.OPEN) {
-            this.ws.send(JSON.stringify(message))
-        } else {
-            this.wsMessageBuffer.push(message)
-        }
-    }
-    private async onWsConnect() {
-        for (const message of this.wsMessageBuffer.splice(0, this.wsMessageBuffer.length)) {
-            this.ws.send(JSON.stringify(message))
-        }
+        this.ws.send(JSON.stringify(message))
     }
 
-    private onWsMessage(event: MessageEvent) {
+    private async onWsMessage(event: MessageEvent) {
         const data = event.data
         if (typeof data != "string") {
             return
         }
 
         let message = JSON.parse(data)
-        this.onMessage(message)
+        await this.onMessage(message)
     }
 
     private onError(event: Event) {
         console.error("Stream Error", event)
-    }
-
-    // -- Raw Peer Connection stuff
-    private iceCandidateBuffer: Array<RTCIceCandidateInit> = []
-    private addIceCandidate(candidate: RTCIceCandidateInit) {
-        if (this.peer.remoteDescription != null) {
-            this.peer.addIceCandidate(candidate)
-        } else {
-            this.iceCandidateBuffer.push(candidate)
-        }
-    }
-
-    private async setRemoteDescription(description: RTCSessionDescriptionInit) {
-        await this.peer.setRemoteDescription(description)
-
-        // add buffered ice candidates
-        for (const candidate of this.iceCandidateBuffer.splice(0, this.iceCandidateBuffer.length)) {
-            this.addIceCandidate(candidate)
-        }
     }
 
     // -- Class Api

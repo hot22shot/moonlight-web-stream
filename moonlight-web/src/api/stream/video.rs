@@ -19,12 +19,12 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::api::stream::StreamState;
+use crate::api::stream::StreamStages;
 
 pub struct H264TrackSampleVideoDecoder {
     runtime: Handle,
     video_track: Arc<TrackLocalStaticSample>,
-    state: Arc<StreamState>,
+    stages: Arc<StreamStages>,
     // Video important
     needs_idr: bool,
     frame_time: f32,
@@ -33,11 +33,11 @@ pub struct H264TrackSampleVideoDecoder {
 
 impl H264TrackSampleVideoDecoder {
     // TODO: maybe allow the Moonlight crate to decide the video format?
-    pub fn new(video_track: Arc<TrackLocalStaticSample>, state: Arc<StreamState>) -> Self {
+    pub fn new(video_track: Arc<TrackLocalStaticSample>, stages: Arc<StreamStages>) -> Self {
         Self {
             runtime: Handle::current(),
             video_track,
-            state,
+            stages,
             needs_idr: false,
             frame_time: 0.0,
             last_frame_number: 0,
@@ -70,15 +70,15 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
     }
     fn start(&mut self) {}
     fn stop(&mut self) {
-        self.state.stop.set_reached();
+        self.stages.stop.set_reached();
     }
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        if self.state.stop.is_reached() {
+        if self.stages.stop.is_reached() {
             return DecodeResult::Ok;
         }
 
-        if !self.state.connected.is_reached() {
+        if !self.stages.connected.is_reached() {
             return DecodeResult::Ok;
         }
 

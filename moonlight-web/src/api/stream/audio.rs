@@ -11,21 +11,21 @@ use webrtc::{
     media::Sample, track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::api::stream::StreamState;
+use crate::api::stream::{StreamConnection, StreamStages};
 
 pub struct OpusTrackSampleAudioDecoder {
     runtime: Handle,
     audio_track: Arc<TrackLocalStaticSample>,
-    state: Arc<StreamState>,
+    stages: Arc<StreamStages>,
     config: Option<OpusMultistreamConfig>,
 }
 
 impl OpusTrackSampleAudioDecoder {
-    pub fn new(audio_track: Arc<TrackLocalStaticSample>, state: Arc<StreamState>) -> Self {
+    pub fn new(audio_track: Arc<TrackLocalStaticSample>, stages: Arc<StreamStages>) -> Self {
         Self {
             runtime: Handle::current(),
             audio_track,
-            state,
+            stages,
             config: None,
         }
     }
@@ -44,11 +44,11 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
     fn start(&mut self) {}
 
     fn stop(&mut self) {
-        self.state.stop.set_reached();
+        self.stages.stop.set_reached();
     }
 
     fn decode_and_play_sample(&mut self, data: &[u8]) {
-        if self.state.stop.is_reached() || !self.state.connected.is_reached() {
+        if self.stages.stop.is_reached() || !self.stages.connected.is_reached() {
             return;
         }
 

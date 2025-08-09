@@ -1,7 +1,7 @@
 import { Api, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { AppInfoEvent, Stream } from "./stream/index.js"
+import { AppInfoEvent, startStream, Stream } from "./stream/index.js"
 import { showMessage } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
 
@@ -41,7 +41,7 @@ class ViewerApp implements Component {
     private sidebar: ViewerSidebar
     private videoElement = document.createElement("video")
 
-    private stream: Stream
+    private stream: Stream | null = null
 
     constructor(api: Api, hostId: number, appId: number) {
         this.api = api
@@ -51,14 +51,12 @@ class ViewerApp implements Component {
         setSidebar(this.sidebar)
 
         // Configure stream
-        this.stream = new Stream(api, hostId, appId)
-        this.stream.addAppInfoListener(this.onAppInfo.bind(this))
+        this.startStream(hostId, appId)
 
         // Configure video element
         this.videoElement.classList.add("video-stream")
         this.videoElement.controls = false
         this.videoElement.autoplay = true
-        this.videoElement.srcObject = this.stream.getMediaStream()
 
         // Configure input
         document.addEventListener("keydown", this.onKeyDown.bind(this))
@@ -67,6 +65,28 @@ class ViewerApp implements Component {
         document.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
         document.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
         document.addEventListener("mousemove", this.onMouseMove.bind(this))
+    }
+
+    private async startStream(hostId: number, appId: number) {
+        this.stream = await startStream(this.api, hostId, appId)
+
+        // Add app info listener
+        this.stream.addAppInfoListener(this.onAppInfo.bind(this))
+
+        // Set video
+        this.videoElement.srcObject = this.stream.getMediaStream()
+
+        // TODO: remove disabling
+        this.stream.getInput().getKeyboard().setConfig({
+            enabled: false,
+            ordered: true,
+            mode: "updown",
+        })
+        this.stream.getInput().getMouse().setConfig({
+            enabled: false,
+            reliable: true,
+            mode: "relative",
+        })
     }
 
     private onAppInfo(event: AppInfoEvent) {
@@ -78,25 +98,25 @@ class ViewerApp implements Component {
     // Keyboard
     private onKeyDown(event: KeyboardEvent) {
         event.preventDefault()
-        this.stream.getInput().getKeyboard().onKeyDown(event)
+        this.stream?.getInput().getKeyboard().onKeyDown(event)
     }
     private onKeyUp(event: KeyboardEvent) {
         event.preventDefault()
-        this.stream.getInput().getKeyboard().onKeyUp(event)
+        this.stream?.getInput().getKeyboard().onKeyUp(event)
     }
 
     // Mouse
     private onMouseButtonDown(event: MouseEvent) {
         event.preventDefault()
-        this.stream.getInput().getMouse().onMouseDown(event);
+        this.stream?.getInput().getMouse().onMouseDown(event);
     }
     private onMouseButtonUp(event: MouseEvent) {
         event.preventDefault()
-        this.stream.getInput().getMouse().onMouseUp(event)
+        this.stream?.getInput().getMouse().onMouseUp(event)
     }
     private onMouseMove(event: MouseEvent) {
         event.preventDefault()
-        this.stream.getInput().getMouse().onMouseMove(event)
+        this.stream?.getInput().getMouse().onMouseMove(event)
     }
 
     mount(parent: HTMLElement): void {
@@ -128,6 +148,8 @@ class ViewerSidebar implements Component, Sidebar {
 
         this.keyboardButton.innerText = "Keyboard"
         this.keyboardButton.addEventListener("click", async () => {
+            setSidebarExtended(false)
+
             this.keyboardHiddenInput.focus()
         })
 
