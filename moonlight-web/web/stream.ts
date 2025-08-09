@@ -59,16 +59,16 @@ class ViewerApp implements Component {
         this.videoElement.autoplay = true
 
         // Configure input
-        document.addEventListener("keydown", this.onKeyDown.bind(this))
-        document.addEventListener("keyup", this.onKeyUp.bind(this))
+        this.videoElement.addEventListener("keydown", this.onKeyDown.bind(this))
+        this.videoElement.addEventListener("keyup", this.onKeyUp.bind(this))
 
-        document.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
-        document.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
-        document.addEventListener("mousemove", this.onMouseMove.bind(this))
+        this.videoElement.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
+        this.videoElement.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
+        this.videoElement.addEventListener("mousemove", this.onMouseMove.bind(this))
 
-        document.addEventListener("touchstart", this.onTouchStart.bind(this))
-        document.addEventListener("touchend", this.onTouchEnd.bind(this))
-        document.addEventListener("touchmove", this.onTouchMove.bind(this))
+        this.videoElement.addEventListener("touchstart", this.onTouchStart.bind(this))
+        this.videoElement.addEventListener("touchend", this.onTouchEnd.bind(this))
+        this.videoElement.addEventListener("touchmove", this.onTouchMove.bind(this))
     }
 
     private async startStream(hostId: number, appId: number) {
@@ -113,20 +113,13 @@ class ViewerApp implements Component {
 
     // Touch
     private onTouchStart(event: TouchEvent) {
-        this.stream?.getInput().getTouch().onTouchStart(event)
+        this.stream?.getInput().getTouch().onTouchStart(event, this.videoElement.getBoundingClientRect())
     }
     private onTouchEnd(event: TouchEvent) {
-        this.stream?.getInput().getTouch().onTouchEnd(event)
+        this.stream?.getInput().getTouch().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
     private onTouchMove(event: TouchEvent) {
-        // Prevent browser pull down refresh
-        for (const touch of event.changedTouches) {
-            if (touch.clientY > 0) {
-                event.preventDefault()
-            }
-        }
-
-        this.stream?.getInput().getTouch().onTouchMove(event)
+        this.stream?.getInput().getTouch().onTouchMove(event, this.videoElement.getBoundingClientRect())
     }
 
     mount(parent: HTMLElement): void {

@@ -45,19 +45,19 @@ export class StreamTouch {
         return dataChannel
     }
 
-    onTouchStart(event: TouchEvent) {
+    onTouchStart(event: TouchEvent, rect: DOMRect) {
         for (const touch of event.changedTouches) {
-            this.sendTouch(0, touch)
+            this.sendTouch(0, touch, rect)
         }
     }
-    onTouchMove(event: TouchEvent) {
+    onTouchMove(event: TouchEvent, rect: DOMRect) {
         for (const touch of event.changedTouches) {
-            this.sendTouch(1, touch)
+            this.sendTouch(1, touch, rect)
         }
     }
-    onTouchEnd(event: TouchEvent) {
+    onTouchEnd(event: TouchEvent, rect: DOMRect) {
         for (const touch of event.changedTouches) {
-            this.sendTouch(2, touch)
+            this.sendTouch(2, touch, rect)
         }
     }
 
@@ -67,15 +67,15 @@ export class StreamTouch {
         this.supported = buffer.getBool()
     }
 
-    private sendTouch(type: number, touch: Touch) {
+    private sendTouch(type: number, touch: Touch, rect: DOMRect) {
         this.buffer.reset()
 
         this.buffer.putU8(type)
 
         this.buffer.putU32(touch.identifier)
         // TODO: find out correct position value
-        this.buffer.putF32(touch.clientX / 1000)
-        this.buffer.putF32(touch.clientY / 1000)
+        this.buffer.putF32((touch.clientX - rect.left) / (rect.right - rect.left))
+        this.buffer.putF32((touch.clientY - rect.top) / (rect.bottom - rect.top))
 
         this.buffer.putF32(touch.force)
 
