@@ -357,15 +357,6 @@ impl StreamConnection {
     async fn on_ice_connection_state_change(self: &Arc<Self>, state: RTCIceConnectionState) {
         if matches!(state, RTCIceConnectionState::Connected) {
             self.stages.connected.set_reached();
-
-            let this = self.clone();
-
-            // spawn(async move {
-            //     if let Err(err) = this.start_stream().await {
-            //         warn!("[Stream]: failed to start stream: {err}");
-            //         this.stop().await;
-            //     }
-            // });
         }
     }
     async fn on_peer_connection_state_change(&self, state: RTCPeerConnectionState) {
@@ -824,6 +815,17 @@ async fn start(
         config,
     )
     .await?;
+
+    connection.stages.connected.when_reached().await;
+    if connection.stages.stop.is_reached() {
+        return Ok(());
+    }
+
+    if let Err(err) = connection.start_stream().await {
+        warn!("[Stream]: failed to start stream: {err:?}");
+
+        connection.stop().await;
+    }
 
     connection.stages.stop.when_reached().await;
 
