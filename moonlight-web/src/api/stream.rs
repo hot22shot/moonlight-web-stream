@@ -331,18 +331,6 @@ impl StreamConnection {
             })
         });
 
-        let none = peer.create_data_channel("none", None).await?;
-        none.on_open({
-            let none = none.clone();
-            Box::new(move || {
-                let none = none.clone();
-
-                Box::pin(async move {
-                    none.send_text("Test").await.unwrap();
-                })
-            })
-        });
-
         Ok(this)
     }
 
