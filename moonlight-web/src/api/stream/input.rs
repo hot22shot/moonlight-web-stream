@@ -1,7 +1,10 @@
 use std::{pin::Pin, sync::Arc};
 
 use log::{info, warn};
-use moonlight_common::stream::{KeyAction, KeyFlags, KeyModifiers, MoonlightStream};
+use moonlight_common::stream::{
+    KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
+};
+use num_traits::FromPrimitive;
 use tokio::sync::RwLock;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 
@@ -77,13 +80,27 @@ impl StreamInput {
     }
 
     fn on_mouse_message(stream: &MoonlightStream, message: DataChannelMessage) {
-        let _ = (stream, message);
+        let mut buffer = ByteBuffer::new(message.data);
 
-        todo!()
+        let ty = buffer.get_u8();
+        if ty == 0 {
+            todo!()
+        } else if ty == 1 {
+            let action = if buffer.get_bool() {
+                MouseButtonAction::Press
+            } else {
+                MouseButtonAction::Release
+            };
+            let Some(button) = MouseButton::from_u8(buffer.get_u8()) else {
+                warn!("[Stream Input]: recieved invalid mouse button");
+                return;
+            };
+
+            let _ = stream.send_mouse_button(action, button);
+        }
     }
 
     fn on_keyboard_message(stream: &MoonlightStream, message: DataChannelMessage) {
-        info!("[Stream Input]: received keyboard message");
         let mut buffer = ByteBuffer::new(message.data);
 
         let ty = buffer.get_u8();
@@ -105,7 +122,7 @@ impl StreamInput {
                 modifiers,
                 KeyFlags::empty(),
             );
-        } else {
+        } else if ty == 1 {
             let Ok(key) = buffer.get_utf8(1) else {
                 warn!("[Stream Input]: received invalid keyboard text message");
                 return;

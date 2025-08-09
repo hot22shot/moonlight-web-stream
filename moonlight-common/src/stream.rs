@@ -2,14 +2,15 @@ use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc, 
 
 use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
-    _SERVER_INFORMATION, _STREAM_CONFIGURATION, CAPABILITY_DIRECT_SUBMIT, CAPABILITY_PULL_RENDERER,
-    CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1, CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC,
-    CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC, CAPABILITY_SLOW_OPUS_DECODER,
-    CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION, COLOR_RANGE_FULL, COLOR_RANGE_LIMITED,
-    COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL, ENCFLG_AUDIO,
-    ENCFLG_NONE, ENCFLG_VIDEO, KEY_ACTION_DOWN, KEY_ACTION_UP, LI_ERR_UNSUPPORTED,
+    _SERVER_INFORMATION, _STREAM_CONFIGURATION, BUTTON_ACTION_PRESS, BUTTON_ACTION_RELEASE,
+    BUTTON_LEFT, BUTTON_MIDDLE, BUTTON_RIGHT, BUTTON_X1, BUTTON_X2, CAPABILITY_DIRECT_SUBMIT,
+    CAPABILITY_PULL_RENDERER, CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1,
+    CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC, CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC,
+    CAPABILITY_SLOW_OPUS_DECODER, CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION, COLOR_RANGE_FULL,
+    COLOR_RANGE_LIMITED, COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL,
+    ENCFLG_AUDIO, ENCFLG_NONE, ENCFLG_VIDEO, KEY_ACTION_DOWN, KEY_ACTION_UP, LI_ERR_UNSUPPORTED,
     LI_FF_CONTROLLER_TOUCH_EVENTS, LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo,
-    LiGetHostFeatureFlags, LiSendKeyboardEvent, LiSendKeyboardEvent2,
+    LiGetHostFeatureFlags, LiSendKeyboardEvent, LiSendKeyboardEvent2, LiSendMouseButtonEvent,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
     LiSendTouchEvent, LiSendUtf8TextEvent, LiStartConnection, LiStopConnection, MODIFIER_ALT,
     MODIFIER_CTRL, MODIFIER_META, MODIFIER_SHIFT, PAUDIO_RENDERER_CALLBACKS,
@@ -184,6 +185,23 @@ bitflags! {
     }
 }
 
+#[repr(i8)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
+pub enum MouseButtonAction {
+    Press = BUTTON_ACTION_PRESS as i8,
+    Release = BUTTON_ACTION_RELEASE as i8,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
+pub enum MouseButton {
+    Left = BUTTON_LEFT as i32,
+    Middle = BUTTON_MIDDLE as i32,
+    Right = BUTTON_RIGHT as i32,
+    X1 = BUTTON_X1 as i32,
+    X2 = BUTTON_X2 as i32,
+}
+
 impl MoonlightStream {
     pub(crate) fn start(
         handle: Arc<Handle>,
@@ -308,6 +326,7 @@ impl MoonlightStream {
         }
     }
 
+    /// This function queues a relative mouse move event to be sent to the remote server.
     pub fn send_mouse_move(&self, delta_x: i16, delta_y: i16) -> Result<(), Error> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendMouseMoveEvent(delta_x, delta_y)) {
@@ -316,6 +335,23 @@ impl MoonlightStream {
         }
         Ok(())
     }
+
+    /// This function queues a mouse position update event to be sent to the remote server.
+    /// This functionality is only reliably supported on GFE 3.20 or later. Earlier versions
+    /// may not position the mouse correctly.
+    ///
+    /// Absolute mouse motion doesn't work in many games, so this mode should not be the default
+    /// for mice when streaming. It may be desirable as the default touchscreen behavior when
+    /// LiSendTouchEvent() is not supported and the touchscreen is not the primary input method.
+    /// In the latter case, a touchscreen-as-trackpad mode using LiSendMouseMoveEvent() is likely
+    /// to be better for gaming use cases.
+    ///
+    /// The x and y values are transformed to host coordinates as if they are from a plane which
+    /// is referenceWidth by referenceHeight in size. This allows you to provide coordinates that
+    /// are relative to an arbitrary plane, such as a window, screen, or scaled video view.
+    ///
+    /// For example, if you wanted to directly pass window coordinates as x and y, you would set
+    /// referenceWidth and referenceHeight to your window width and height.
     pub fn send_mouse_position(
         &self,
         absolute_x: i16,
@@ -335,6 +371,24 @@ impl MoonlightStream {
         }
         Ok(())
     }
+
+    /// This function queues a mouse position update event to be sent to the remote server, so
+    /// all of the limitations of LiSendMousePositionEvent() mentioned above apply here too!
+    ///
+    /// This function behaves like a combination of LiSendMouseMoveEvent() and LiSendMousePositionEvent()
+    /// in that it sends a relative motion event, however it sends this data as an absolute position
+    /// based on the computed position of a virtual client cursor which is "moved" any time that
+    /// LiSendMousePositionEvent() or LiSendMouseMoveAsMousePositionEvent() is called. As a result
+    /// of this internal virtual cursor state, callers must ensure LiSendMousePositionEvent() and
+    /// LiSendMouseMoveAsMousePositionEvent() are not called concurrently!
+    ///
+    /// The big advantage of this function is that it allows callers to avoid mouse acceleration that
+    /// would otherwise affect motion when using LiSendMouseMoveEvent(). The downside is that it has the
+    /// same game compatibility issues as LiSendMousePositionEvent().
+    ///
+    /// This function can be useful when mouse capture is the only feasible way to receive mouse input,
+    /// like on Android or iOS, and the OS cannot provide raw unaccelerated mouse motion when capturing.
+    /// Using this function avoids double-acceleration in cases when the client motion is also accelerated.
     pub fn send_mouse_move_as_position(
         &self,
         delta_x: i16,
@@ -419,21 +473,35 @@ impl MoonlightStream {
         Ok(())
     }
 
+    /// This function queues a mouse button event to be sent to the remote server.
+    pub fn send_mouse_button(
+        &self,
+        action: MouseButtonAction,
+        button: MouseButton,
+    ) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) =
+                Self::send_event_error(LiSendMouseButtonEvent(action as i8, button as i32))
+            {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
     /// This function queues a keyboard event to be sent to the remote server.
     /// Key codes are Win32 Virtual Key (VK) codes and interpreted as keys on
     /// a US English layout.
     pub fn send_keyboard_event(
         &self,
-        key_code: i16,
-        key_action: KeyAction,
+        code: i16,
+        action: KeyAction,
         modifiers: KeyModifiers,
     ) -> Result<(), Error> {
         unsafe {
-            if let Some(err) = Self::send_event_error(LiSendKeyboardEvent(
-                key_code,
-                key_action as i8,
-                modifiers.bits(),
-            )) {
+            if let Some(err) =
+                Self::send_event_error(LiSendKeyboardEvent(code, action as i8, modifiers.bits()))
+            {
                 return Err(err);
             }
         }

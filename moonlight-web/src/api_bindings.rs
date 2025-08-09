@@ -720,3 +720,12 @@ ts_consts!(
     pub const MASK_ALT: i8 = moonlight_common::stream::KeyModifiers::ALT.bits();
     pub const MASK_META: i8 = moonlight_common::stream::KeyModifiers::META.bits();
 );
+
+// Mouse Buttons
+ts_consts!(
+    pub StreamMouseButton(export_bindings_mouse_buttons: EXPORT_PATH):
+
+    pub const LEFT: i32 = moonlight_common::stream::MouseButton::Left as i32;
+    pub const MIDDLE: i32 = moonlight_common::stream::MouseButton::Middle as i32;
+    pub const RIGHT: i32 = moonlight_common::stream::MouseButton::Right as i32;
+);

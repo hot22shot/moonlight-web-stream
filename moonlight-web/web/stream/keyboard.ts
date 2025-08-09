@@ -10,13 +10,12 @@ export type KeyboardConfig = {
 export type KeyboardInputType = "updown" | "text"
 
 export class StreamKeyboard {
-
     private peer: RTCPeerConnection
 
     private buffer: ByteBuffer
 
-    private keyboardConfig: KeyboardConfig
-    private keyboardChannel: RTCDataChannel | null
+    private config: KeyboardConfig
+    private channel: RTCDataChannel | null
 
     constructor(peer: RTCPeerConnection, buffer?: ByteBuffer) {
         this.peer = peer
@@ -26,20 +25,20 @@ export class StreamKeyboard {
             throw "invalid buffer endianness"
         }
 
-        this.keyboardConfig = {
+        this.config = {
             enabled: true,
             ordered: true,
             type: "updown"
         }
-        this.keyboardChannel = this.createKeyboardChannel(this.keyboardConfig)
+        this.channel = this.createChannel(this.config)
     }
 
-    setKeyboardConfig(config: KeyboardConfig) {
-        this.keyboardChannel?.close()
-        this.keyboardChannel = this.createKeyboardChannel(config)
+    setConfig(config: KeyboardConfig) {
+        this.channel?.close()
+        this.channel = this.createChannel(config)
     }
-    private createKeyboardChannel(config: KeyboardConfig): RTCDataChannel | null {
-        this.keyboardConfig = config
+    private createChannel(config: KeyboardConfig): RTCDataChannel | null {
+        this.config = config
         if (!config.enabled) {
             return null
         }
@@ -60,7 +59,7 @@ export class StreamKeyboard {
     private sendKeyEvent(isDown: boolean, event: KeyboardEvent) {
         this.buffer.reset()
 
-        if (this.keyboardConfig.type == "updown") {
+        if (this.config.type == "updown") {
             const key = convertToKey(event)
             if (!key) {
                 return
@@ -72,7 +71,7 @@ export class StreamKeyboard {
             this.buffer.putBool(isDown)
             this.buffer.putU8(modifiers)
             this.buffer.putU16(key)
-        } else if (this.keyboardConfig.type == "text") {
+        } else if (this.config.type == "text") {
             const keyText = convertToKeyText(event)
             if (!isDown || !keyText) {
                 return
@@ -82,7 +81,7 @@ export class StreamKeyboard {
             this.buffer.putUtf8(keyText)
         }
 
-        trySendChannel(this.keyboardChannel, this.buffer)
+        trySendChannel(this.channel, this.buffer)
     }
 
 }

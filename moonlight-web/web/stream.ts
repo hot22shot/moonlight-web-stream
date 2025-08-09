@@ -63,6 +63,9 @@ class ViewerApp implements Component {
         // Configure input
         document.addEventListener("keydown", this.onKeyDown.bind(this))
         document.addEventListener("keyup", this.onKeyUp.bind(this))
+
+        document.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
+        document.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
     }
 
     private onAppInfo(event: AppInfoEvent) {
@@ -71,13 +74,24 @@ class ViewerApp implements Component {
         document.title = `Stream: ${app.title}`
     }
 
+    // Keyboard
     private onKeyDown(event: KeyboardEvent) {
-        console.log("DOWN", event)
+        event.preventDefault()
         this.stream.getInput().getKeyboard().onKeyDown(event)
     }
     private onKeyUp(event: KeyboardEvent) {
-        console.log("UP", event)
+        event.preventDefault()
         this.stream.getInput().getKeyboard().onKeyUp(event)
+    }
+
+    // Mouse
+    private onMouseButtonDown(event: MouseEvent) {
+        event.preventDefault()
+        this.stream.getInput().getMouse().onMouseDown(event)
+    }
+    private onMouseButtonUp(event: MouseEvent) {
+        event.preventDefault()
+        this.stream.getInput().getMouse().onMouseUp(event)
     }
 
     mount(parent: HTMLElement): void {

@@ -2134,6 +2134,7 @@ dependencies = [
  "futures",
  "log",
  "moonlight-common",
+ "num-traits",
  "pem",
  "serde",
  "serde_json",
