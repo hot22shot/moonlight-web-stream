@@ -5,35 +5,23 @@ use moonlight_common::stream::{
     KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
 };
 use num_traits::FromPrimitive;
-use tokio::sync::RwLock;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 
-use crate::api::stream::buffer::ByteBuffer;
+use crate::api::stream::{StreamConnection, buffer::ByteBuffer};
 
-pub struct StreamInput {
-    inner: Arc<Inner>,
-}
-
-#[derive(Default)]
-struct Inner {
-    moonlight: RwLock<Option<Arc<MoonlightStream>>>,
-}
+pub struct StreamInput {}
 
 impl StreamInput {
     pub fn new() -> Self {
-        Self {
-            inner: Default::default(),
-        }
-    }
-
-    pub async fn set_stream(&self, stream: Arc<MoonlightStream>) {
-        let mut guard = self.inner.moonlight.write().await;
-
-        guard.replace(stream);
+        Self {}
     }
 
     /// Returns if this added events
-    pub fn on_data_channel(&self, data_channel: Arc<RTCDataChannel>) -> bool {
+    pub fn on_data_channel(
+        &self,
+        connection: &Arc<StreamConnection>,
+        data_channel: Arc<RTCDataChannel>,
+    ) -> bool {
         info!(
             "[Stream Input]: adding data channel: \"{}\"",
             data_channel.label()
@@ -42,13 +30,13 @@ impl StreamInput {
         match data_channel.label() {
             "mouse" => {
                 data_channel.on_message(Self::create_handler(
-                    self.inner.clone(),
+                    connection.clone(),
                     Self::on_mouse_message,
                 ));
             }
             "touch" => {
                 data_channel.on_message(Self::create_handler(
-                    self.inner.clone(),
+                    connection.clone(),
                     Self::on_touch_message,
                 ));
 
@@ -56,7 +44,7 @@ impl StreamInput {
             }
             "keyboard" => {
                 data_channel.on_message(Self::create_handler(
-                    self.inner.clone(),
+                    connection.clone(),
                     Self::on_keyboard_message,
                 ));
             }
@@ -68,7 +56,7 @@ impl StreamInput {
 
     #[allow(clippy::type_complexity)]
     fn create_handler(
-        inner: Arc<Inner>,
+        connection: Arc<StreamConnection>,
         f: impl Fn(&MoonlightStream, DataChannelMessage) + Send + Sync + 'static,
     ) -> Box<
         dyn FnMut(DataChannelMessage) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>
@@ -79,11 +67,11 @@ impl StreamInput {
         let f = Arc::new(f);
 
         Box::new(move |message| {
-            let inner = inner.clone();
+            let connection = connection.clone();
 
             let f = f.clone();
             Box::pin(async move {
-                let stream = inner.moonlight.read().await;
+                let stream = connection.stream.read().await;
                 if let Some(stream) = stream.as_ref() {
                     f(stream, message);
                 }

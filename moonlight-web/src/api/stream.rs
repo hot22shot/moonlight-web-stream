@@ -588,8 +588,8 @@ impl StreamConnection {
     }
 
     // -- Data Channels
-    async fn on_data_channel(&self, channel: Arc<RTCDataChannel>) {
-        self.input.on_data_channel(channel);
+    async fn on_data_channel(self: &Arc<Self>, channel: Arc<RTCDataChannel>) {
+        self.input.on_data_channel(self, channel);
     }
 
     // Start Moonlight Stream

@@ -75,18 +75,6 @@ class ViewerApp implements Component {
 
         // Set video
         this.videoElement.srcObject = this.stream.getMediaStream()
-
-        // TODO: remove disabling
-        this.stream.getInput().getKeyboard().setConfig({
-            enabled: false,
-            ordered: true,
-            mode: "updown",
-        })
-        this.stream.getInput().getMouse().setConfig({
-            enabled: false,
-            reliable: true,
-            mode: "relative",
-        })
     }
 
     private onAppInfo(event: AppInfoEvent) {
