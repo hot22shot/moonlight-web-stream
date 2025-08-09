@@ -23,6 +23,7 @@ use crate::{
 
 mod api;
 mod api_bindings;
+mod api_bindings_consts;
 mod auth;
 mod data;
 mod web;

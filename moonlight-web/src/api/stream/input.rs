@@ -1,7 +1,7 @@
 use std::{pin::Pin, sync::Arc};
 
-use log::info;
-use moonlight_common::stream::MoonlightStream;
+use log::{info, warn};
+use moonlight_common::stream::{KeyAction, KeyFlags, KeyModifiers, MoonlightStream};
 use tokio::sync::RwLock;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 
@@ -88,13 +88,30 @@ impl StreamInput {
 
         let ty = buffer.get_u8();
         if ty == 0 {
-            info!("updown");
-            todo!()
-        } else {
-            let key = buffer.get_utf8(1).unwrap();
-            info!("text: \"{key}\"");
+            let action = if buffer.get_bool() {
+                KeyAction::Down
+            } else {
+                KeyAction::Up
+            };
+            let modifiers = KeyModifiers::from_bits(buffer.get_u8() as i8).unwrap_or_else(|| {
+                warn!("[Stream Input]: received invalid key modifiers");
+                KeyModifiers::empty()
+            });
+            let key = buffer.get_u16();
 
-            stream.send_text(key).unwrap();
+            let _ = stream.send_keyboard_event_non_standard(
+                key as i16,
+                action,
+                modifiers,
+                KeyFlags::empty(),
+            );
+        } else {
+            let Ok(key) = buffer.get_utf8(1) else {
+                warn!("[Stream Input]: received invalid keyboard text message");
+                return;
+            };
+
+            let _ = stream.send_text(key);
         }
     }
 }

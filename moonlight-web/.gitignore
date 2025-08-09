@@ -1,7 +1,7 @@
 node_modules
 dist
 bindings
-web/api_bindings.d.ts
+web/api_bindings.ts
 
 # Server
 server

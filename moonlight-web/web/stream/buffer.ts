@@ -1,14 +1,16 @@
 
-export interface ByteSerializable { }
 
 export class ByteBuffer {
     private position: number = 0
     private limit: number = 0
+    private littleEndian: boolean
     private buffer: Uint8Array
 
-    constructor(length?: number);
-    constructor(buffer: Uint8Array);
-    constructor(value?: number | Uint8Array) {
+    constructor(length?: number, littleEndian?: boolean);
+    constructor(buffer: Uint8Array, littleEndian?: boolean);
+    constructor(value?: number | Uint8Array, littleEndian?: boolean) {
+        this.littleEndian = littleEndian ?? false
+
         if (value instanceof Uint8Array) {
             this.buffer = value
         } else {
@@ -23,16 +25,24 @@ export class ByteBuffer {
         }
     }
 
-    putU8Array(data: Array<number>) {
+    putU8Array(data: Array<number> | Uint8Array) {
         this.buffer.set(data, this.position)
         this.bytesUsed(data.length, false)
     }
 
     putU8(data: number) {
-        this.putU8Array([data])
+        const view = new DataView(this.buffer.buffer)
+        view.setUint8(this.position, data)
+        this.bytesUsed(1, false)
     }
     putBool(data: boolean) {
         this.putU8(data ? 1 : 0)
+    }
+
+    putU16(data: number) {
+        const view = new DataView(this.buffer.buffer)
+        view.setUint16(this.position, data, this.littleEndian)
+        this.bytesUsed(2, false)
     }
 
     putUtf8(text: string) {
@@ -46,12 +56,13 @@ export class ByteBuffer {
     }
 
     get(buffer: Uint8Array, offset: number, length: number) {
-        buffer.set(this.buffer.slice(this.position, this.position + length), offset)
+        buffer.set(this.buffer.subarray(this.position, this.position + length), offset)
         this.bytesUsed(length, true)
     }
 
     getU8(): number {
-        const byte = this.buffer[this.position]
+        const view = new DataView(this.buffer.buffer)
+        const byte = view.getUint8(this.position)
         this.bytesUsed(1, true)
         return byte
     }
@@ -63,6 +74,9 @@ export class ByteBuffer {
     flip() {
         this.limit = this.position
         this.position = 0
+    }
+    isLittleEndian() {
+        return this.littleEndian
     }
     getPosition() {
         return this.position

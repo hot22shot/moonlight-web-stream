@@ -172,8 +172,8 @@ bitflags! {
     pub struct KeyModifiers: i8 {
         const SHIFT = MODIFIER_SHIFT as i8;
         const CTRL = MODIFIER_CTRL as i8;
-        const ALT= MODIFIER_ALT as i8;
-        const META= MODIFIER_META as i8;
+        const ALT = MODIFIER_ALT as i8;
+        const META = MODIFIER_META as i8;
     }
 }
 

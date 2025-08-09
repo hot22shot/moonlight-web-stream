@@ -73,11 +73,11 @@ class ViewerApp implements Component {
 
     private onKeyDown(event: KeyboardEvent) {
         console.log("DOWN", event)
-        this.stream.getInput().onKeyDown(event)
+        this.stream.getInput().getKeyboard().onKeyDown(event)
     }
     private onKeyUp(event: KeyboardEvent) {
         console.log("UP", event)
-        this.stream.getInput().onKeyUp(event)
+        this.stream.getInput().getKeyboard().onKeyUp(event)
     }
 
     mount(parent: HTMLElement): void {

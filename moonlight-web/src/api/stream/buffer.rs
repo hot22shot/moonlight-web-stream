@@ -27,6 +27,14 @@ where
         self.get_u8_array(&mut buffer);
         buffer[0]
     }
+    pub fn get_bool(&mut self) -> bool {
+        self.get_u8() != 0
+    }
+    pub fn get_u16(&mut self) -> u16 {
+        let mut buffer = [0u8; 2];
+        self.get_u8_array(&mut buffer);
+        u16::from_be_bytes(buffer)
+    }
 
     // TODO: better error?
     // TODO: is this correct?
