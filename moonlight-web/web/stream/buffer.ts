@@ -6,8 +6,8 @@ export class ByteBuffer {
     private littleEndian: boolean
     private buffer: Uint8Array
 
-    constructor(length?: number, littleEndian?: boolean);
-    constructor(buffer: Uint8Array, littleEndian?: boolean);
+    constructor(length?: number, littleEndian?: boolean)
+    constructor(buffer: Uint8Array, littleEndian?: boolean)
     constructor(value?: number | Uint8Array, littleEndian?: boolean) {
         this.littleEndian = littleEndian ?? false
 

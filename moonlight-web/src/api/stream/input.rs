@@ -40,14 +40,26 @@ impl StreamInput {
         );
 
         match data_channel.label() {
-            "mouse" => data_channel.on_message(Self::create_handler(
-                self.inner.clone(),
-                Self::on_mouse_message,
-            )),
-            "keyboard" => data_channel.on_message(Self::create_handler(
-                self.inner.clone(),
-                Self::on_keyboard_message,
-            )),
+            "mouse" => {
+                data_channel.on_message(Self::create_handler(
+                    self.inner.clone(),
+                    Self::on_mouse_message,
+                ));
+            }
+            "touch" => {
+                data_channel.on_message(Self::create_handler(
+                    self.inner.clone(),
+                    Self::on_touch_message,
+                ));
+
+                // TODO: send supported on open
+            }
+            "keyboard" => {
+                data_channel.on_message(Self::create_handler(
+                    self.inner.clone(),
+                    Self::on_keyboard_message,
+                ));
+            }
             _ => return false,
         };
 
@@ -77,6 +89,10 @@ impl StreamInput {
                 }
             })
         })
+    }
+
+    fn on_touch_message(stream: &MoonlightStream, message: DataChannelMessage) {
+        todo!()
     }
 
     fn on_mouse_message(stream: &MoonlightStream, message: DataChannelMessage) {
