@@ -188,9 +188,6 @@ struct StreamConnection {
     pub data: Data<RuntimeApiData>,
     pub peer: Arc<RTCPeerConnection>,
     pub ws_sender: Session,
-    // Signaling
-    pub making_offer: AtomicBool,
-    pub setting_remote_answer_pending: AtomicBool,
     // Video
     pub video_track: Arc<TrackLocalStaticSample>,
     // Audio
@@ -200,8 +197,6 @@ struct StreamConnection {
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
 }
-
-const POLITE: bool = false;
 
 impl StreamConnection {
     pub async fn new(
@@ -269,8 +264,6 @@ impl StreamConnection {
             }),
             peer: peer.clone(),
             ws_sender,
-            making_offer: AtomicBool::new(false),
-            setting_remote_answer_pending: AtomicBool::new(false),
             video_track,
             audio_track,
             input,
@@ -391,63 +384,9 @@ impl StreamConnection {
 
         Some(local_description)
     }
-    async fn make_offer(&self) -> Option<RTCSessionDescription> {
-        let local_description = match self.peer.create_offer(None).await {
-            Err(err) => {
-                warn!("[Signaling]: failed to create offer: {err:?}");
-                return None;
-            }
-            Ok(value) => value,
-        };
-
-        if let Err(err) = self
-            .peer
-            .set_local_description(local_description.clone())
-            .await
-        {
-            warn!("[Signaling]: failed to set local description: {err:?}");
-            return None;
-        }
-
-        Some(local_description)
-    }
-    async fn set_local_description(&self) -> Option<RTCSessionDescription> {
-        match self.peer.signaling_state() {
-            RTCSignalingState::HaveRemoteOffer => self.make_answer().await,
-            RTCSignalingState::Stable => self.make_offer().await,
-            _ => {
-                warn!("[Signaling]: Not in a valid state to set local description");
-                None
-            }
-        }
-    }
 
     async fn on_negotiation_needed(&self) {
-        debug!("[Signaling] Negotiation Needed");
-
-        self.making_offer.store(true, Ordering::Release);
-
-        let Some(local_description) = self.set_local_description().await else {
-            return;
-        };
-
-        debug!(
-            "[Signaling] Sending Local Description: {:?}",
-            local_description.sdp_type
-        );
-
-        let _ = Self::send_ws_message(
-            &mut self.ws_sender.clone(),
-            StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                RtcSessionDescription {
-                    ty: local_description.sdp_type.into(),
-                    sdp: local_description.sdp,
-                },
-            )),
-        )
-        .await;
-
-        self.making_offer.store(false, Ordering::Release);
+        // Empty
     }
 
     async fn on_ws_message(&self, text: &str) {
@@ -462,22 +401,6 @@ impl StreamConnection {
                     "[Signaling] Received Remote Description: {:?}",
                     description.ty
                 );
-
-                let making_offer = self.making_offer.load(Ordering::Acquire);
-                let setting_remote_answer_pending =
-                    self.setting_remote_answer_pending.load(Ordering::Acquire);
-
-                let ready_for_offer = !making_offer
-                    && (self.peer.signaling_state() == RTCSignalingState::Stable
-                        || setting_remote_answer_pending);
-
-                let offer_collision = description.ty == RtcSdpType::Offer && !ready_for_offer;
-                let ignore_offer = !POLITE && offer_collision;
-
-                // Ignore Offer if we're impolite
-                if ignore_offer {
-                    return;
-                }
 
                 let description = match &description.ty {
                     RtcSdpType::Offer => RTCSessionDescription::offer(description.sdp),
@@ -497,27 +420,15 @@ impl StreamConnection {
                     return;
                 };
 
-                // Set the remote description
-                self.setting_remote_answer_pending.store(
-                    description.sdp_type == RTCSdpType::Answer,
-                    Ordering::Release,
-                );
-
                 let remote_ty = description.sdp_type;
                 if let Err(err) = self.peer.set_remote_description(description).await {
-                    self.setting_remote_answer_pending
-                        .store(false, Ordering::Release);
-
                     warn!("[Signaling]: failed to set remote description: {err:?}");
                     return;
                 }
 
-                self.setting_remote_answer_pending
-                    .store(false, Ordering::Release);
-
                 // Send an answer (local description) if we got an offer
                 if remote_ty == RTCSdpType::Offer {
-                    let Some(local_description) = self.set_local_description().await else {
+                    let Some(local_description) = self.make_answer().await else {
                         return;
                     };
 

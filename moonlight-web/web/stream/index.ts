@@ -3,8 +3,6 @@ import { App, RtcIceCandidate, StreamClientMessage, StreamServerMessage } from "
 import { showMessage } from "../component/modal/index.js"
 import { StreamInput } from "./input.js"
 
-const POLITE = true
-
 export function startStream(api: Api, hostId: number, appId: number): Promise<Stream> {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket("/api/stream")
@@ -35,10 +33,6 @@ export class Stream {
     private ws: WebSocket
 
     private peer: RTCPeerConnection
-    // Signaling
-    private makingOffer = false
-    private ignoreOffer = false
-    private isSettingRemoteAnswerPending = false
 
     constructor(ws: WebSocket, api: Api, hostId: number, appId: number) {
         this.api = api
@@ -136,45 +130,23 @@ export class Stream {
 
     // -- Signaling
     private async onNegotiationNeeded() {
-        try {
-            this.makingOffer = true
+        const offer = await this.peer.createOffer()
+        await this.peer.setLocalDescription(offer)
 
-            await this.peer.setLocalDescription()
-            await this.sendLocalDescription()
-        } catch (err) {
-            console.error(err);
-        } finally {
-            this.makingOffer = false
-        }
+        await this.sendLocalDescription()
     }
     private async handleSignaling(description: RTCSessionDescriptionInit | null, candidate: RTCIceCandidateInit | null) {
         if (description) {
-            const readyForOffer =
-                !this.makingOffer &&
-                (this.peer.signalingState === "stable" || this.isSettingRemoteAnswerPending);
-            const offerCollision = description.type === "offer" && !readyForOffer;
-
-            this.ignoreOffer = !POLITE && offerCollision;
-            if (this.ignoreOffer) {
-                return;
-            }
-
-            this.isSettingRemoteAnswerPending = description.type === "answer";
             await this.peer.setRemoteDescription(description)
-            this.isSettingRemoteAnswerPending = false
 
             if (description.type === "offer") {
-                await this.peer.setLocalDescription();
+                const answer = await this.peer.createAnswer()
+                await this.peer.setLocalDescription(answer)
+
                 await this.sendLocalDescription()
             }
         } else if (candidate) {
-            try {
-                this.peer.addIceCandidate(candidate)
-            } catch (err) {
-                if (!this.ignoreOffer) {
-                    throw err;
-                }
-            }
+            this.peer.addIceCandidate(candidate)
         }
     }
     private sendLocalDescription() {
