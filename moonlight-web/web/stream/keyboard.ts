@@ -5,9 +5,9 @@ import { StreamKeyModifiers, StreamKeys } from "../api_bindings.js"
 export type KeyboardConfig = {
     enabled: boolean
     ordered: boolean
-    type: KeyboardInputType
+    mode: KeyboardInputMode
 }
-export type KeyboardInputType = "updown" | "text"
+export type KeyboardInputMode = "updown" | "text"
 
 export class StreamKeyboard {
     private peer: RTCPeerConnection
@@ -28,7 +28,7 @@ export class StreamKeyboard {
         this.config = {
             enabled: true,
             ordered: true,
-            type: "updown"
+            mode: "updown"
         }
         this.channel = this.createChannel(this.config)
     }
@@ -59,7 +59,7 @@ export class StreamKeyboard {
     private sendKeyEvent(isDown: boolean, event: KeyboardEvent) {
         this.buffer.reset()
 
-        if (this.config.type == "updown") {
+        if (this.config.mode == "updown") {
             const key = convertToKey(event)
             if (!key) {
                 return
@@ -71,7 +71,7 @@ export class StreamKeyboard {
             this.buffer.putBool(isDown)
             this.buffer.putU8(modifiers)
             this.buffer.putU16(key)
-        } else if (this.config.type == "text") {
+        } else if (this.config.mode == "text") {
             const keyText = convertToKeyText(event)
             if (!isDown || !keyText) {
                 return

@@ -84,8 +84,13 @@ impl StreamInput {
 
         let ty = buffer.get_u8();
         if ty == 0 {
-            todo!()
+            // Move
+            let delta_x = buffer.get_i16();
+            let delta_y = buffer.get_i16();
+
+            let _ = stream.send_mouse_move(delta_x, delta_y);
         } else if ty == 1 {
+            // Button Press / Release
             let action = if buffer.get_bool() {
                 MouseButtonAction::Press
             } else {

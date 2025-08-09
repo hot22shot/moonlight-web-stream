@@ -3,6 +3,7 @@ use std::string::FromUtf8Error;
 pub struct ByteBuffer<T> {
     position: usize,
     limit: usize,
+    little_endian: bool,
     buffer: T,
 }
 
@@ -14,6 +15,7 @@ where
         Self {
             position: 0,
             limit: 0,
+            little_endian: false,
             buffer,
         }
     }
@@ -33,7 +35,22 @@ where
     pub fn get_u16(&mut self) -> u16 {
         let mut buffer = [0u8; 2];
         self.get_u8_array(&mut buffer);
-        u16::from_be_bytes(buffer)
+
+        if self.little_endian {
+            u16::from_le_bytes(buffer)
+        } else {
+            u16::from_be_bytes(buffer)
+        }
+    }
+    pub fn get_i16(&mut self) -> i16 {
+        let mut buffer = [0u8; 2];
+        self.get_u8_array(&mut buffer);
+
+        if self.little_endian {
+            i16::from_le_bytes(buffer)
+        } else {
+            i16::from_be_bytes(buffer)
+        }
     }
 
     // TODO: better error?
@@ -53,6 +70,17 @@ where
         let output = &chunk.valid()[0..end_char_index + (end_char.len_utf8())];
 
         Ok(output)
+    }
+
+    pub fn get_f32(&mut self) -> f32 {
+        let mut buffer = [0u8; 4];
+        self.get_u8_array(&mut buffer);
+
+        if self.little_endian {
+            f32::from_le_bytes(buffer)
+        } else {
+            f32::from_be_bytes(buffer)
+        }
     }
 
     pub fn reset(&mut self) {

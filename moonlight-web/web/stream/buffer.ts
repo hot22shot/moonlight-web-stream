@@ -44,6 +44,11 @@ export class ByteBuffer {
         view.setUint16(this.position, data, this.littleEndian)
         this.bytesUsed(2, false)
     }
+    putI16(data: number) {
+        const view = new DataView(this.buffer.buffer)
+        view.setInt16(this.position, data, this.littleEndian)
+        this.bytesUsed(2, false)
+    }
 
     putUtf8(text: string) {
         const encoder = new TextEncoder()
@@ -53,6 +58,12 @@ export class ByteBuffer {
         if (result.read != text.length) {
             throw "failed to put utf8 text"
         }
+    }
+
+    putF32(data: number) {
+        const view = new DataView(this.buffer.buffer)
+        view.setFloat32(this.position, data, this.littleEndian)
+        this.bytesUsed(4, false)
     }
 
     get(buffer: Uint8Array, offset: number, length: number) {

@@ -3,7 +3,7 @@ import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { AppInfoEvent, Stream } from "./stream/index.js"
 import { showMessage } from "./component/modal/index.js";
-import { setSidebar, Sidebar } from "./component/sidebar/index.js";
+import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
 
 async function startApp() {
     const api = await getApi()
@@ -47,7 +47,7 @@ class ViewerApp implements Component {
         this.api = api
 
         // Configure sidebar
-        this.sidebar = new ViewerSidebar()
+        this.sidebar = new ViewerSidebar(this)
         setSidebar(this.sidebar)
 
         // Configure stream
@@ -66,6 +66,7 @@ class ViewerApp implements Component {
 
         document.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
         document.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
+        document.addEventListener("mousemove", this.onMouseMove.bind(this))
     }
 
     private onAppInfo(event: AppInfoEvent) {
@@ -87,11 +88,15 @@ class ViewerApp implements Component {
     // Mouse
     private onMouseButtonDown(event: MouseEvent) {
         event.preventDefault()
-        this.stream.getInput().getMouse().onMouseDown(event)
+        this.stream.getInput().getMouse().onMouseDown(event);
     }
     private onMouseButtonUp(event: MouseEvent) {
         event.preventDefault()
         this.stream.getInput().getMouse().onMouseUp(event)
+    }
+    private onMouseMove(event: MouseEvent) {
+        event.preventDefault()
+        this.stream.getInput().getMouse().onMouseMove(event)
     }
 
     mount(parent: HTMLElement): void {
@@ -101,20 +106,35 @@ class ViewerApp implements Component {
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.videoElement)
     }
+
+    getElement(): HTMLElement {
+        return this.videoElement
+    }
 }
 
 class ViewerSidebar implements Component, Sidebar {
+    private app: ViewerApp
 
     private test: HTMLElement = document.createElement("p")
     private keyboardButton = document.createElement("button")
     private keyboardHiddenInput = document.createElement("textarea")
 
-    constructor() {
+    private lockMouseButton = document.createElement("button")
+
+    constructor(app: ViewerApp) {
+        this.app = app
+
         this.test.innerText = "TEST"
 
         this.keyboardButton.innerText = "Keyboard"
         this.keyboardButton.addEventListener("click", async () => {
             this.keyboardHiddenInput.focus()
+        })
+
+        this.lockMouseButton.addEventListener("click", async () => {
+            setSidebarExtended(false)
+
+            await app.getElement().requestPointerLock()
         })
     }
 
@@ -129,10 +149,12 @@ class ViewerSidebar implements Component, Sidebar {
         parent.appendChild(this.test)
         parent.appendChild(this.keyboardButton)
         parent.appendChild(this.keyboardHiddenInput)
+        parent.appendChild(this.lockMouseButton)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.test)
         parent.removeChild(this.keyboardButton)
         parent.removeChild(this.keyboardHiddenInput)
+        parent.removeChild(this.lockMouseButton)
     }
 }

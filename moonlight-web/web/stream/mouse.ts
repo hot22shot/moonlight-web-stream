@@ -5,7 +5,10 @@ import { trySendChannel } from "./input.js"
 export type MouseConfig = {
     enabled: boolean
     reliable: boolean
+    mode: KeyboardInputMode
 }
+
+export type KeyboardInputMode = "relative"
 
 export class StreamMouse {
     private peer: RTCPeerConnection
@@ -27,6 +30,7 @@ export class StreamMouse {
         this.config = {
             enabled: true,
             reliable: true,
+            mode: "relative",
         }
         this.channel = this.createChannel(this.config)
     }
@@ -61,6 +65,10 @@ export class StreamMouse {
         this.buffer.reset()
 
         this.buffer.putU8(0) // TODO: remove this for two channels
+        this.buffer.putI16(event.movementX)
+        this.buffer.putI16(event.movementY)
+
+        trySendChannel(this.channel, this.buffer)
     }
     private sendMouseButton(isDown: boolean, event: MouseEvent) {
         this.buffer.reset()
