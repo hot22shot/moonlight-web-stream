@@ -12,7 +12,6 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
     }
 
     buffer.flip()
-    console.info(buffer)
     const readBuffer = buffer.getReadBuffer()
     if (readBuffer.length == 0) {
         throw "illegal buffer size"
@@ -22,7 +21,12 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 
 export type StreamInputConfig = {
     keyboardOrdered: boolean
-    touchMode: "touch" | "mouseRelative"
+    touchMode: "touch" | "mouseRelative" | "pointAndDrag"
+}
+
+export const DEFAULT_STREAM_INPUT_CONFIG: StreamInputConfig = {
+    keyboardOrdered: true,
+    touchMode: "pointAndDrag"
 }
 
 export class StreamInput {
@@ -42,10 +46,7 @@ export class StreamInput {
     constructor(peer: RTCPeerConnection, config?: StreamInputConfig) {
         this.peer = peer
 
-        this.config = config ?? {
-            keyboardOrdered: true,
-            touchMode: "mouseRelative"
-        }
+        this.config = config ?? DEFAULT_STREAM_INPUT_CONFIG
 
         this.createChannels(this.config)
     }
@@ -64,6 +65,14 @@ export class StreamInput {
         this.touch.onmessage = this.onTouchMessage.bind(this)
     }
 
+    setConfig(config: StreamInputConfig) {
+        this.config = config
+        this.createChannels(config)
+
+        // Touch
+        this.primaryTouch = null
+        this.touchTracker.clear()
+    }
     getConfig(): StreamInputConfig {
         return this.config
     }
@@ -133,9 +142,20 @@ export class StreamInput {
     sendMouseMove(movementX: number, movementY: number) {
         this.buffer.reset()
 
-        this.buffer.putU8(0) // TODO: remove this for two channels
+        this.buffer.putU8(0)
         this.buffer.putI16(movementX)
         this.buffer.putI16(movementY)
+
+        trySendChannel(this.mouse, this.buffer)
+    }
+    sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number) {
+        this.buffer.reset()
+
+        this.buffer.putU8(1)
+        this.buffer.putI16(x)
+        this.buffer.putI16(y)
+        this.buffer.putI16(referenceWidth)
+        this.buffer.putI16(referenceHeight)
 
         trySendChannel(this.mouse, this.buffer)
     }
@@ -143,7 +163,7 @@ export class StreamInput {
     sendMouseButton(isDown: boolean, button: number) {
         this.buffer.reset()
 
-        this.buffer.putU8(1) // TODO: remove this for two channels
+        this.buffer.putU8(2)
         this.buffer.putBool(isDown)
         this.buffer.putU8(button)
 
@@ -152,7 +172,7 @@ export class StreamInput {
     sendMouseWheel(deltaX: number, deltaY: number) {
         this.buffer.reset()
 
-        this.buffer.putU8(2) // TODO: remove this for two channels
+        this.buffer.putU8(3)
         this.buffer.putI16(deltaX)
         this.buffer.putI16(deltaY)
 
@@ -200,11 +220,20 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 this.sendTouch(0, touch, rect)
             }
-        } else if (this.config.touchMode == "mouseRelative") {
+        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
             const touch = event.changedTouches[0]
 
             if (this.primaryTouch == null && touch) {
                 this.primaryTouch = touch.identifier
+
+                if (this.config.touchMode == "pointAndDrag") {
+                    const position = this.calcTouchPosition(touch, rect)
+                    if (position) {
+                        const [x, y] = position
+                        this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0)
+                        this.sendMouseButton(true, StreamMouseButton.LEFT)
+                    }
+                }
             }
         }
     }
@@ -213,7 +242,7 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 this.sendTouch(1, touch, rect)
             }
-        } else if (this.config.touchMode == "mouseRelative") {
+        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
             for (const touch of event.changedTouches) {
                 if (this.primaryTouch != touch.identifier) {
                     continue
@@ -241,19 +270,24 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 this.sendTouch(2, touch, rect)
             }
-        } else if (this.config.touchMode == "mouseRelative") {
+        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
             for (const touch of event.changedTouches) {
                 if (this.primaryTouch != touch.identifier) {
                     continue
                 }
                 const oldTouch = this.touchTracker.get(this.primaryTouch)
+                this.primaryTouch = null
 
-                // mouse click
-                if (oldTouch
-                    && Date.now() - oldTouch.startTime <= TOUCH_AS_CLICK_MAX_TIME_MS
-                    && Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY) <= TOUCH_AS_CLICK_MAX_DISTANCE
-                ) {
-                    this.sendMouseButton(true, StreamMouseButton.LEFT)
+                if (this.config.touchMode == "mouseRelative") {
+                    // mouse click
+                    if (oldTouch
+                        && Date.now() - oldTouch.startTime <= TOUCH_AS_CLICK_MAX_TIME_MS
+                        && Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY) <= TOUCH_AS_CLICK_MAX_DISTANCE
+                    ) {
+                        this.sendMouseButton(true, StreamMouseButton.LEFT)
+                        this.sendMouseButton(false, StreamMouseButton.LEFT)
+                    }
+                } else if (this.config.touchMode == "pointAndDrag") {
                     this.sendMouseButton(false, StreamMouseButton.LEFT)
                 }
             }
@@ -264,20 +298,30 @@ export class StreamInput {
         }
     }
 
+    private calcTouchPosition(touch: Touch, rect: DOMRect): [number, number] | null {
+        // TODO: fix the rect it's not 100% on point
+        // TODO: find out correct position value
+        const x = (touch.clientX - rect.left) / (rect.right - rect.left)
+        const y = (touch.clientY - rect.top) / (rect.bottom - rect.top)
+        console.info("TOUCH", x, y)
+        if (x < 0 || x > 1.0 || y < 0 || y > 1.0) {
+            // invalid touch
+            return null
+        }
+        return [x, y]
+    }
     private sendTouch(type: number, touch: Touch, rect: DOMRect) {
         this.buffer.reset()
 
         this.buffer.putU8(type)
 
         this.buffer.putU32(touch.identifier)
-        // TODO: fix the rect it's not 100% on point
-        // TODO: find out correct position value
-        const x = (touch.clientX - rect.left) / (rect.right - rect.left)
-        const y = (touch.clientY - rect.top) / (rect.bottom - rect.top)
-        if (x < 0 || x > 1.0 || y < 0 || y > 1.0) {
-            // invalid touch
+
+        const position = this.calcTouchPosition(touch, rect)
+        if (!position) {
             return
         }
+        const [x, y] = position
         this.buffer.putF32(x)
         this.buffer.putF32(y)
 

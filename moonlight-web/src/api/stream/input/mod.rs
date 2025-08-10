@@ -123,6 +123,14 @@ impl StreamInput {
 
             let _ = stream.send_mouse_move(delta_x, delta_y);
         } else if ty == 1 {
+            // Position
+            let x = buffer.get_i16();
+            let y = buffer.get_i16();
+            let reference_width = buffer.get_i16();
+            let reference_height = buffer.get_i16();
+
+            let _ = stream.send_mouse_position(x, y, reference_width, reference_height);
+        } else if ty == 2 {
             // Button Press / Release
             let action = if buffer.get_bool() {
                 MouseButtonAction::Press
@@ -135,7 +143,7 @@ impl StreamInput {
             };
 
             let _ = stream.send_mouse_button(action, button);
-        } else if ty == 2 {
+        } else if ty == 3 {
             // Mouse Wheel
             let delta_x = buffer.get_i16();
             let delta_y = buffer.get_i16();
