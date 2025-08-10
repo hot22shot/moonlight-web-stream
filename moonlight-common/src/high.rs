@@ -40,7 +40,7 @@ pub enum HostError<RequestError> {
     Pair(#[from] PairError<RequestError>),
 }
 
-// TODO: feature lock
+#[cfg(feature = "backend_reqwest")]
 pub type SimpleMoonlightHost = MoonlightHost<reqwest::Client>;
 
 pub struct MoonlightHost<Client> {

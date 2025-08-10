@@ -13,7 +13,6 @@ use crate::{
         DynamicQueryParams, LocalQueryParams, QueryBuilder, RequestClient, query_param,
         query_param_owned,
     },
-    pair::SALT_LENGTH,
     stream::ServerCodeModeSupport,
 };
 
@@ -50,7 +49,7 @@ pub enum ApiError<RequestError> {
 pub mod pair;
 pub mod request_client;
 
-// TODO: feature lock
+#[cfg(feature = "backend_reqwest")]
 mod reqwest;
 
 pub const DEFAULT_UNIQUE_ID: &str = "0123456789ABCDEF";
