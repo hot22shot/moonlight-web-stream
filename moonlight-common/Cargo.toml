@@ -5,14 +5,14 @@ edition = "2024"
 license = { workspace = true }
 
 [dependencies]
-moonlight-common-sys = { workspace = true }
-
 bitflags = "2.9.1"
 num = "0.4"
 num-derive = "0.4"
 num-traits = "0.2"
 
-printf-compat = "0.2.1"
+# Stream
+moonlight-common-sys = { workspace = true, optional = true }
+printf-compat = { version = "0.2.1", optional = true }
 
 thiserror = "2.0.12"
 
@@ -47,14 +47,20 @@ rcgen = { version = "0.14.3", features = ["aws_lc_rs"], optional = true }
 bytes = "1.10.1"
 
 [features]
-default = ["high"]
+default = ["high", "moonlight", "backend_reqwest"]
 
 # High level api
-high = [
+high = ["network", "pair", "crypto", "dep:log", "dep:tokio"]
+
+# Moonlight Common C / Stream
+moonlight = ["dep:moonlight-common-sys", "dep:printf-compat"]
+
+# Crypto
+crypto = ["moonlight", "moonlight-common-sys/crypto"]
+
+# Pairing
+pair = [
     "network",
-    "crypto",
-    "dep:log",
-    "dep:tokio",
     "dep:sha1",
     "dep:sha2",
     "dep:aes",
@@ -62,13 +68,8 @@ high = [
     "dep:block-modes",
     "dep:x509-parser",
     "dep:nom",
-    "dep:pem",
     "dep:rcgen",
 ]
-
-# TODO: add a stream features which requires the sys crate so we can make requests without compiling the sys crate
-# Crypto
-crypto = ["moonlight-common-sys/crypto"]
 
 # Network
 network = [
@@ -78,11 +79,11 @@ network = [
     "dep:roxmltree",
     "dep:uuid",
     "dep:hex",
+
+    "dep:pem",
 ]
-backend_reqwest = [
-    "dep:reqwest",
-    "reqwest/native-tls",
-] # Reqwest Network Backend
+# Reqwest Network Backend
+backend_reqwest = ["dep:reqwest", "reqwest/native-tls"]
 
 [lints]
 workspace = true

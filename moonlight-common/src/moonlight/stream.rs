@@ -24,12 +24,14 @@ use moonlight_common_sys::limelight::{
 use num_derive::FromPrimitive;
 
 use crate::{
-    Error, Handle,
-    audio::{self, AudioDecoder},
-    connection::{self, ConnectionListener},
-    input::TouchEventType,
-    network::ServerVersion,
-    video::{self, SupportedVideoFormats, VideoDecoder},
+    Error, ServerVersion,
+    moonlight::{
+        Handle,
+        audio::{self, AudioDecoder},
+        connection::{self, ConnectionListener},
+        input::TouchEventType,
+        video::{self, SupportedVideoFormats, VideoDecoder},
+    },
 };
 
 bitflags! {

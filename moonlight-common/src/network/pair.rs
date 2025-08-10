@@ -2,12 +2,12 @@ use roxmltree::Document;
 use uuid::fmt::Hyphenated;
 
 use crate::{
+    SALT_LENGTH,
     network::{
         ApiError, ClientInfo, PairStatus,
         request_client::{LocalQueryParams, QueryBuilder, RequestClient, query_param},
         xml_child_paired, xml_child_text, xml_root_node,
     },
-    pair::SALT_LENGTH,
 };
 
 #[derive(Debug, Clone)]

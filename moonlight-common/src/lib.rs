@@ -2,22 +2,13 @@
 #![feature(c_variadic)]
 
 use std::{
-    ffi::{CStr, NulError},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    ffi::NulError,
+    fmt::{Debug, Display},
+    num::ParseIntError,
+    str::FromStr,
 };
 
-use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
 use thiserror::Error;
-
-use crate::{
-    audio::AudioDecoder,
-    connection::ConnectionListener,
-    stream::{MoonlightStream, ServerInfo, StreamConfiguration},
-    video::VideoDecoder,
-};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -40,100 +31,162 @@ pub enum Error {
     NotPaired,
 }
 
-pub mod audio;
-pub mod connection;
-pub mod debug;
-pub mod input;
-pub mod pair;
-pub mod stream;
-pub mod video;
-
-#[cfg(feature = "crypto")]
-pub mod crypto;
 #[cfg(feature = "network")]
 pub mod network;
+
+#[cfg(feature = "moonlight")]
+pub mod moonlight;
 
 #[cfg(feature = "high")]
 pub mod high;
 
-static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "pair")]
+pub mod pair;
 
-struct Handle {
-    /// This is also the lock because start / stop Connection is not thread safe
-    connection_exists: Mutex<bool>,
+#[derive(Debug, Error, Clone)]
+#[error("failed to parse the state of the server")]
+pub struct ParseServerStateError;
+
+#[derive(Debug, Copy, Clone)]
+pub enum ServerState {
+    Busy,
+    Free,
 }
 
-impl Handle {
-    fn aquire() -> Option<Self> {
-        if INSTANCE_EXISTS
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
-        {
-            Some(Self {
-                connection_exists: Mutex::new(false),
-            })
-        } else {
-            None
+impl FromStr for ServerState {
+    type Err = ParseServerStateError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            s if s.ends_with("FREE") => Ok(ServerState::Free),
+            s if s.ends_with("BUSY") => Ok(ServerState::Busy),
+            _ => Err(ParseServerStateError),
         }
     }
 }
-impl Drop for Handle {
-    fn drop(&mut self) {
-        INSTANCE_EXISTS.store(false, Ordering::Relaxed);
-    }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum PairStatus {
+    NotPaired,
+    Paired,
 }
 
-#[derive(Clone)]
-pub struct MoonlightInstance {
-    handle: Arc<Handle>,
+#[derive(Debug, Error)]
+#[error("failed to parse server version")]
+pub enum ParseServerVersionError {
+    #[error("{0}")]
+    ParseIntError(#[from] ParseIntError),
+    #[error("invalid version pattern")]
+    InvalidPattern,
 }
 
-impl MoonlightInstance {
-    // TODO: don't error but use global handle
-    pub fn global() -> Result<Self, Error> {
-        let handle = Handle::aquire().ok_or(Error::InstanceAlreadyExists)?;
+#[derive(Debug, Clone, Copy)]
+pub struct ServerVersion {
+    // TODO: what are those?
+    pub major: i32,
+    pub minor: i32,
+    pub patch: i32,
+    pub mini_patch: i32,
+}
 
-        Ok(Self {
-            handle: Arc::new(handle),
-        })
-    }
-
-    pub fn launch_url_query_parameters(&self) -> &str {
-        unsafe {
-            // # Safety
-            // The returned string is not freed by the caller and should live long enough
-            let str_raw = LiGetLaunchUrlQueryParameters();
-            let str = CStr::from_ptr(str_raw);
-            str.to_str().expect("valid moonlight query parameters")
-        }
-    }
-
-    pub fn start_connection(
-        &self,
-        server_info: ServerInfo,
-        stream_config: StreamConfiguration,
-        connection_listener: impl ConnectionListener + Send + 'static,
-        video_decoder: impl VideoDecoder + Send + 'static,
-        audio_decoder: impl AudioDecoder + Send + 'static,
-    ) -> Result<MoonlightStream, Error> {
-        MoonlightStream::start(
-            self.handle.clone(),
-            server_info,
-            stream_config,
-            connection_listener,
-            video_decoder,
-            audio_decoder,
+impl Display for ServerVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}.{}.{}.{}",
+            self.major, self.minor, self.patch, self.mini_patch
         )
     }
+}
 
-    pub fn interrupt_connection(&self) {
-        unsafe {
-            LiInterruptConnection();
-        }
-    }
+impl FromStr for ServerVersion {
+    type Err = ParseServerVersionError;
 
-    #[cfg(feature = "crypto")]
-    pub fn crypto(&self) -> crypto::MoonlightCrypto {
-        crypto::MoonlightCrypto::new(self)
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut split = s.splitn(4, ".");
+
+        let major = split
+            .next()
+            .ok_or(ParseServerVersionError::InvalidPattern)?
+            .parse()?;
+        let minor = split
+            .next()
+            .ok_or(ParseServerVersionError::InvalidPattern)?
+            .parse()?;
+        let patch = split
+            .next()
+            .ok_or(ParseServerVersionError::InvalidPattern)?
+            .parse()?;
+        let mini_patch = split
+            .next()
+            .ok_or(ParseServerVersionError::InvalidPattern)?
+            .parse()?;
+
+        Ok(Self {
+            major,
+            minor,
+            patch,
+            mini_patch,
+        })
     }
 }
+
+/// A pin which contains four values in the range 0..10
+#[derive(Clone, Copy)]
+pub struct PairPin {
+    numbers: [u8; 4],
+}
+
+impl PairPin {
+    pub fn from_array(numbers: [u8; 4]) -> Option<Self> {
+        let range = 0..10;
+
+        if range.contains(&numbers[0])
+            && range.contains(&numbers[1])
+            && range.contains(&numbers[2])
+            && range.contains(&numbers[3])
+        {
+            return Some(Self { numbers });
+        }
+
+        None
+    }
+
+    pub fn n(&self, index: usize) -> Option<u8> {
+        self.numbers.get(index).copied()
+    }
+    pub fn n1(&self) -> u8 {
+        self.numbers[0]
+    }
+    pub fn n2(&self) -> u8 {
+        self.numbers[1]
+    }
+    pub fn n3(&self) -> u8 {
+        self.numbers[2]
+    }
+    pub fn n4(&self) -> u8 {
+        self.numbers[3]
+    }
+
+    pub fn array(&self) -> [u8; 4] {
+        self.numbers
+    }
+}
+
+impl Display for PairPin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}{}{}", self.n1(), self.n2(), self.n3(), self.n4())
+    }
+}
+impl Debug for PairPin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PairPin(")?;
+        Display::fmt(&self, f)?;
+        write!(f, ")")?;
+
+        Ok(())
+    }
+}
+
+pub const SALT_LENGTH: usize = 16;
+pub const CHALLENGE_LENGTH: usize = 16;

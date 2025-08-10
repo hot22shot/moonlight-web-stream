@@ -17,9 +17,10 @@ use x509_parser::{
 };
 
 use crate::{
-    crypto::{HashAlgorithm, MoonlightCrypto},
+    CHALLENGE_LENGTH, PairPin, PairStatus, SALT_LENGTH, ServerVersion,
+    moonlight::crypto::{HashAlgorithm, MoonlightCrypto},
     network::{
-        ApiError, ClientInfo, PairStatus, ServerVersion,
+        ApiError, ClientInfo,
         pair::{
             ClientPairRequest1, ClientPairRequest2, ClientPairRequest3, ClientPairRequest4,
             ClientPairRequest5, host_pair1, host_pair2, host_pair3, host_pair4, host_pair5,
@@ -27,7 +28,6 @@ use crate::{
         },
         request_client::RequestClient,
     },
-    pair::{CHALLENGE_LENGTH, PairPin, SALT_LENGTH},
 };
 
 // TODO: maybe migrate this pairing process to openssl?

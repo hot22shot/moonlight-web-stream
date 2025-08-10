@@ -1,4 +1,4 @@
-use std::{io::Write, str::FromStr};
+use std::str::FromStr;
 
 use gstreamer::{
     Buffer, BufferFlags, Caps, ClockTime, DebugGraphDetails, Element, ElementFactory, Format,
@@ -8,7 +8,7 @@ use gstreamer::{
     prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManual},
 };
 use gstreamer_app::AppSrc;
-use moonlight_common::{
+use moonlight_common::moonlight::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
     stream::Capabilities,
     video::{

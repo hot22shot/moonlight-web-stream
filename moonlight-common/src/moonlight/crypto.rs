@@ -9,9 +9,8 @@ use moonlight_common_sys::crypto::{
 use thiserror::Error;
 
 use crate::{
-    Handle, MoonlightInstance,
-    network::ServerVersion,
-    pair::{PairPin, SALT_LENGTH},
+    PairPin, SALT_LENGTH, ServerVersion,
+    moonlight::{Handle, MoonlightInstance},
 };
 
 #[derive(Clone)]

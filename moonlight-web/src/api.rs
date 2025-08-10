@@ -388,6 +388,6 @@ async fn into_detailed_host(
         local_ip: host.local_ip().await?.to_string(),
         current_game: host.current_game().await?,
         max_luma_pixels_hevc: host.max_luma_pixels_hevc().await?,
-        server_codec_mode_support: host.server_codec_mode_support().await?.bits(),
+        server_codec_mode_support: host.server_codec_mode_support_raw().await?.bits(),
     })
 }

@@ -3,29 +3,17 @@
 //!
 
 use pem::Pem;
-use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
 use crate::{
-    Error, MoonlightInstance,
-    audio::AudioDecoder,
-    connection::ConnectionListener,
-    crypto::MoonlightCrypto,
+    Error, PairPin, PairStatus, ServerState, ServerVersion,
+    moonlight::crypto::MoonlightCrypto,
     network::{
-        ApiError, App, ClientAppBoxArtRequest, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID,
-        HostInfo, PairStatus, ServerAppListResponse, ServerState, ServerVersion, host_app_box_art,
-        host_app_list, host_info, host_launch, host_resume, pair::host_unpair,
+        ApiError, App, ClientAppBoxArtRequest, ClientInfo, DEFAULT_UNIQUE_ID, HostInfo,
+        ServerAppListResponse, host_app_box_art, host_app_list, host_info, pair::host_unpair,
         request_client::RequestClient,
     },
-    pair::{
-        PairPin,
-        high::{ClientAuth, PairError, PairSuccess, host_pair},
-    },
-    stream::{
-        ColorRange, Colorspace, EncryptionFlags, MoonlightStream, ServerCodeModeSupport,
-        ServerInfo, StreamConfiguration, StreamingConfig,
-    },
-    video::VideoDecoder,
+    pair::high::{ClientAuth, PairError, PairSuccess, host_pair},
 };
 
 #[derive(Debug, Error)]
@@ -201,11 +189,19 @@ where
         let info = self.host_info().await?;
         Ok(info.max_luma_pixels_hevc)
     }
-    pub async fn server_codec_mode_support(
-        &mut self,
-    ) -> Result<ServerCodeModeSupport, HostError<C::Error>> {
+    pub async fn server_codec_mode_support_raw(&mut self) -> Result<u32, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.server_codec_mode_support)
+    }
+
+    #[cfg(feature = "moonlight")]
+    pub async fn server_codec_mode_support(
+        &mut self,
+    ) -> Result<crate::moonlight::stream::ServerCodeModeSupport, HostError<C::Error>> {
+        use crate::moonlight::stream::ServerCodeModeSupport;
+
+        let bits = self.server_codec_mode_support_raw().await?;
+        Ok(ServerCodeModeSupport::from_bits(bits).expect("valid server code mode support"))
     }
 
     pub async fn set_pairing_info(
@@ -378,120 +374,154 @@ where
 
         Ok(response)
     }
+}
 
+#[cfg(all(feature = "moonlight", feature = "crypto"))]
+mod moonlight_crypto {
     // TODO: add a fn to create / correct streaming info: e.g. width, height, fps
 
-    // TODO: maybe remove bounds on decoder and listener?
-    pub async fn start_stream(
-        &mut self,
-        instance: &MoonlightInstance,
-        crypto: &MoonlightCrypto,
-        app_id: u32,
-        width: u32,
-        height: u32,
-        fps: u32,
-        color_space: Colorspace,
-        color_range: ColorRange,
-        bitrate: u32,
-        packet_size: u32,
-        connection_listener: impl ConnectionListener + Send + Sync + 'static,
-        video_decoder: impl VideoDecoder + Send + Sync + 'static,
-        audio_decoder: impl AudioDecoder + Send + Sync + 'static,
-    ) -> Result<MoonlightStream, HostError<C::Error>> {
-        let address = self.address.clone();
-        let https_address = self.https_address().await?;
+    use tokio::task::spawn_blocking;
+    use uuid::Uuid;
 
-        let mut aes_key = [0u8; 16];
-        crypto.generate_random(&mut aes_key);
+    use crate::{
+        high::{HostError, MoonlightHost},
+        moonlight::{
+            MoonlightInstance,
+            audio::AudioDecoder,
+            connection::ConnectionListener,
+            crypto::MoonlightCrypto,
+            stream::{
+                ColorRange, Colorspace, EncryptionFlags, MoonlightStream, ServerInfo,
+                StreamConfiguration, StreamingConfig,
+            },
+            video::VideoDecoder,
+        },
+        network::{
+            ClientInfo,
+            launch::{ClientStreamRequest, host_launch, host_resume},
+            request_client::RequestClient,
+        },
+    };
 
-        let mut aes_iv = [0u8; 4];
-        crypto.generate_random(&mut aes_iv);
-        let aes_iv = i32::from_be_bytes(aes_iv);
+    impl<C> MoonlightHost<C>
+    where
+        C: RequestClient,
+    {
+        // TODO: maybe remove bounds on decoder and listener?
+        pub async fn start_stream(
+            &mut self,
+            instance: &MoonlightInstance,
+            crypto: &MoonlightCrypto,
+            app_id: u32,
+            width: u32,
+            height: u32,
+            fps: u32,
+            color_space: Colorspace,
+            color_range: ColorRange,
+            bitrate: u32,
+            packet_size: u32,
+            connection_listener: impl ConnectionListener + Send + Sync + 'static,
+            video_decoder: impl VideoDecoder + Send + Sync + 'static,
+            audio_decoder: impl AudioDecoder + Send + Sync + 'static,
+        ) -> Result<MoonlightStream, HostError<C::Error>> {
+            // Clearing cache so we refresh and can see if there's a game -> launch or resume?
+            self.clear_cache();
 
-        let request = ClientStreamRequest {
-            app_id,
-            mode_width: width,
-            mode_height: height,
-            mode_fps: fps,
-            ri_key: aes_key,
-            ri_key_id: aes_iv,
-        };
+            let address = self.address.clone();
+            let https_address = self.https_address().await?;
 
-        let current_game = self.current_game().await?;
+            let current_game = self.current_game().await?;
 
-        let client_info = ClientInfo {
-            unique_id: &self.client_unique_id,
-            uuid: Uuid::new_v4(),
-        };
+            let mut aes_key = [0u8; 16];
+            crypto.generate_random(&mut aes_key);
 
-        let rtsp_session_url = if current_game == 0 {
-            let launch_response = host_launch(
-                instance,
-                &mut self.client,
-                &https_address,
-                client_info,
-                request,
-            )
-            .await?;
+            let mut aes_iv = [0u8; 4];
+            crypto.generate_random(&mut aes_iv);
+            let aes_iv = i32::from_be_bytes(aes_iv);
 
-            launch_response.rtsp_session_url
-        } else {
-            let resume_response = host_resume(
-                instance,
-                &mut self.client,
-                &https_address,
-                client_info,
-                request,
-            )
-            .await?;
-
-            resume_response.rtsp_session_url
-        };
-
-        let app_version = self.version().await?;
-        let server_codec_mode_support = self.server_codec_mode_support().await?;
-        let gfe_version = self.gfe_version().await?.to_owned();
-
-        let instance_clone = instance.clone();
-        let connection = spawn_blocking(move || {
-            let server_info = ServerInfo {
-                address: &address,
-                app_version,
-                gfe_version: &gfe_version,
-                rtsp_session_url: &rtsp_session_url,
-                server_codec_mode_support,
+            let request = ClientStreamRequest {
+                app_id,
+                mode_width: width,
+                mode_height: height,
+                mode_fps: fps,
+                ri_key: aes_key,
+                ri_key_id: aes_iv,
             };
 
-            // TODO: check if the width,height,fps,color_space,color_range are valid
-            let stream_config = StreamConfiguration {
-                width: width as i32,
-                height: height as i32,
-                fps: fps as i32,
-                bitrate: bitrate as i32,
-                packet_size: packet_size as i32,
-                streaming_remotely: StreamingConfig::Auto,
-                audio_configuration: audio_decoder.config().0 as i32,
-                supported_video_formats: video_decoder.supported_formats(),
-                client_refresh_rate_x100: (fps * 100) as i32,
-                color_space,
-                color_range,
-                encryption_flags: EncryptionFlags::all(),
-                remote_input_aes_key: aes_key,
-                remote_input_aes_iv: aes_iv,
+            let client_info = ClientInfo {
+                unique_id: &self.client_unique_id,
+                uuid: Uuid::new_v4(),
             };
 
-            instance_clone.start_connection(
-                server_info,
-                stream_config,
-                connection_listener,
-                video_decoder,
-                audio_decoder,
-            )
-        })
-        .await
-        // TODO: remove unwrap
-        .unwrap()?;
+            let rtsp_session_url = if current_game == 0 {
+                let launch_response = host_launch(
+                    instance,
+                    &mut self.client,
+                    &https_address,
+                    client_info,
+                    request,
+                )
+                .await?;
 
-        Ok(connection)
+                launch_response.rtsp_session_url
+            } else {
+                let resume_response = host_resume(
+                    instance,
+                    &mut self.client,
+                    &https_address,
+                    client_info,
+                    request,
+                )
+                .await?;
+
+                resume_response.rtsp_session_url
+            };
+
+            let app_version = self.version().await?;
+            let server_codec_mode_support = self.server_codec_mode_support().await?;
+            let gfe_version = self.gfe_version().await?.to_owned();
+
+            let instance_clone = instance.clone();
+            let connection = spawn_blocking(move || {
+                let server_info = ServerInfo {
+                    address: &address,
+                    app_version,
+                    gfe_version: &gfe_version,
+                    rtsp_session_url: &rtsp_session_url,
+                    server_codec_mode_support,
+                };
+
+                // TODO: check if the width,height,fps,color_space,color_range are valid
+                let stream_config = StreamConfiguration {
+                    width: width as i32,
+                    height: height as i32,
+                    fps: fps as i32,
+                    bitrate: bitrate as i32,
+                    packet_size: packet_size as i32,
+                    streaming_remotely: StreamingConfig::Auto,
+                    audio_configuration: audio_decoder.config().0 as i32,
+                    supported_video_formats: video_decoder.supported_formats(),
+                    client_refresh_rate_x100: (fps * 100) as i32,
+                    color_space,
+                    color_range,
+                    encryption_flags: EncryptionFlags::all(),
+                    remote_input_aes_key: aes_key,
+                    remote_input_aes_iv: aes_iv,
+                };
+
+                instance_clone.start_connection(
+                    server_info,
+                    stream_config,
+                    connection_listener,
+                    video_decoder,
+                    audio_decoder,
+                )
+            })
+            .await
+            // TODO: remove unwrap
+            .unwrap()?;
+
+            Ok(connection)
+        }
     }
 }

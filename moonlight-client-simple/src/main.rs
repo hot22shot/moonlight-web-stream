@@ -1,13 +1,16 @@
 use std::time::Duration;
 
 use moonlight_common::{
-    MoonlightInstance,
-    debug::DebugHandler,
+    PairStatus,
     high::SimpleMoonlightHost,
-    network::PairStatus,
+    moonlight::{
+        MoonlightInstance,
+        debug::DebugHandler,
+        stream::{ColorRange, Colorspace},
+    },
     pair::high::{ClientAuth, generate_new_client},
-    stream::{ColorRange, Colorspace},
 };
+
 use tokio::{
     fs::{self, File, read_to_string, try_exists, write},
     io::AsyncWriteExt,
