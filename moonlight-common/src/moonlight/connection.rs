@@ -155,15 +155,12 @@ fn global_listener<R>(f: impl FnOnce(&mut dyn ConnectionListener) -> R) -> R {
     f(listener.as_mut())
 }
 
-pub(crate) fn new_global(listener: impl ConnectionListener + Send + 'static) -> Result<(), ()> {
-    let mut global_listener = GLOBAL_CONNECTION_LISTENER.lock().map_err(|_| ())?;
+pub(crate) fn set_global(listener: impl ConnectionListener + Send + 'static) {
+    let mut global_listener = GLOBAL_CONNECTION_LISTENER
+        .lock()
+        .expect("global connection lock");
 
-    if global_listener.is_some() {
-        return Err(());
-    }
     *global_listener = Some(Box::new(listener));
-
-    Ok(())
 }
 pub(crate) fn clear_global() {
     let mut decoder = GLOBAL_CONNECTION_LISTENER

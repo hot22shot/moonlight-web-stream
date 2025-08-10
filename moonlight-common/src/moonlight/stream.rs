@@ -260,17 +260,14 @@ impl MoonlightStream {
                 remoteInputAesIv: transmute::<[u8; 16], [i8; 16]>(remote_input_aes_iv),
             };
 
-            connection::new_global(connection_listener)
-                .expect("a connection listener is still in use");
+            connection::set_global(connection_listener);
             let mut connection_callbacks = connection::raw_callbacks();
 
-            video::new_global(video_decoder).expect("a video decoder is still in use");
+            video::set_global(video_decoder);
             let mut video_callbacks = video::raw_callbacks();
 
-            audio::new_global(audio_decoder).expect("a audio decoder is still in use");
+            audio::set_global(audio_decoder);
             let mut audio_callbacks = audio::raw_callbacks();
-
-            // TODO: do the callbacks need to be stored?
 
             // # Safety
             // LiStartConnection is not thread safe so we are using the connection_guard mutex

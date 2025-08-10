@@ -179,15 +179,12 @@ fn global_decoder<R>(f: impl FnOnce(&mut dyn VideoDecoder) -> R) -> R {
     f(decoder.as_mut())
 }
 
-pub(crate) fn new_global(decoder: impl VideoDecoder + Send + 'static) -> Result<(), ()> {
-    let mut global_video_decoder = GLOBAL_VIDEO_DECODER.lock().map_err(|_| ())?;
+pub(crate) fn set_global(decoder: impl VideoDecoder + Send + 'static) {
+    let mut global_video_decoder = GLOBAL_VIDEO_DECODER
+        .lock()
+        .expect("global video decoder lock");
 
-    if global_video_decoder.is_some() {
-        return Err(());
-    }
     *global_video_decoder = Some(Box::new(decoder));
-
-    Ok(())
 }
 pub(crate) fn clear_global() {
     let mut decoder = GLOBAL_VIDEO_DECODER.lock().expect("global video decoder");

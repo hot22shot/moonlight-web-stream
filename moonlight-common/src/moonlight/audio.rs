@@ -86,15 +86,12 @@ fn global_decoder<R>(f: impl FnOnce(&mut dyn AudioDecoder) -> R) -> R {
     f(decoder.as_mut())
 }
 
-pub(crate) fn new_global(decoder: impl AudioDecoder + Send + 'static) -> Result<(), ()> {
-    let mut global_audio_decoder = GLOBAL_AUDIO_DECODER.lock().map_err(|_| ())?;
+pub(crate) fn set_global(decoder: impl AudioDecoder + Send + 'static) {
+    let mut global_audio_decoder = GLOBAL_AUDIO_DECODER
+        .lock()
+        .expect("global audio decoder lock");
 
-    if global_audio_decoder.is_some() {
-        return Err(());
-    }
     *global_audio_decoder = Some(Box::new(decoder));
-
-    Ok(())
 }
 pub(crate) fn clear_global() {
     let mut decoder = GLOBAL_AUDIO_DECODER.lock().expect("global video decoder");
