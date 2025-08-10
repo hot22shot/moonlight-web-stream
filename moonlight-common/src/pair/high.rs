@@ -22,7 +22,7 @@ use crate::{
     network::{
         ApiError, ClientInfo, ClientPairRequest1, ClientPairRequest2, ClientPairRequest3,
         ClientPairRequest4, ClientPairRequest5, PairStatus, ServerVersion, host_pair1, host_pair2,
-        host_pair3, host_pair4, host_pair5, host_unpair,
+        host_pair3, host_pair4, host_pair5, host_unpair, request_client::RequestClient,
     },
     pair::{CHALLENGE_LENGTH, PairPin, SALT_LENGTH},
 };
@@ -88,7 +88,10 @@ pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
     buf
 }
 
-pub fn decrypt_aes(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, PairError> {
+pub fn decrypt_aes<C: RequestClient>(
+    key: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, PairError<C::Error>> {
     let cipher = Aes128Ecb::new_from_slices(key, &[]).expect("a valid iv key (the key is &[])");
 
     let mut buf = ciphertext.to_vec();
@@ -154,9 +157,9 @@ pub struct PairSuccess {
 }
 
 #[derive(Debug, Error)]
-pub enum PairError {
+pub enum PairError<RequestError> {
     #[error("{0}")]
-    Api(#[from] ApiError),
+    Api(#[from] ApiError<RequestError>),
     // Client
     #[error("incorrect client certificate: {0}")]
     ClientPrivateKeyPem(rcgen::Error),
@@ -180,9 +183,9 @@ pub enum PairError {
     Failed,
 }
 
-pub async fn host_pair(
+pub async fn host_pair<C: RequestClient>(
     crypto: &MoonlightCrypto,
-    client: &Client,
+    client: &mut C,
     http_address: &str,
     client_info: ClientInfo<'_>,
     client_private_key_pem: &Pem,
@@ -190,7 +193,7 @@ pub async fn host_pair(
     device_name: &str,
     server_version: ServerVersion,
     pin: PairPin,
-) -> Result<PairSuccess, PairError> {
+) -> Result<PairSuccess, PairError<C::Error>> {
     let (_, client_cert) = X509Certificate::from_der(client_certificate_pem.contents())
         .map_err(PairError::ClientCertificateError)?;
     let client_key_pair = KeyPair::from_pem(&client_private_key_pem.to_string())
@@ -253,7 +256,7 @@ pub async fn host_pair(
         return Err(PairError::Failed);
     }
 
-    let response = decrypt_aes(&aes_key, &server_response2.encrypted_response)?;
+    let response = decrypt_aes::<C>(&aes_key, &server_response2.encrypted_response)?;
 
     let server_response_hash = &response[0..hash_algorithm.hash_len()];
     let server_challenge =

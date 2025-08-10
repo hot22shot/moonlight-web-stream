@@ -2,15 +2,9 @@
 //! The high level api of the moonlight wrapper
 //!
 
-use std::{mem::swap, time::Duration};
-
 use bytes::Bytes;
 use pem::Pem;
-use reqwest::{Certificate, Client, ClientBuilder, Identity};
-use tokio::{
-    spawn,
-    task::{block_in_place, spawn_blocking},
-};
+use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
 use crate::{
@@ -21,7 +15,7 @@ use crate::{
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID,
         HostInfo, PairStatus, ServerAppListResponse, ServerState, ServerVersion, host_app_box_art,
-        host_app_list, host_info, host_launch, host_resume,
+        host_app_list, host_info, host_launch, host_resume, request_client::RequestClient,
     },
     pair::{
         PairPin,
@@ -34,90 +28,58 @@ use crate::{
     video::VideoDecoder,
 };
 
-fn default_client_builder(timeout: bool) -> ClientBuilder {
-    let mut builder = ClientBuilder::new();
-    if timeout {
-        builder = builder
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(7));
-    }
-
-    builder
-}
-fn tls_client_builder(
-    auth: &ClientAuth,
-    server_certificate: &Pem,
-) -> Result<ClientBuilder, ApiError> {
-    let server_cert = Certificate::from_pem(server_certificate.to_string().as_bytes())?;
-
-    let mut client_pem = String::new();
-    client_pem.push_str(&auth.key_pair.to_string());
-    client_pem.push('\n');
-    client_pem.push_str(&auth.certificate.to_string());
-
-    let identity = Identity::from_pkcs8_pem(
-        auth.certificate.to_string().as_bytes(),
-        auth.key_pair.to_string().as_bytes(),
-    )?;
-
-    Ok(default_client_builder(true)
-        .use_native_tls()
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(server_cert)
-        .identity(identity)
-        .danger_accept_invalid_hostnames(true))
+#[derive(Debug, Error)]
+pub enum HostError<RequestError> {
+    #[error("{0}")]
+    Moonlight(#[from] Error),
+    #[error("this action requires pairing")]
+    NotPaired,
+    #[error("{0}")]
+    Api(#[from] ApiError<RequestError>),
+    #[error("{0}")]
+    Pair(#[from] PairError<RequestError>),
 }
 
-pub struct MoonlightHost<PairStatus> {
+pub struct MoonlightHost<Client> {
     client_unique_id: String,
     client: Client,
     address: String,
     http_port: u16,
-    info: Option<HostInfo>,
-    paired: PairStatus,
+    cache_info: Option<HostInfo>,
+    // Paired
+    paired: Option<Paired>,
 }
 
-pub struct Unknown;
-#[derive(Clone)]
-pub struct Unpaired;
 #[derive(Clone)]
 pub struct Paired {
+    client_private_key: Pem,
+    client_certificate: Pem,
     server_certificate: Pem,
-    app_list: Option<ServerAppListResponse>,
-}
-#[derive(Clone)]
-pub enum MaybePaired {
-    Unpaired(Unpaired),
-    Paired(Box<Paired>),
+    cache_app_list: Option<ServerAppListResponse>,
 }
 
-impl From<Paired> for MaybePaired {
-    fn from(value: Paired) -> Self {
-        Self::Paired(Box::new(value))
-    }
-}
-impl From<Unpaired> for MaybePaired {
-    fn from(value: Unpaired) -> Self {
-        Self::Unpaired(value)
-    }
-}
+// TODO: for futures return impl Future<Output = ?> + Send + Sync
 
-impl MoonlightHost<Unknown> {
-    pub fn new(address: String, http_port: u16, unique_id: Option<String>) -> Self {
-        Self {
-            client: default_client_builder(true)
-                .build()
-                .expect("reqwest client"),
+impl<C> MoonlightHost<C>
+where
+    C: RequestClient,
+{
+    pub fn new(
+        address: String,
+        http_port: u16,
+        unique_id: Option<String>,
+    ) -> Result<Self, HostError<C::Error>> {
+        Ok(Self {
+            client: C::with_defaults()
+                .map_err(|err| HostError::Api(ApiError::RequestClient(err)))?,
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
             address,
             http_port,
-            info: None,
-            paired: Unknown,
-        }
+            cache_info: None,
+            paired: None,
+        })
     }
-}
 
-impl<Pair> MoonlightHost<Pair> {
     pub fn address(&self) -> &str {
         &self.address
     }
@@ -129,49 +91,27 @@ impl<Pair> MoonlightHost<Pair> {
         format!("{}:{}", self.address, self.http_port)
     }
 
-    async fn host_info(&mut self) -> Result<&HostInfo, ApiError> {
-        if self.info.is_none() {
-            self.reload_host_info().await?;
+    async fn host_info(&mut self) -> Result<&HostInfo, HostError<C::Error>> {
+        if self.cache_info.is_none() {
+            self.clear_cache();
         }
 
-        let Some(info) = &self.info else {
+        todo!();
+
+        let Some(info) = &self.cache_info else {
             unreachable!()
         };
 
         Ok(info)
     }
-    pub async fn reload_host_info(&mut self) -> Result<(), ApiError> {
-        if let Some(old_info) = &self.info
-            && matches!(old_info.pair_status, PairStatus::Paired)
-        {
-            let https_address = Self::build_https_address(&self.address, old_info.https_port);
-
-            self.info = Some(
-                host_info(&self.client, true, &https_address, Some(self.client_info())).await?,
-            );
-        } else {
-            self.info = Some(
-                host_info(
-                    &self.client,
-                    false,
-                    &self.http_address(),
-                    Some(self.client_info()),
-                )
-                .await?,
-            );
-        }
-
-        Ok(())
-    }
-
-    pub fn client_info(&'_ self) -> ClientInfo<'_> {
-        ClientInfo {
-            unique_id: &self.client_unique_id,
-            uuid: Uuid::new_v4(),
+    pub fn clear_cache(&mut self) {
+        self.cache_info = None;
+        if let Some(paired) = self.paired.as_mut() {
+            paired.cache_app_list = None;
         }
     }
 
-    pub async fn https_port(&mut self) -> Result<u16, ApiError> {
+    pub async fn https_port(&mut self) -> Result<u16, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.https_port)
     }
@@ -179,387 +119,203 @@ impl<Pair> MoonlightHost<Pair> {
     fn build_https_address(address: &str, https_port: u16) -> String {
         format!("{address}:{https_port}")
     }
-    pub async fn https_address(&mut self) -> Result<String, ApiError> {
+    pub async fn https_address(&mut self) -> Result<String, HostError<C::Error>> {
         let https_port = self.https_port().await?;
         Ok(Self::build_https_address(&self.address, https_port))
     }
-    pub async fn external_port(&mut self) -> Result<u16, ApiError> {
+    pub async fn external_port(&mut self) -> Result<u16, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.external_port)
     }
 
-    pub async fn host_name(&mut self) -> Result<&str, ApiError> {
+    pub async fn host_name(&mut self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
-        Ok(&info.host_name)
+        Ok(info.host_name.as_str())
     }
-    pub async fn version(&mut self) -> Result<ServerVersion, ApiError> {
+    pub async fn version(&mut self) -> Result<ServerVersion, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.app_version)
     }
 
-    pub async fn gfe_version(&mut self) -> Result<&str, ApiError> {
+    pub async fn gfe_version(&mut self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
-        Ok(&info.gfe_version)
+        Ok(info.gfe_version.as_str())
     }
-    pub async fn unique_id(&mut self) -> Result<Uuid, ApiError> {
+    pub async fn unique_id(&mut self) -> Result<Uuid, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.unique_id)
     }
 
-    pub async fn mac(&mut self) -> Result<&str, ApiError> {
+    pub async fn mac(&mut self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
-        Ok(&info.mac)
+        Ok(info.mac.as_str())
     }
-    pub async fn local_ip(&mut self) -> Result<&str, ApiError> {
+    pub async fn local_ip(&mut self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
-        Ok(&info.local_ip)
+        Ok(info.local_ip.as_str())
     }
 
-    pub async fn current_game(&mut self) -> Result<u32, ApiError> {
+    pub async fn current_game(&mut self) -> Result<u32, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.current_game)
     }
 
-    pub async fn state(&mut self) -> Result<(&str, ServerState), ApiError> {
+    pub async fn state(&mut self) -> Result<(&str, ServerState), HostError<C::Error>> {
         let info = self.host_info().await?;
-        Ok((&info.state_string, info.state))
+        Ok((info.state_string.as_str(), info.state))
     }
 
-    pub async fn max_luma_pixels_hevc(&mut self) -> Result<u32, ApiError> {
+    pub async fn max_luma_pixels_hevc(&mut self) -> Result<u32, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.max_luma_pixels_hevc)
     }
-    pub async fn server_codec_mode_support(&mut self) -> Result<ServerCodeModeSupport, ApiError> {
+    pub async fn server_codec_mode_support(
+        &mut self,
+    ) -> Result<ServerCodeModeSupport, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.server_codec_mode_support)
     }
 
-    pub fn into_unpaired(self) -> MoonlightHost<Unpaired> {
-        MoonlightHost {
-            client: self.client,
-            client_unique_id: self.client_unique_id,
-            address: self.address,
-            http_port: self.http_port,
-            info: self.info,
-            paired: Unpaired,
-        }
-    }
-
     pub async fn pair_state(
-        mut self,
+        &mut self,
         auth: Option<(&ClientAuth, &Pem)>,
-    ) -> Result<MoonlightHost<MaybePaired>, (Self, ApiError)> {
-        let client = if let Some((auth, server_certificate)) = auth {
-            match tls_client_builder(auth, server_certificate)
-                .and_then(|client| client.build().map_err(ApiError::from))
-            {
-                Err(err) => return Err((self, err)),
-                Ok(client) => client,
-            }
-        } else {
-            self.client.clone()
-        };
+    ) -> Result<PairStatus, HostError<C::Error>> {
+        if let Some((auth, server_certificate)) = auth {
+            self.client =
+                C::with_certificates(&auth.key_pair, &auth.certificate, server_certificate)
+                    .map_err(|err| ApiError::RequestClient(err))?
+        }
 
         let https_address = match self.https_address().await {
-            Err(err) => return Err((self, err)),
+            Err(err) => return Err(err),
             Ok(value) => value,
         };
 
-        let info = match host_info(&client, true, &https_address, Some(self.client_info())).await {
-            Err(err) => {
-                return Err((self, err));
-            }
-            Ok(value) => value,
+        let client_info = ClientInfo {
+            unique_id: &self.client_unique_id,
+            uuid: Uuid::new_v4(),
         };
 
-        match info.pair_status {
-            PairStatus::NotPaired => Ok(MoonlightHost {
-                client,
-                client_unique_id: self.client_unique_id,
-                address: self.address,
-                http_port: self.http_port,
-                info: Some(info),
-                paired: MaybePaired::Unpaired(Unpaired),
-            }),
-            PairStatus::Paired => {
-                let (_, server_certificate) = auth.expect("valid private key and certificates");
+        let info = host_info(&mut self.client, true, &https_address, Some(client_info)).await?;
 
-                Ok(MoonlightHost {
-                    client,
-                    client_unique_id: self.client_unique_id,
-                    address: self.address,
-                    http_port: self.http_port,
-                    info: Some(info),
-                    paired: Paired {
-                        server_certificate: server_certificate.clone(),
-                        app_list: None,
-                    }
-                    .into(),
-                })
-            }
-        }
-    }
-}
+        let pair_status = info.pair_status;
+        self.cache_info = Some(info);
 
-impl<PairStatus> MoonlightHost<PairStatus>
-where
-    PairStatus: Into<MaybePaired>,
-{
-    pub fn maybe_paired(self) -> MoonlightHost<MaybePaired> {
-        MoonlightHost {
-            client: self.client,
-            client_unique_id: self.client_unique_id,
-            address: self.address,
-            http_port: self.http_port,
-            info: self.info,
-            paired: self.paired.into(),
-        }
-    }
-}
-
-impl MoonlightHost<MaybePaired> {
-    #[allow(clippy::result_large_err)]
-    pub fn try_into_paired(self) -> Result<MoonlightHost<Paired>, MoonlightHost<Unpaired>> {
-        match self.paired {
-            MaybePaired::Paired(paired) => Ok(MoonlightHost {
-                client: self.client,
-                client_unique_id: self.client_unique_id,
-                address: self.address,
-                http_port: self.http_port,
-                info: self.info,
-                paired: *paired,
-            }),
-            MaybePaired::Unpaired(paired) => Err(MoonlightHost {
-                client: self.client,
-                client_unique_id: self.client_unique_id,
-                address: self.address,
-                http_port: self.http_port,
-                info: self.info,
-                paired,
-            }),
-        }
+        Ok(pair_status)
     }
 
     pub fn paired(&self) -> PairStatus {
-        match &self.paired {
-            MaybePaired::Unpaired(_) => PairStatus::NotPaired,
-            MaybePaired::Paired(_) => PairStatus::Paired,
+        if self.paired.is_some() {
+            PairStatus::Paired
+        } else {
+            PairStatus::NotPaired
         }
     }
 
-    pub async fn pair(
-        &mut self,
-        crypto: &MoonlightCrypto,
-        auth: &ClientAuth,
-        device_name: String,
-        pin: PairPin,
-    ) -> Result<(), PairError> {
-        // TODO: more non wasteful method
-        let copy = Self {
-            address: self.address.clone(),
-            client: self.client.clone(),
-            client_unique_id: self.client_unique_id.clone(),
-            http_port: self.http_port,
-            info: self.info.clone(),
-            paired: self.paired.clone(),
-        };
-
-        let unpaired = match copy.try_into_paired() {
-            Ok(_) => return Ok(()),
-            Err(unpaired) => unpaired,
-        };
-
-        let paired = unpaired
-            .pair(crypto, auth, device_name, pin)
-            .await
-            .map_err(|(_, err)| err)?;
-
-        let mut paired = paired.maybe_paired();
-        swap(self, &mut paired);
-
-        Ok(())
+    pub fn client_private_key(&self) -> Option<&Pem> {
+        self.paired.as_ref().map(|x| &x.client_private_key)
     }
-
-    async fn try_exec_paired<R>(
-        &mut self,
-        f: impl AsyncFnOnce(&mut MoonlightHost<Paired>) -> R,
-    ) -> Option<R> {
-        let paired = match &self.paired {
-            MaybePaired::Unpaired(_) => return None,
-            MaybePaired::Paired(paired) => paired,
-        };
-
-        // TODO: more non wasteful method
-        let mut copy: MoonlightHost<Paired> = MoonlightHost {
-            address: self.address.clone(),
-            client: self.client.clone(),
-            client_unique_id: self.client_unique_id.clone(),
-            http_port: self.http_port,
-            info: self.info.clone(),
-            paired: paired.as_ref().clone(),
-        };
-
-        let result = f(&mut copy).await;
-
-        Some(result)
+    pub fn client_certificate(&self) -> Option<&Pem> {
+        self.paired.as_ref().map(|x| &x.client_certificate)
     }
-    // TODO: also return a reference
-    pub async fn app_list(&mut self) -> Option<Result<Vec<App>, ApiError>> {
-        self.try_exec_paired(async |paired| paired.app_list().await.map(|x| x.to_vec()))
-            .await
-    }
-    pub async fn request_app_image(&mut self, app_id: u32) -> Option<Result<Bytes, ApiError>> {
-        self.try_exec_paired(async move |paired| paired.request_app_image(app_id).await)
-            .await
-    }
-
     pub fn server_certificate(&self) -> Option<&Pem> {
-        match &self.paired {
-            MaybePaired::Unpaired(_) => None,
-            MaybePaired::Paired(paired) => Some(&paired.server_certificate),
-        }
+        self.paired.as_ref().map(|x| &x.server_certificate)
     }
 
-    pub async fn start_stream(
-        &mut self,
-        instance: &MoonlightInstance,
-        crypto: &MoonlightCrypto,
-        app_id: u32,
-        width: u32,
-        height: u32,
-        fps: u32,
-        color_space: Colorspace,
-        color_range: ColorRange,
-        bitrate: u32,
-        packet_size: u32,
-        connection_listener: impl ConnectionListener + Send + 'static,
-        video_decoder: impl VideoDecoder + Send + 'static,
-        audio_decoder: impl AudioDecoder + Send + 'static,
-    ) -> Option<Result<MoonlightStream, StreamError>> {
-        self.try_exec_paired(async |this| {
-            this.start_stream(
-                instance,
-                crypto,
-                app_id,
-                width,
-                height,
-                fps,
-                color_space,
-                color_range,
-                bitrate,
-                packet_size,
-                connection_listener,
-                video_decoder,
-                audio_decoder,
-            )
-            .await
-        })
-        .await
-    }
-}
-
-impl MoonlightHost<Unpaired> {
     pub async fn pair(
-        mut self,
+        &mut self,
         crypto: &MoonlightCrypto,
         auth: &ClientAuth,
         device_name: String,
         pin: PairPin,
-    ) -> Result<MoonlightHost<Paired>, (Self, PairError)> {
+    ) -> Result<(), HostError<C::Error>> {
         let http_address = self.http_address();
-        let server_version = match self.version().await {
-            Err(err) => return Err((self, err.into())),
-            Ok(value) => value,
+        // TODO: convert error
+        let server_version = self.version().await?;
+
+        let client_info = ClientInfo {
+            unique_id: &self.client_unique_id,
+            uuid: Uuid::new_v4(),
         };
 
-        let client = match default_client_builder(false).build() {
-            Ok(client) => client,
-            Err(err) => return Err((self, ApiError::from(err).into())),
-        };
-
-        let PairSuccess { server_certificate } = match host_pair(
+        let PairSuccess { server_certificate } = host_pair(
             crypto,
-            &client,
+            &mut self.client,
             &http_address,
-            self.client_info(),
+            client_info,
             &auth.key_pair,
             &auth.certificate,
             &device_name,
             server_version,
             pin,
         )
-        .await
-        {
-            Err(err) => return Err((self, err)),
-            Ok(value) => value,
-        };
+        .await?;
 
-        let client = match tls_client_builder(auth, &server_certificate)
-            .and_then(|client| client.build().map_err(ApiError::from))
-        {
-            Err(err) => return Err((self, err.into())),
-            Ok(client) => client,
-        };
+        self.client = C::with_certificates(&auth.key_pair, &auth.certificate, &server_certificate)
+            .map_err(|err| HostError::Api(ApiError::RequestClient(err)))?;
 
-        let mut host = MoonlightHost {
-            client,
-            client_unique_id: self.client_unique_id,
-            address: self.address,
-            http_port: self.http_port,
-            info: self.info,
-            // TODO: other info which is required
-            paired: Paired {
-                server_certificate,
-                app_list: None,
-            },
-        };
+        self.paired = Some(Paired {
+            client_private_key: auth.key_pair.clone(),
+            client_certificate: auth.certificate.clone(),
+            server_certificate,
+            cache_app_list: None,
+        });
 
-        let Some(info) = host.info.as_mut() else {
+        let Some(info) = self.cache_info.as_mut() else {
             unreachable!()
         };
         info.pair_status = PairStatus::Paired;
 
-        let _ = host.reload_host_info().await;
+        let _ = self.clear_cache();
 
-        Ok(host)
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum StreamError {
-    #[error("{0}")]
-    Moonlight(#[from] Error),
-    #[error("{0}")]
-    Api(#[from] ApiError),
-}
-
-impl MoonlightHost<Paired> {
-    pub fn server_certificate(&self) -> &Pem {
-        &self.paired.server_certificate
+        Ok(())
     }
 
-    pub async fn app_list(&mut self) -> Result<&[App], ApiError> {
-        if self.paired.app_list.is_none() {
-            let https_address = self.https_address().await?;
-
-            self.paired.app_list =
-                Some(host_app_list(&self.client, &https_address, self.client_info()).await?);
-        }
-
-        let Some(app_list) = &self.paired.app_list else {
-            unreachable!()
+    pub async fn app_list(&mut self) -> Result<&[App], HostError<C::Error>> {
+        let https_address = self.https_address().await?;
+        let client_info = ClientInfo {
+            unique_id: &self.client_unique_id,
+            uuid: Uuid::new_v4(),
         };
 
-        Ok(&app_list.apps)
+        // TODO: remove unwrap
+        let mut response = None;
+
+        if self
+            .paired
+            .as_ref()
+            .and_then(|x| x.cache_app_list.as_ref())
+            .is_none()
+        {
+            response = Some(host_app_list(&mut self.client, &https_address, client_info).await?);
+        }
+
+        let Some(app_list) = self.paired.as_mut().and_then(|x| x.cache_app_list.as_mut()) else {
+            return Err(HostError::NotPaired);
+        };
+
+        if let Some(response) = response {
+            *app_list = response;
+        }
+
+        Ok(app_list.apps.as_slice())
     }
 
-    pub async fn request_app_image(&mut self, app_id: u32) -> Result<Bytes, ApiError> {
+    pub async fn request_app_image(
+        &mut self,
+        app_id: u32,
+    ) -> Result<C::Bytes, HostError<C::Error>> {
         let https_address = self.https_address().await?;
 
+        let client_info = ClientInfo {
+            unique_id: &self.client_unique_id,
+            uuid: Uuid::new_v4(),
+        };
+
         let response = host_app_box_art(
-            &self.client,
+            &mut self.client,
             &https_address,
-            self.client_info(),
+            client_info,
             ClientAppBoxArtRequest { app_id },
         )
         .await?;
@@ -569,6 +325,7 @@ impl MoonlightHost<Paired> {
 
     // TODO: add a fn to create / correct streaming info: e.g. width, height, fps
 
+    // TODO: maybe remove bounds on decoder and listener?
     pub async fn start_stream(
         &mut self,
         instance: &MoonlightInstance,
@@ -581,10 +338,10 @@ impl MoonlightHost<Paired> {
         color_range: ColorRange,
         bitrate: u32,
         packet_size: u32,
-        connection_listener: impl ConnectionListener + Send + 'static,
-        video_decoder: impl VideoDecoder + Send + 'static,
-        audio_decoder: impl AudioDecoder + Send + 'static,
-    ) -> Result<MoonlightStream, StreamError> {
+        connection_listener: impl ConnectionListener + Send + Sync + 'static,
+        video_decoder: impl VideoDecoder + Send + Sync + 'static,
+        audio_decoder: impl AudioDecoder + Send + Sync + 'static,
+    ) -> Result<MoonlightStream, HostError<C::Error>> {
         let address = self.address.clone();
         let https_address = self.https_address().await?;
 
@@ -604,12 +361,19 @@ impl MoonlightHost<Paired> {
             ri_key_id: aes_iv,
         };
 
-        let rtsp_session_url = if self.current_game().await? == 0 {
+        let current_game = self.current_game().await?;
+
+        let client_info = ClientInfo {
+            unique_id: &self.client_unique_id,
+            uuid: Uuid::new_v4(),
+        };
+
+        let rtsp_session_url = if current_game == 0 {
             let launch_response = host_launch(
                 instance,
-                &self.client,
+                &mut self.client,
                 &https_address,
-                self.client_info(),
+                client_info,
                 request,
             )
             .await?;
@@ -618,9 +382,9 @@ impl MoonlightHost<Paired> {
         } else {
             let resume_response = host_resume(
                 instance,
-                &self.client,
+                &mut self.client,
                 &https_address,
-                self.client_info(),
+                client_info,
                 request,
             )
             .await?;

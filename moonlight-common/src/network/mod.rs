@@ -1,20 +1,26 @@
-use std::{fmt::Display, io::Write as _, num::ParseIntError, str::FromStr, string::FromUtf8Error};
+use std::{
+    borrow::Cow, fmt::Display, io::Write as _, num::ParseIntError, str::FromStr,
+    string::FromUtf8Error,
+};
 
-use bytes::Bytes;
-use reqwest::{Client, Url};
 use roxmltree::{Document, Error, Node};
 use thiserror::Error;
-use url::{ParseError, UrlQuery, form_urlencoded::Serializer};
 use uuid::{Uuid, fmt::Hyphenated};
 
-use crate::{MoonlightInstance, pair::SALT_LENGTH, stream::ServerCodeModeSupport};
+use crate::{
+    MoonlightInstance,
+    network::request_client::{
+        DynamicQueryParams, LocalQueryParams, QueryBuilder, RequestClient, query_param,
+        query_param_owned,
+    },
+    pair::SALT_LENGTH,
+    stream::ServerCodeModeSupport,
+};
 
 #[derive(Debug, Error)]
-pub enum ApiError {
+pub enum ApiError<RequestError> {
     #[error("{0}")]
-    Reqwest(#[from] reqwest::Error),
-    #[error("{0}")]
-    UrlParseError(#[from] ParseError),
+    RequestClient(RequestError),
     #[error("the response is invalid xml")]
     ParseXmlError(#[from] Error),
     #[error("the returned xml doc has a non 200 status code")]
@@ -41,6 +47,9 @@ pub enum ApiError {
     Utf8Error(#[from] FromUtf8Error),
 }
 
+pub mod request_client;
+mod reqwest;
+
 pub const DEFAULT_UNIQUE_ID: &str = "0123456789ABCDEF";
 
 #[derive(Debug, Clone, Copy)]
@@ -59,35 +68,40 @@ impl Default for ClientInfo<'static> {
     }
 }
 
-impl ClientInfo<'_> {
-    fn add_query_params(&self, params: &mut Serializer<'_, UrlQuery>) {
-        params.append_pair("uniqueid", self.unique_id);
+impl<'a> ClientInfo<'a> {
+    fn add_query_params(
+        &self,
+        uuid_bytes: &'a mut [u8; Hyphenated::LENGTH],
+        query_params: &mut impl QueryBuilder<'a>,
+    ) {
+        query_params.push((Cow::Borrowed("uniqueid"), Cow::Borrowed(self.unique_id)));
 
-        let mut uuid_str_bytes = [0; Hyphenated::LENGTH];
-        self.uuid.as_hyphenated().encode_lower(&mut uuid_str_bytes);
-        let uuid_str = str::from_utf8(&uuid_str_bytes).expect("uuid string");
+        self.uuid.as_hyphenated().encode_lower(uuid_bytes);
+        let uuid_str = str::from_utf8(uuid_bytes).expect("uuid string");
 
-        params.append_pair("uuid", uuid_str);
+        query_params.push((Cow::Borrowed("uuid"), Cow::Borrowed(uuid_str)));
     }
 }
 
-fn xml_child_text<'doc, 'node>(
+fn xml_child_text<'doc, 'node, C: RequestClient>(
     list_node: Node<'node, 'doc>,
     name: &'static str,
-) -> Result<&'node str, ApiError>
+) -> Result<&'node str, ApiError<C::Error>>
 where
     'node: 'doc,
 {
     let node = list_node
         .children()
         .find(|node| node.tag_name().name() == name)
-        .ok_or(ApiError::DetailNotFound(name))?;
-    let content = node.text().ok_or(ApiError::XmlTextNotFound(name))?;
+        .ok_or(ApiError::<C::Error>::DetailNotFound(name))?;
+    let content = node
+        .text()
+        .ok_or(ApiError::<C::Error>::XmlTextNotFound(name))?;
 
     Ok(content)
 }
 
-fn xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>, ApiError> {
+fn xml_root_node<'doc, C>(doc: &'doc Document) -> Result<Node<'doc, 'doc>, ApiError<C>> {
     let root = doc
         .root()
         .children()
@@ -134,23 +148,6 @@ impl FromStr for ServerState {
 pub enum PairStatus {
     NotPaired,
     Paired,
-}
-
-fn build_url(
-    use_https: bool,
-    address: &str,
-    path: &str,
-    info: Option<ClientInfo<'_>>,
-) -> Result<Url, ApiError> {
-    let protocol = if use_https { "https" } else { "http" };
-    let mut url = Url::parse(&format!("{protocol}://{address}/{path}"))?;
-
-    if let Some(client_info) = info {
-        let mut query_params = url.query_pairs_mut();
-        client_info.add_query_params(&mut query_params);
-    }
-
-    Ok(url)
 }
 
 #[derive(Debug, Error)]
@@ -231,41 +228,56 @@ pub struct HostInfo {
     pub state: ServerState,
 }
 
-pub async fn host_info(
-    client: &Client,
+pub async fn host_info<C: RequestClient>(
+    client: &mut C,
     use_https: bool,
-    address: &str,
+    hostport: &str,
     info: Option<ClientInfo<'_>>,
-) -> Result<HostInfo, ApiError> {
-    let url = build_url(use_https, address, "serverinfo", info)?;
+) -> Result<HostInfo, ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<2>::new();
 
-    let response = client.get(url).send().await?.text().await?;
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    if let Some(info) = info {
+        info.add_query_params(&mut uuid_bytes, &mut query_params);
+    }
 
-    let doc = Document::parse(&response)?;
+    let response = if use_https {
+        client
+            .send_https_request_text_response(hostport, "serverinfo", &query_params)
+            .await
+            .map_err(|err| ApiError::RequestClient(err))?
+    } else {
+        client
+            .send_http_request_text_response(hostport, "serverinfo", &query_params)
+            .await
+            .map_err(|err| ApiError::RequestClient(err))?
+    };
+
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
-    let state_string = xml_child_text(root, "state")?.to_string();
+    let state_string = xml_child_text::<C>(root, "state")?.to_string();
 
     Ok(HostInfo {
-        host_name: xml_child_text(root, "hostname")?.to_string(),
-        app_version: xml_child_text(root, "appversion")?.parse()?,
-        gfe_version: xml_child_text(root, "GfeVersion")?.to_string(),
-        unique_id: xml_child_text(root, "uniqueid")?.parse()?,
-        https_port: xml_child_text(root, "HttpsPort")?.parse()?,
-        external_port: xml_child_text(root, "ExternalPort")?.parse()?,
-        max_luma_pixels_hevc: xml_child_text(root, "MaxLumaPixelsHEVC")?.parse()?,
-        mac: xml_child_text(root, "mac")?.to_string(),
-        local_ip: xml_child_text(root, "LocalIP")?.to_string(),
+        host_name: xml_child_text::<C>(root, "hostname")?.to_string(),
+        app_version: xml_child_text::<C>(root, "appversion")?.parse()?,
+        gfe_version: xml_child_text::<C>(root, "GfeVersion")?.to_string(),
+        unique_id: xml_child_text::<C>(root, "uniqueid")?.parse()?,
+        https_port: xml_child_text::<C>(root, "HttpsPort")?.parse()?,
+        external_port: xml_child_text::<C>(root, "ExternalPort")?.parse()?,
+        max_luma_pixels_hevc: xml_child_text::<C>(root, "MaxLumaPixelsHEVC")?.parse()?,
+        mac: xml_child_text::<C>(root, "mac")?.to_string(),
+        local_ip: xml_child_text::<C>(root, "LocalIP")?.to_string(),
         server_codec_mode_support: ServerCodeModeSupport::from_bits(
-            xml_child_text(root, "ServerCodecModeSupport")?.parse()?,
+            xml_child_text::<C>(root, "ServerCodecModeSupport")?.parse()?,
         )
         .ok_or(ApiError::ParseServerCodecModeSupport)?,
-        pair_status: if xml_child_text(root, "PairStatus")?.parse::<u32>()? == 0 {
+        pair_status: if xml_child_text::<C>(root, "PairStatus")?.parse::<u32>()? == 0 {
             PairStatus::NotPaired
         } else {
             PairStatus::Paired
         },
-        current_game: xml_child_text(root, "currentgame")?.parse()?,
+        current_game: xml_child_text::<C>(root, "currentgame")?.parse()?,
         state: ServerState::from_str(&state_string)?,
         state_string,
     })
@@ -273,14 +285,14 @@ pub async fn host_info(
 
 // Pairing: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L185
 
-fn xml_child_paired<'doc, 'node>(
+fn xml_child_paired<'doc, 'node, C: RequestClient>(
     list_node: Node<'node, 'doc>,
     name: &'static str,
-) -> Result<PairStatus, ApiError>
+) -> Result<PairStatus, ApiError<C::Error>>
 where
     'node: 'doc,
 {
-    let content = xml_child_text(list_node, name)?.parse::<i32>()?;
+    let content = xml_child_text::<C>(list_node, name)?.parse::<i32>()?;
 
     Ok(if content == 1 {
         PairStatus::Paired
@@ -302,36 +314,40 @@ pub struct HostPairResponse1 {
     pub cert: Option<String>,
 }
 
-pub async fn host_pair1(
-    client: &Client,
-    http_address: &str,
+pub async fn host_pair1<C: RequestClient>(
+    client: &mut C,
+    http_hostport: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest1<'_>,
-) -> Result<HostPairResponse1, ApiError> {
-    let mut url = build_url(false, http_address, "pair", Some(info))?;
+) -> Result<HostPairResponse1, ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<{ 2 + 7 }>::new();
 
-    let mut query_params = url.query_pairs_mut();
-    query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1");
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
+
+    query_params.push(query_param("devicename", request.device_name));
+    query_params.push(query_param("updateState", "1"));
 
     // https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/PairingManager.java#L207
-    query_params.append_pair("phrase", "getservercert");
+    query_params.push(query_param("phrase", "getservercert"));
 
     let salt_str = hex::encode_upper(request.salt);
-    query_params.append_pair("salt", &salt_str);
+    query_params.push(query_param("salt", &salt_str));
 
     let client_cert_pem_str = hex::encode_upper(request.client_cert_pem);
-    query_params.append_pair("clientcert", &client_cert_pem_str);
-    drop(query_params);
+    query_params.push(query_param("clientcert", &client_cert_pem_str));
 
-    let response = client.get(url).send().await?.text().await?;
+    let response = client
+        .send_http_request_text_response(http_hostport, "pair", &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
 
-    let doc = Document::parse(&response)?;
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
-    let paired = xml_child_paired(root, "paired")?;
+    let paired = xml_child_paired::<C>(root, "paired")?;
 
-    let cert = match xml_child_text(root, "plaincert") {
+    let cert = match xml_child_text::<C>(root, "plaincert") {
         Ok(value) => {
             let value = hex::decode(value)?;
 
@@ -356,31 +372,34 @@ pub struct HostPairResponse2 {
     pub encrypted_response: Vec<u8>,
 }
 
-pub async fn host_pair2(
-    client: &Client,
-    http_address: &str,
+pub async fn host_pair2<C: RequestClient>(
+    client: &mut C,
+    http_hostport: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest2<'_>,
-) -> Result<HostPairResponse2, ApiError> {
-    let mut url = build_url(false, http_address, "pair", Some(info))?;
+) -> Result<HostPairResponse2, ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
 
-    let mut query_params = url.query_pairs_mut();
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
 
-    query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1");
+    query_params.push(query_param("devicename", request.device_name));
+    query_params.push(query_param("updateState", "1"));
 
     let encrypted_challenge_str = hex::encode_upper(request.encrypted_challenge);
-    query_params.append_pair("clientchallenge", &encrypted_challenge_str);
-    drop(query_params);
+    query_params.push(query_param("clientchallenge", &encrypted_challenge_str));
 
-    let response = client.get(url).send().await?.text().await?;
+    let response = client
+        .send_http_request_text_response(http_hostport, "pair", &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
 
-    let doc = Document::parse(&response)?;
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
-    let paired = xml_child_paired(root, "paired")?;
+    let paired = xml_child_paired::<C>(root, "paired")?;
 
-    let challenge_response_str = xml_child_text(root, "challengeresponse")?;
+    let challenge_response_str = xml_child_text::<C>(root, "challengeresponse")?;
     let challenge_response = hex::decode(challenge_response_str)?;
 
     Ok(HostPairResponse2 {
@@ -399,31 +418,34 @@ pub struct HostPairResponse3 {
     pub server_pairing_secret: Vec<u8>,
 }
 
-pub async fn host_pair3(
-    client: &Client,
-    http_address: &str,
+pub async fn host_pair3<C: RequestClient>(
+    client: &mut C,
+    http_hostport: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest3<'_>,
-) -> Result<HostPairResponse3, ApiError> {
-    let mut url = build_url(false, http_address, "pair", Some(info))?;
+) -> Result<HostPairResponse3, ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
 
-    let mut query_params = url.query_pairs_mut();
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
 
-    query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1");
+    query_params.push(query_param("devicename", request.device_name));
+    query_params.push(query_param("updateState", "1"));
 
     let encrypted_challenge_str = hex::encode_upper(request.encrypted_challenge_response_hash);
-    query_params.append_pair("serverchallengeresp", &encrypted_challenge_str);
-    drop(query_params);
+    query_params.push(query_param("serverchallengeresp", &encrypted_challenge_str));
 
-    let response = client.get(url).send().await?.text().await?;
+    let response = client
+        .send_http_request_text_response(http_hostport, "pair", &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
 
-    let doc = Document::parse(&response)?;
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
-    let paired = xml_child_paired(root, "paired")?;
+    let paired = xml_child_paired::<C>(root, "paired")?;
 
-    let pairing_secret_str = xml_child_text(root, "pairingsecret")?;
+    let pairing_secret_str = xml_child_text::<C>(root, "pairingsecret")?;
     let pairing_secret = hex::decode(pairing_secret_str)?;
 
     Ok(HostPairResponse3 {
@@ -441,29 +463,35 @@ pub struct HostPairResponse4 {
     pub paired: PairStatus,
 }
 
-pub async fn host_pair4(
-    client: &Client,
-    http_address: &str,
+pub async fn host_pair4<C: RequestClient>(
+    client: &mut C,
+    http_hostport: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest4<'_>,
-) -> Result<HostPairResponse4, ApiError> {
-    let mut url = build_url(false, http_address, "pair", Some(info))?;
+) -> Result<HostPairResponse4, ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
 
-    let mut query_params = url.query_pairs_mut();
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
 
-    query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1");
+    query_params.push(query_param("devicename", request.device_name));
+    query_params.push(query_param("updateState", "1"));
 
     let client_pairing_secret_str = hex::encode_upper(request.client_pairing_secret);
-    query_params.append_pair("clientpairingsecret", &client_pairing_secret_str);
-    drop(query_params);
+    query_params.push(query_param(
+        "clientpairingsecret",
+        &client_pairing_secret_str,
+    ));
 
-    let response = client.get(url).send().await?.text().await?;
+    let response = client
+        .send_http_request_text_response(http_hostport, "pair", &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
 
-    let doc = Document::parse(&response)?;
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
-    let paired = xml_child_paired(root, "paired")?;
+    let paired = xml_child_paired::<C>(root, "paired")?;
 
     Ok(HostPairResponse4 { paired })
 }
@@ -476,40 +504,45 @@ pub struct ServerPairResponse5 {
     pub paired: PairStatus,
 }
 
-pub async fn host_pair5(
-    client: &Client,
-    http_address: &str,
+pub async fn host_pair5<C: RequestClient>(
+    client: &mut C,
+    http_hostport: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest5<'_>,
-) -> Result<ServerPairResponse5, ApiError> {
-    let mut url = build_url(false, http_address, "pair", Some(info))?;
+) -> Result<ServerPairResponse5, ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
 
-    let mut query_params = url.query_pairs_mut();
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
 
-    query_params.append_pair("phrase", "pairchallenge");
-    query_params.append_pair("devicename", request.device_name);
-    query_params.append_pair("updateState", "1");
+    query_params.push(query_param("phrase", "pairchallenge"));
+    query_params.push(query_param("devicename", request.device_name));
+    query_params.push(query_param("updateState", "1"));
 
-    drop(query_params);
+    let response = client
+        .send_http_request_text_response(http_hostport, "pair", &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
 
-    let response = client.get(url).send().await?.text().await?;
-
-    let doc = Document::parse(&response)?;
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
-    let paired = xml_child_paired(root, "paired")?;
+    let paired = xml_child_paired::<C>(root, "paired")?;
 
     Ok(ServerPairResponse5 { paired })
 }
 
-pub async fn host_unpair(
-    client: &Client,
-    http_address: &str,
+pub async fn host_unpair<C: RequestClient>(
+    client: &mut C,
+    http_hostport: &str,
     info: ClientInfo<'_>,
-) -> Result<(), ApiError> {
-    let url = build_url(false, http_address, "unpair", Some(info))?;
+) -> Result<(), ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<2>::new();
 
-    client.get(url).send().await?.text().await?;
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
+
+    client.send_http_request_text_response(http_hostport, "unpair", &query_params);
 
     Ok(())
 }
@@ -526,27 +559,33 @@ pub struct ServerAppListResponse {
     pub apps: Vec<App>,
 }
 
-pub async fn host_app_list(
-    client: &Client,
-    https_address: &str,
+pub async fn host_app_list<C: RequestClient>(
+    client: &mut C,
+    https_hostport: &str,
     info: ClientInfo<'_>,
-) -> Result<ServerAppListResponse, ApiError> {
-    let url = build_url(true, https_address, "applist", Some(info))?;
+) -> Result<ServerAppListResponse, ApiError<C::Error>> {
+    let mut query_params = LocalQueryParams::<2>::new();
 
-    let response = client.get(url).send().await?.text().await?;
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
 
-    let doc = Document::parse(&response)?;
+    let response = client
+        .send_https_request_text_response(https_hostport, "applist", &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
+
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
     let apps = root
         .children()
         .filter(|node| node.tag_name().name() == "App")
         .map(|app_node| {
-            let title = xml_child_text(app_node, "AppTitle")?.to_string();
+            let title = xml_child_text::<C>(app_node, "AppTitle")?.to_string();
 
-            let id = xml_child_text(app_node, "ID")?.parse()?;
+            let id = xml_child_text::<C>(app_node, "ID")?.parse()?;
 
-            let is_hdr_supported = xml_child_text(app_node, "IsHdrSupported")
+            let is_hdr_supported = xml_child_text::<C>(app_node, "IsHdrSupported")
                 .unwrap_or("0")
                 .parse::<u32>()?
                 == 1;
@@ -557,7 +596,7 @@ pub async fn host_app_list(
                 is_hdr_supported,
             })
         })
-        .collect::<Result<Vec<_>, ApiError>>()?;
+        .collect::<Result<Vec<_>, ApiError<_>>>()?;
 
     Ok(ServerAppListResponse { apps })
 }
@@ -567,25 +606,27 @@ pub struct ClientAppBoxArtRequest {
     pub app_id: u32,
 }
 
-pub async fn host_app_box_art(
-    client: &Client,
+pub async fn host_app_box_art<C: RequestClient>(
+    client: &mut C,
     https_address: &str,
     info: ClientInfo<'_>,
     request: ClientAppBoxArtRequest,
-) -> Result<Bytes, ApiError> {
-    //  https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L721
-    let mut url = build_url(true, https_address, "appasset", Some(info))?;
+) -> Result<C::Bytes, ApiError<C::Error>> {
+    // Assets: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L721
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
 
-    let mut query_params = url.query_pairs_mut();
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
 
     // TODO: don't format use array
-    query_params.append_pair("appid", &format!("{}", request.app_id));
-    query_params.append_pair("AssetType", "2");
-    query_params.append_pair("AssetIdx", "0");
+    query_params.push(query_param_owned("appid", format!("{}", request.app_id)));
+    query_params.push(query_param("AssetType", "2"));
+    query_params.push(query_param("AssetIdx", "0"));
 
-    drop(query_params);
-
-    let response = client.get(url).send().await?.bytes().await?;
+    let response = client
+        .send_https_request_data_response(https_address, "appasset", &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
 
     Ok(response)
 }
@@ -606,22 +647,22 @@ pub struct HostLaunchResponse {
     pub rtsp_session_url: String,
 }
 
-pub async fn host_launch(
+pub async fn host_launch<C: RequestClient>(
     instance: &MoonlightInstance,
-    client: &Client,
+    client: &mut C,
     https_address: &str,
     info: ClientInfo<'_>,
     request: ClientStreamRequest,
-) -> Result<HostLaunchResponse, ApiError> {
+) -> Result<HostLaunchResponse, ApiError<C::Error>> {
     let response =
         inner_launch_host(instance, client, https_address, "launch", info, request).await?;
 
-    let doc = Document::parse(&response)?;
+    let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
 
     Ok(HostLaunchResponse {
-        game_session: xml_child_text(root, "gamesession")?.parse()?,
-        rtsp_session_url: xml_child_text(root, "sessionUrl0")?.to_string(),
+        game_session: xml_child_text::<C>(root, "gamesession")?.parse()?,
+        rtsp_session_url: xml_child_text::<C>(root, "sessionUrl0")?.to_string(),
     })
 }
 
@@ -631,17 +672,17 @@ pub struct HostResumeResponse {
     pub rtsp_session_url: String,
 }
 
-pub async fn host_resume(
+pub async fn host_resume<C: RequestClient>(
     instance: &MoonlightInstance,
-    client: &Client,
-    https_address: &str,
+    client: &mut C,
+    https_hostport: &str,
     info: ClientInfo<'_>,
     request: ClientStreamRequest,
-) -> Result<HostResumeResponse, ApiError> {
+) -> Result<HostResumeResponse, ApiError<C::Error>> {
     let response =
-        inner_launch_host(instance, client, https_address, "resume", info, request).await?;
+        inner_launch_host(instance, client, https_hostport, "resume", info, request).await?;
 
-    let doc = Document::parse(&response)?;
+    let doc = Document::parse(response.as_ref())?;
     let root = doc
         .root()
         .children()
@@ -649,68 +690,71 @@ pub async fn host_resume(
         .ok_or(ApiError::XmlRootNotFound)?;
 
     Ok(HostResumeResponse {
-        resume: xml_child_text(root, "resume")?.parse()?,
-        rtsp_session_url: xml_child_text(root, "sessionUrl0")?.to_string(),
+        resume: xml_child_text::<C>(root, "resume")?.parse()?,
+        rtsp_session_url: xml_child_text::<C>(root, "sessionUrl0")?.to_string(),
     })
 }
 
-async fn inner_launch_host(
+async fn inner_launch_host<C: RequestClient>(
     instance: &MoonlightInstance,
-    client: &Client,
-    https_address: &str,
+    client: &mut C,
+    https_hostport: &str,
     verb: &str,
     info: ClientInfo<'_>,
     request: ClientStreamRequest,
-) -> Result<String, ApiError> {
-    let mut url = build_url(true, https_address, verb, Some(info))?;
-
+) -> Result<C::Text, ApiError<C::Error>> {
     // TODO: figure out negotiated width / height https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L765
-    let mut query_params = url.query_pairs_mut();
-    {
-        let launch_params =
-            form_urlencoded::parse(instance.launch_url_query_parameters().as_bytes());
-        for (name, value) in launch_params {
-            query_params.append_pair(&name, &value);
-        }
+    let mut query_params = DynamicQueryParams::new();
+
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
+
+    let launch_params = form_urlencoded::parse(instance.launch_url_query_parameters().as_bytes());
+    for (name, value) in launch_params {
+        query_params.push((name, value));
     }
 
-    query_params.append_pair("appid", &request.app_id.to_string());
+    // TODO: don't alloc heap
+    query_params.push(query_param_owned("appid", request.app_id.to_string()));
     // TODO: implement this
+    // TODO: don't alloc heap
     // Using an FPS value over 60 causes SOPS to default to 720p60,
     // so force it to 0 to ensure the correct resolution is set. We
     // used to use 60 here but that locked the frame rate to 60 FPS
     // on GFE 3.20.3. We don't need this hack for Sunshine.
-    query_params.append_pair(
+    query_params.push(query_param_owned(
         "mode",
-        &format!(
+        format!(
             "{}x{}x{}",
             request.mode_width, request.mode_height, request.mode_fps
         ),
-    );
-    query_params.append_pair("additionalStates", "1");
+    ));
+    query_params.push(query_param("additionalStates", "1"));
 
     let mut ri_key_str_bytes = [0u8; 16 * 2];
     hex::encode_to_slice(request.ri_key, &mut ri_key_str_bytes).expect("encode ri key");
-    query_params.append_pair(
+    query_params.push(query_param(
         "rikey",
         str::from_utf8(&ri_key_str_bytes).expect("valid ri key str"),
-    );
+    ));
 
     let mut ri_key_id_str_bytes = [0u8; 12];
     write!(&mut ri_key_id_str_bytes[..], "{}", request.ri_key_id).expect("write ri key id");
-    query_params.append_pair(
+    query_params.push(query_param(
         "rikeyid",
         str::from_utf8(&ri_key_id_str_bytes).expect("valid ri key id str"),
-    );
+    ));
 
-    query_params.append_pair("localAudioPlayMode", "todo"); // TODO
-    query_params.append_pair("surroundAudioInfo", "todo"); // TODO
-    query_params.append_pair("remoteControllersBitmap", "todo"); // TODO
-    query_params.append_pair("gcmap", "todo"); // TODO
-    query_params.append_pair("gcpersist", "todo"); // TODO
-    drop(query_params);
+    query_params.push(query_param("localAudioPlayMode", "todo")); // TODO
+    query_params.push(query_param("surroundAudioInfo", "todo")); // TODO
+    query_params.push(query_param("remoteControllersBitmap", "todo")); // TODO
+    query_params.push(query_param("gcmap", "todo")); // TODO
+    query_params.push(query_param("gcpersist", "todo")); // TODO
 
-    let response = client.get(url).send().await?.text().await?;
+    let response = client
+        .send_https_request_text_response(https_hostport, verb, &query_params)
+        .await
+        .map_err(|err| ApiError::RequestClient(err))?;
 
     Ok(response)
 }
