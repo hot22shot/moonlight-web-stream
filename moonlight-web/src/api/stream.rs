@@ -334,6 +334,12 @@ impl StreamConnection {
     async fn on_ice_connection_state_change(self: &Arc<Self>, state: RTCIceConnectionState) {
         if matches!(state, RTCIceConnectionState::Connected) {
             self.stages.connected.set_reached();
+
+            if let Err(err) = self.start_stream().await {
+                warn!("[Stream]: failed to start stream: {err:?}");
+
+                self.stop().await;
+            }
         }
     }
     async fn on_peer_connection_state_change(&self, state: RTCPeerConnectionState) {
@@ -624,7 +630,7 @@ async fn start(
     app_id: usize,
     ws_sender: Session,
     ws_receiver: MessageStream,
-) -> Result<(), anyhow::Error> {
+) -> Result<Arc<StreamConnection>, anyhow::Error> {
     // -- Configure WebRTC
     let config = RTCConfiguration {
         // TODO: put this into config
@@ -702,20 +708,7 @@ async fn start(
     )
     .await?;
 
-    connection.stages.connected.when_reached().await;
-    if connection.stages.stop.is_reached() {
-        return Ok(());
-    }
-
-    if let Err(err) = connection.start_stream().await {
-        warn!("[Stream]: failed to start stream: {err:?}");
-
-        connection.stop().await;
-    }
-
-    connection.stages.stop.when_reached().await;
-
-    Ok(())
+    Ok(connection)
 }
 
 fn supported_formats_from_mime(mime_type: &str) -> SupportedVideoFormats {
