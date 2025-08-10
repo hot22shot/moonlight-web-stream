@@ -288,4 +288,5 @@ button:hover {
 .hiddeninput {
     position: absolute;
     top: -1000px;
+    resize: none;
 }

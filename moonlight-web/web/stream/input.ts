@@ -185,8 +185,14 @@ export class StreamInput {
 
         this.buffer.putU32(touch.identifier)
         // TODO: find out correct position value
-        this.buffer.putF32((touch.clientX - rect.left) / (rect.right - rect.left))
-        this.buffer.putF32((touch.clientY - rect.top) / (rect.bottom - rect.top))
+        const x = (touch.clientX - rect.left) / (rect.right - rect.left)
+        const y = (touch.clientY - rect.top) / (rect.bottom - rect.top)
+        if (x < 0 || x > 1.0 || y < 0 || y > 1.0) {
+            // invalid touch
+            return
+        }
+        this.buffer.putF32(x)
+        this.buffer.putF32(y)
 
         this.buffer.putF32(touch.force)
 
