@@ -168,7 +168,8 @@ impl StreamInput {
                 KeyFlags::empty(),
             );
         } else if ty == 1 {
-            let Ok(key) = buffer.get_utf8(1) else {
+            let len = buffer.get_u8();
+            let Ok(key) = buffer.get_utf8(len as usize) else {
                 warn!("[Stream Input]: received invalid keyboard text message");
                 return;
             };

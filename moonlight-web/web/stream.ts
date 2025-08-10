@@ -4,6 +4,7 @@ import { showErrorPopup } from "./component/error.js";
 import { AppInfoEvent, startStream, Stream } from "./stream/index.js"
 import { showMessage } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
+import { StreamKeys } from "./api_bindings.js";
 
 async function startApp() {
     const api = await getApi()
@@ -89,41 +90,41 @@ class ViewerApp implements Component {
     }
 
     // Keyboard
-    private onKeyDown(event: KeyboardEvent) {
+    onKeyDown(event: KeyboardEvent) {
         event.preventDefault()
         this.stream?.getInput().getKeyboard().onKeyDown(event)
     }
-    private onKeyUp(event: KeyboardEvent) {
+    onKeyUp(event: KeyboardEvent) {
         event.preventDefault()
         this.stream?.getInput().getKeyboard().onKeyUp(event)
     }
 
     // Mouse
-    private onMouseButtonDown(event: MouseEvent) {
+    onMouseButtonDown(event: MouseEvent) {
         event.preventDefault()
         this.stream?.getInput().getMouse().onMouseDown(event);
     }
-    private onMouseButtonUp(event: MouseEvent) {
+    onMouseButtonUp(event: MouseEvent) {
         event.preventDefault()
         this.stream?.getInput().getMouse().onMouseUp(event)
     }
-    private onMouseMove(event: MouseEvent) {
+    onMouseMove(event: MouseEvent) {
         event.preventDefault()
         this.stream?.getInput().getMouse().onMouseMove(event)
     }
-    private onWheel(event: WheelEvent) {
+    onWheel(event: WheelEvent) {
         event.preventDefault()
         this.stream?.getInput().getMouse().onWheel(event)
     }
 
     // Touch
-    private onTouchStart(event: TouchEvent) {
+    onTouchStart(event: TouchEvent) {
         this.stream?.getInput().getTouch().onTouchStart(event, this.videoElement.getBoundingClientRect())
     }
-    private onTouchEnd(event: TouchEvent) {
+    onTouchEnd(event: TouchEvent) {
         this.stream?.getInput().getTouch().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
-    private onTouchMove(event: TouchEvent) {
+    onTouchMove(event: TouchEvent) {
         this.stream?.getInput().getTouch().onTouchMove(event, this.videoElement.getBoundingClientRect())
     }
 
@@ -138,6 +139,9 @@ class ViewerApp implements Component {
     getElement(): HTMLElement {
         return this.videoElement
     }
+    getStream(): Stream | null {
+        return this.stream
+    }
 }
 
 class ViewerSidebar implements Component, Sidebar {
@@ -145,7 +149,7 @@ class ViewerSidebar implements Component, Sidebar {
 
     private test: HTMLElement = document.createElement("p")
     private keyboardButton = document.createElement("button")
-    private keyboardHiddenInput = document.createElement("textarea")
+    private keyboardInput = document.createElement("input")
 
     private lockMouseButton = document.createElement("button")
 
@@ -154,19 +158,77 @@ class ViewerSidebar implements Component, Sidebar {
 
         this.test.innerText = "TEST"
 
+        // Pop up keyboard
+        // TODO: try to push stream up to account for the pop up keyboard
         this.keyboardButton.innerText = "Keyboard"
         this.keyboardButton.addEventListener("click", async () => {
             setSidebarExtended(false)
 
-            this.keyboardHiddenInput.focus()
+            this.keyboardInput.focus()
         })
 
+        this.keyboardInput.classList.add("hiddeninput")
+        this.keyboardInput.autocomplete = "off"
+        this.keyboardInput.autocapitalize = "off"
+        this.keyboardInput.spellcheck = false
+        if ("autocorrect" in this.keyboardInput) {
+            this.keyboardInput.autocorrect = false
+        }
+        this.keyboardInput.addEventListener("input", this.onInput.bind(this))
+        this.keyboardInput.addEventListener("keydown", this.onKeyDown.bind(this))
+        this.keyboardInput.addEventListener("keyup", this.onKeyUp.bind(this))
+
+        // Pointer Lock
         this.lockMouseButton.innerText = "Lock Mouse"
         this.lockMouseButton.addEventListener("click", async () => {
             setSidebarExtended(false)
 
             await app.getElement().requestPointerLock()
         })
+    }
+
+    private onInput(event: Event) {
+        if (!(event instanceof InputEvent)) {
+            return
+        }
+        if (event.isComposing) {
+            return
+        }
+
+        const stream = this.app.getStream()
+        if (!stream) {
+            return
+        }
+        const keyboard = stream.getInput().getKeyboard()
+
+        if ((event.inputType == "insertText" || event.inputType == "insertFromPaste") && event.data) {
+            console.info("INPUT5")
+            console.info("DATA:", event.data)
+            keyboard.sendText(event.data)
+        } else if (event.inputType == "deleteContentBackward" || event.inputType == "deleteByCut") {
+            // these are handled by on key down / up on mobile
+        } else if (event.inputType == "deleteContentForward") {
+            // these are handled by on key down / up on mobile
+        }
+    }
+    private onKeyDown(event: KeyboardEvent) {
+        this.sendKey(true, event)
+    }
+    private onKeyUp(event: KeyboardEvent) {
+        this.sendKey(false, event)
+    }
+    private sendKey(isDown: boolean, event: KeyboardEvent) {
+        const stream = this.app.getStream()
+        if (!stream) {
+            return
+        }
+        const keyboard = stream.getInput().getKeyboard()
+
+        if (event.key == "Backspace") {
+            keyboard.sendWinVirtualKey(isDown, StreamKeys.VK_BACK, 0)
+        } else if (event.key == "Delete") {
+            keyboard.sendWinVirtualKey(isDown, StreamKeys.VK_DELETE, 0)
+        }
     }
 
     extended(): void {
@@ -179,13 +241,13 @@ class ViewerSidebar implements Component, Sidebar {
     mount(parent: HTMLElement): void {
         parent.appendChild(this.test)
         parent.appendChild(this.keyboardButton)
-        parent.appendChild(this.keyboardHiddenInput)
+        parent.appendChild(this.keyboardInput)
         parent.appendChild(this.lockMouseButton)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.test)
         parent.removeChild(this.keyboardButton)
-        parent.removeChild(this.keyboardHiddenInput)
+        parent.removeChild(this.keyboardInput)
         parent.removeChild(this.lockMouseButton)
     }
 }

@@ -5,7 +5,6 @@ import { StreamKeyModifiers, StreamKeys } from "../api_bindings.js"
 export type KeyboardConfig = {
     enabled: boolean
     ordered: boolean
-    mode: KeyboardInputMode
 }
 export type KeyboardInputMode = "updown" | "text"
 
@@ -28,7 +27,6 @@ export class StreamKeyboard {
         this.config = {
             enabled: true,
             ordered: true,
-            mode: "updown"
         }
         this.channel = this.createChannel(this.config)
     }
@@ -59,31 +57,32 @@ export class StreamKeyboard {
     private sendKeyEvent(isDown: boolean, event: KeyboardEvent) {
         this.buffer.reset()
 
-        if (this.config.mode == "updown") {
-            const key = convertToKey(event)
-            if (!key) {
-                return
-            }
-            this.buffer.putU8(0)
-
-            let modifiers = convertToModifiers(event)
-
-            this.buffer.putBool(isDown)
-            this.buffer.putU8(modifiers)
-            this.buffer.putU16(key)
-        } else if (this.config.mode == "text") {
-            const keyText = convertToKeyText(event)
-            if (!isDown || !keyText) {
-                return
-            }
-            this.buffer.putU8(1)
-
-            this.buffer.putUtf8(keyText)
+        const key = convertToKey(event)
+        if (!key) {
+            return
         }
+        const modifiers = convertToModifiers(event)
+
+        this.sendWinVirtualKey(isDown, key, modifiers)
+    }
+
+    sendWinVirtualKey(isDown: boolean, key: number, modifiers: number) {
+        this.buffer.putU8(0)
+
+        this.buffer.putBool(isDown)
+        this.buffer.putU8(modifiers)
+        this.buffer.putU16(key)
 
         trySendChannel(this.channel, this.buffer)
     }
+    sendText(text: string) {
+        this.buffer.putU8(1)
 
+        this.buffer.putU8(text.length)
+        this.buffer.putUtf8(text)
+
+        trySendChannel(this.channel, this.buffer)
+    }
 }
 
 function convertToModifiers(event: KeyboardEvent): number {
@@ -278,5 +277,8 @@ function convertToKey(event: KeyboardEvent): number | null {
 }
 
 function convertToKeyText(event: KeyboardEvent): string | null {
+    if (event.key == "Unidentified") {
+        return null
+    }
     return event.key
 }
