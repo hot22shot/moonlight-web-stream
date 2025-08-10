@@ -4,7 +4,6 @@ use aes::Aes128;
 use block_modes::{BlockMode, BlockModeError, Ecb, block_padding::NoPadding};
 use pem::{Pem, PemError};
 use rcgen::{CertificateParams, KeyPair, PKCS_RSA_SHA256};
-use reqwest::Client;
 use rsa::{
     Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
     pkcs8::{DecodePrivateKey, DecodePublicKey},
@@ -20,9 +19,13 @@ use x509_parser::{
 use crate::{
     crypto::{HashAlgorithm, MoonlightCrypto},
     network::{
-        ApiError, ClientInfo, ClientPairRequest1, ClientPairRequest2, ClientPairRequest3,
-        ClientPairRequest4, ClientPairRequest5, PairStatus, ServerVersion, host_pair1, host_pair2,
-        host_pair3, host_pair4, host_pair5, host_unpair, request_client::RequestClient,
+        ApiError, ClientInfo, PairStatus, ServerVersion,
+        pair::{
+            ClientPairRequest1, ClientPairRequest2, ClientPairRequest3, ClientPairRequest4,
+            ClientPairRequest5, host_pair1, host_pair2, host_pair3, host_pair4, host_pair5,
+            host_unpair,
+        },
+        request_client::RequestClient,
     },
     pair::{CHALLENGE_LENGTH, PairPin, SALT_LENGTH},
 };
