@@ -14,7 +14,8 @@ use crate::{
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, ClientStreamRequest, DEFAULT_UNIQUE_ID,
         HostInfo, PairStatus, ServerAppListResponse, ServerState, ServerVersion, host_app_box_art,
-        host_app_list, host_info, host_launch, host_resume, request_client::RequestClient,
+        host_app_list, host_info, host_launch, host_resume, pair::host_unpair,
+        request_client::RequestClient,
     },
     pair::{
         PairPin,
@@ -243,7 +244,7 @@ where
 
         Ok(pair_status)
     }
-    pub async fn clear_pairing_info(&mut self) -> Result<(), HostError<C::Error>> {
+    pub fn clear_pairing_info(&mut self) -> Result<(), HostError<C::Error>> {
         self.client = C::with_defaults().map_err(ApiError::RequestClient)?;
         self.paired = None;
 
@@ -313,6 +314,20 @@ where
         info.pair_status = PairStatus::Paired;
 
         self.clear_cache();
+
+        Ok(())
+    }
+
+    pub async fn unpair(&mut self) -> Result<(), HostError<C::Error>> {
+        let http_address = self.http_address();
+        let client_info = ClientInfo {
+            unique_id: &self.client_unique_id,
+            uuid: Uuid::new_v4(),
+        };
+
+        host_unpair(&mut self.client, &http_address, client_info).await?;
+
+        self.clear_pairing_info()?;
 
         Ok(())
     }
