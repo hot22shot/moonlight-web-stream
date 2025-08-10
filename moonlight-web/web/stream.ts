@@ -101,7 +101,7 @@ class ViewerApp implements Component {
     // Mouse
     onMouseButtonDown(event: MouseEvent) {
         event.preventDefault()
-        this.stream?.getInput().onMouseDown(event);
+        this.stream?.getInput().onMouseDown(event, this.videoElement.getBoundingClientRect());
     }
     onMouseButtonUp(event: MouseEvent) {
         event.preventDefault()

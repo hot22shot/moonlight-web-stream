@@ -21,11 +21,13 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 
 export type StreamInputConfig = {
     keyboardOrdered: boolean
+    mouseMode: "relative" | "pointAndDrag"
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
 }
 
 export const DEFAULT_STREAM_INPUT_CONFIG: StreamInputConfig = {
     keyboardOrdered: true,
+    mouseMode: "pointAndDrag",
     touchMode: "pointAndDrag"
 }
 
@@ -116,13 +118,17 @@ export class StreamInput {
     }
 
     // -- Mouse
-    onMouseDown(event: MouseEvent) {
+    onMouseDown(event: MouseEvent, rect: DOMRect) {
         const button = convertToButton(event)
         if (button == null) {
             return
         }
 
-        this.sendMouseButton(true, button)
+        if (this.config.mouseMode == "relative") {
+            this.sendMouseButton(true, button)
+        } else if (this.config.mouseMode == "pointAndDrag") {
+            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, button)
+        }
     }
     onMouseUp(event: MouseEvent) {
         const button = convertToButton(event)
@@ -133,7 +139,14 @@ export class StreamInput {
         this.sendMouseButton(false, button)
     }
     onMouseMove(event: MouseEvent) {
-        this.sendMouseMove(event.movementX, event.movementY)
+        if (this.config.mouseMode == "relative") {
+            this.sendMouseMove(event.movementX, event.movementY)
+        } else if (this.config.mouseMode == "pointAndDrag") {
+            if (event.buttons) {
+                // some button pressed
+                this.sendMouseMove(event.movementX, event.movementY)
+            }
+        }
     }
     onWheel(event: WheelEvent) {
         this.sendMouseWheel(event.deltaX, event.deltaY)
@@ -158,6 +171,17 @@ export class StreamInput {
         this.buffer.putI16(referenceHeight)
 
         trySendChannel(this.mouse, this.buffer)
+    }
+    sendMousePositionClientCoordinates(clientX: number, clientY: number, rect: DOMRect, mouseButton?: number) {
+        const position = this.calcNormalizedPosition(clientX, clientY, rect)
+        if (position) {
+            const [x, y] = position
+            this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0)
+
+            if (mouseButton != undefined) {
+                this.sendMouseButton(true, mouseButton)
+            }
+        }
     }
     // Note: button = StreamMouseButton.
     sendMouseButton(isDown: boolean, button: number) {
@@ -227,12 +251,7 @@ export class StreamInput {
                 this.primaryTouch = touch.identifier
 
                 if (this.config.touchMode == "pointAndDrag") {
-                    const position = this.calcTouchPosition(touch, rect)
-                    if (position) {
-                        const [x, y] = position
-                        this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0)
-                        this.sendMouseButton(true, StreamMouseButton.LEFT)
-                    }
+                    this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, StreamMouseButton.LEFT)
                 }
             }
         }
@@ -298,9 +317,9 @@ export class StreamInput {
         }
     }
 
-    private calcTouchPosition(touch: Touch, rect: DOMRect): [number, number] | null {
-        const x = (touch.clientX - (rect.right - rect.width)) / rect.width
-        const y = (touch.clientY - (rect.bottom - rect.height)) / rect.height
+    private calcNormalizedPosition(clientX: number, clientY: number, rect: DOMRect): [number, number] | null {
+        const x = (clientX - rect.left) / rect.width
+        const y = (clientY - rect.top) / rect.height
         console.info("TOUCH", x, y, rect)
         if (x < 0 || x > 1.0 || y < 0 || y > 1.0) {
             // invalid touch
@@ -315,7 +334,7 @@ export class StreamInput {
 
         this.buffer.putU32(touch.identifier)
 
-        const position = this.calcTouchPosition(touch, rect)
+        const position = this.calcNormalizedPosition(touch.clientX, touch.clientY, rect)
         if (!position) {
             return
         }
