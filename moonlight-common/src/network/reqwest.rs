@@ -3,6 +3,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
+use url::Url;
 
 use crate::network::request_client::{QueryParamsRef, RequestClient};
 
@@ -10,6 +11,21 @@ fn default_builder() -> ClientBuilder {
     ClientBuilder::new()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(7))
+}
+
+fn build_url(
+    use_https: bool,
+    hostport: &str,
+    path: &str,
+    query_params: &QueryParamsRef<'_>,
+) -> Result<Url, reqwest::Error> {
+    let protocol = if use_https { "https" } else { "http" };
+
+    let authority = format!("{protocol}://{hostport}/{path}");
+    // TODO: remove unwrap
+    let url = Url::parse_with_params(&authority, query_params).unwrap();
+
+    Ok(url)
 }
 
 impl RequestClient for Client {
@@ -54,7 +70,8 @@ impl RequestClient for Client {
         path: &str,
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Text, Self::Error> {
-        todo!()
+        let url = build_url(false, hostport, path, query_params)?;
+        self.get(url).send().await?.text().await
     }
 
     async fn send_https_request_text_response(
@@ -63,7 +80,8 @@ impl RequestClient for Client {
         path: &str,
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Text, Self::Error> {
-        todo!()
+        let url = build_url(true, hostport, path, query_params)?;
+        self.get(url).send().await?.text().await
     }
 
     async fn send_https_request_data_response(
@@ -72,6 +90,7 @@ impl RequestClient for Client {
         path: &str,
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Bytes, Self::Error> {
-        todo!()
+        let url = build_url(true, hostport, path, query_params)?;
+        self.get(url).send().await?.bytes().await
     }
 }

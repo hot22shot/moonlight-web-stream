@@ -2,7 +2,6 @@
 //! The high level api of the moonlight wrapper
 //!
 
-use bytes::Bytes;
 use pem::Pem;
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
@@ -39,6 +38,9 @@ pub enum HostError<RequestError> {
     #[error("{0}")]
     Pair(#[from] PairError<RequestError>),
 }
+
+// TODO: feature lock
+pub type SimpleMoonlightHost = MoonlightHost<reqwest::Client>;
 
 pub struct MoonlightHost<Client> {
     client_unique_id: String,
@@ -96,7 +98,36 @@ where
             self.clear_cache();
         }
 
-        todo!();
+        let has_cache = self.cache_info.is_some();
+        let mut https_port = None;
+
+        if !has_cache {
+            let http_address = self.http_address();
+
+            let client_info = ClientInfo {
+                unique_id: &self.client_unique_id,
+                uuid: Uuid::new_v4(),
+            };
+
+            let info = host_info(&mut self.client, false, &http_address, Some(client_info)).await?;
+
+            https_port = Some(info.https_port);
+
+            self.cache_info = Some(info);
+        }
+        if !has_cache
+            && let Some(https_port) = https_port
+            && self.is_paired() == PairStatus::Paired
+        {
+            let https_address = Self::build_https_address(&self.address, https_port);
+
+            let client_info = ClientInfo {
+                unique_id: &self.client_unique_id,
+                uuid: Uuid::new_v4(),
+            };
+            self.cache_info =
+                Some(host_info(&mut self.client, true, &https_address, Some(client_info)).await?);
+        }
 
         let Some(info) = &self.cache_info else {
             unreachable!()
@@ -176,15 +207,24 @@ where
         Ok(info.server_codec_mode_support)
     }
 
-    pub async fn pair_state(
+    pub async fn set_pairing_info(
         &mut self,
-        auth: Option<(&ClientAuth, &Pem)>,
+        client_auth: &ClientAuth,
+        server_certificate: &Pem,
     ) -> Result<PairStatus, HostError<C::Error>> {
-        if let Some((auth, server_certificate)) = auth {
-            self.client =
-                C::with_certificates(&auth.key_pair, &auth.certificate, server_certificate)
-                    .map_err(|err| ApiError::RequestClient(err))?
-        }
+        self.client = C::with_certificates(
+            &client_auth.key_pair,
+            &client_auth.certificate,
+            server_certificate,
+        )
+        .map_err(ApiError::RequestClient)?;
+
+        self.paired = Some(Paired {
+            client_private_key: client_auth.key_pair.clone(),
+            client_certificate: client_auth.certificate.clone(),
+            server_certificate: server_certificate.clone(),
+            cache_app_list: None,
+        });
 
         let https_address = match self.https_address().await {
             Err(err) => return Err(err),
@@ -204,7 +244,7 @@ where
         Ok(pair_status)
     }
 
-    pub fn paired(&self) -> PairStatus {
+    pub fn is_paired(&self) -> PairStatus {
         if self.paired.is_some() {
             PairStatus::Paired
         } else {
@@ -266,7 +306,7 @@ where
         };
         info.pair_status = PairStatus::Paired;
 
-        let _ = self.clear_cache();
+        self.clear_cache();
 
         Ok(())
     }
@@ -278,27 +318,22 @@ where
             uuid: Uuid::new_v4(),
         };
 
-        // TODO: remove unwrap
-        let mut response = None;
-
-        if self
-            .paired
-            .as_ref()
-            .and_then(|x| x.cache_app_list.as_ref())
-            .is_none()
-        {
-            response = Some(host_app_list(&mut self.client, &https_address, client_info).await?);
-        }
-
-        let Some(app_list) = self.paired.as_mut().and_then(|x| x.cache_app_list.as_mut()) else {
+        let Some(paired) = self.paired.as_mut() else {
             return Err(HostError::NotPaired);
         };
 
-        if let Some(response) = response {
-            *app_list = response;
+        // Recache
+        if paired.cache_app_list.is_none() {
+            let response = host_app_list(&mut self.client, &https_address, client_info).await?;
+
+            paired.cache_app_list = Some(response);
         }
 
-        Ok(app_list.apps.as_slice())
+        let Some(cache_app_list) = &paired.cache_app_list else {
+            unreachable!()
+        };
+
+        Ok(cache_app_list.apps.as_slice())
     }
 
     pub async fn request_app_image(

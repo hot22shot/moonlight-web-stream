@@ -178,7 +178,7 @@ async fn pair_host(
 
     let host = host.lock().await;
 
-    if matches!(host.moonlight.paired(), PairStatus::Paired) {
+    if matches!(host.moonlight.is_paired(), PairStatus::Paired) {
         return HttpResponse::NotModified().finish();
     }
 
@@ -364,7 +364,7 @@ async fn into_undetailed_host(
     Ok(UndetailedHost {
         host_id: id as u32,
         name: host.host_name().await?.to_string(),
-        paired: host.paired().into(),
+        paired: host.is_paired().into(),
         server_state: host.state().await?.1.into(),
     })
 }
@@ -375,7 +375,7 @@ async fn into_detailed_host(
     Ok(DetailedHost {
         host_id: id as u32,
         name: host.host_name().await?.to_string(),
-        paired: host.paired().into(),
+        paired: host.is_paired().into(),
         server_state: host.state().await?.1.into(),
         address: host.address().to_string(),
         http_port: host.http_port(),

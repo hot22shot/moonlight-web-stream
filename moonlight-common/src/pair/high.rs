@@ -136,6 +136,7 @@ fn sign_data(key_pair: &KeyPair, data: &[u8]) -> Vec<u8> {
         .expect("sign the data")
 }
 
+// TOOD: maybe remove this struct?
 #[derive(Clone)]
 pub struct ClientAuth {
     pub key_pair: Pem,

@@ -223,11 +223,12 @@ impl AudioDecoder for GStreamerAudioHandler {
     }
 
     fn decode_and_play_sample(&mut self, data: &[u8]) {
-        let mut buffer = Buffer::with_size(data.len()).unwrap();
-        let buffer_mut = buffer.get_mut().unwrap();
+        // TODO: fix this
+        // let mut buffer = Buffer::with_size(data.len()).unwrap();
+        // let buffer_mut = buffer.get_mut().unwrap();
 
-        let _ = buffer_mut.copy_from_slice(0, data);
-        let _ = self.app_src.push_buffer(buffer);
+        // let _ = buffer_mut.copy_from_slice(0, data);
+        // let _ = self.app_src.push_buffer(buffer);
     }
 
     fn config(&self) -> AudioConfig {

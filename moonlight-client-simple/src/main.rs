@@ -2,8 +2,9 @@ use std::time::Duration;
 
 use moonlight_common::{
     MoonlightInstance,
-    debug::{DebugHandler, NullHandler},
-    high::MoonlightHost,
+    debug::DebugHandler,
+    high::SimpleMoonlightHost,
+    network::PairStatus,
     pair::high::{ClientAuth, generate_new_client},
     stream::{ColorRange, Colorspace},
 };
@@ -14,7 +15,7 @@ use tokio::{
     time::sleep,
 };
 
-use crate::gstreamer::{GStreamerVideoHandler, gstreamer_pipeline};
+use crate::gstreamer::gstreamer_pipeline;
 
 mod gstreamer;
 
@@ -36,10 +37,10 @@ async fn main() {
 
     // Create a host
     // - client_info = None -> Generates a client
-    let host = MoonlightHost::new(host_ip.to_string(), host_http_port, None);
+    let mut host = SimpleMoonlightHost::new(host_ip.to_string(), host_http_port, None).unwrap();
 
     // Pair to the Host using Generated / Loaded Client Private Key, Certificate and Server Certificate
-    let mut host = if let Ok(true) = try_exists(key_file).await
+    if let Ok(true) = try_exists(key_file).await
         && let Ok(true) = try_exists(crt_file).await
         && let Ok(true) = try_exists(server_crt_file).await
     {
@@ -55,18 +56,12 @@ async fn main() {
         let server_certificate = pem::parse(server_crt_contents).unwrap();
 
         // Get the current pair state
-        let host = host
-            .pair_state(Some((&auth, &server_certificate)))
+        let pair_status = host
+            .set_pairing_info(&auth, &server_certificate)
             .await
-            .map_err(|(_, err)| err)
             .unwrap();
 
-        match host.try_into_paired() {
-            Ok(host) => host,
-            Err(_) => panic!(
-                "host not paired even though we've already generated private key and certificates: Delete them to repair"
-            ),
-        }
+        assert_eq!(pair_status, PairStatus::Paired);
     } else {
         // Generate new client
         let auth = generate_new_client().unwrap();
@@ -77,14 +72,13 @@ async fn main() {
         println!("Pin: {pin}, Device Name: {device_name}");
 
         // Pair to the host
-        let host = host
-            .into_unpaired()
-            .pair(&crypto, &auth, device_name.to_string(), pin)
+        host.pair(&crypto, &auth, device_name.to_string(), pin)
             .await
-            .map_err(|(_, err)| err)
             .unwrap();
 
-        let server_certificate = host.server_certificate().clone();
+        let Some(server_certificate) = host.server_certificate() else {
+            panic!("failed to get server certificate on paired host");
+        };
 
         // Save the pair information
         write(key_file, auth.key_pair.to_string()).await.unwrap();
@@ -92,8 +86,6 @@ async fn main() {
         write(server_crt_file, server_certificate.to_string())
             .await
             .unwrap();
-
-        host
     };
 
     let apps = host.app_list().await.unwrap().to_vec();

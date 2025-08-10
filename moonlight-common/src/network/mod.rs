@@ -48,6 +48,8 @@ pub enum ApiError<RequestError> {
 }
 
 pub mod request_client;
+
+// TODO: feature lock
 mod reqwest;
 
 pub const DEFAULT_UNIQUE_ID: &str = "0123456789ABCDEF";
