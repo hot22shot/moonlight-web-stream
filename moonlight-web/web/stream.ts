@@ -201,7 +201,7 @@ class ViewerSidebar implements Component, Sidebar {
         }
         const keyboard = stream.getInput().getKeyboard()
 
-        if ((event.inputType == "insertText" || event.inputType == "insertFromPaste") && event.data) {
+        if ((event.inputType == "insertText" || event.inputType == "insertFromPaste") && event.data != null) {
             keyboard.sendText(event.data)
         } else if (event.inputType == "deleteContentBackward" || event.inputType == "deleteByCut") {
             // these are handled by on key down / up on mobile
@@ -210,23 +210,22 @@ class ViewerSidebar implements Component, Sidebar {
         }
     }
     private onKeyDown(event: KeyboardEvent) {
-        this.sendKey(true, event)
-    }
-    private onKeyUp(event: KeyboardEvent) {
-        this.sendKey(false, event)
-    }
-    private sendKey(isDown: boolean, event: KeyboardEvent) {
         const stream = this.app.getStream()
         if (!stream) {
             return
         }
         const keyboard = stream.getInput().getKeyboard()
 
-        if (event.key == "Backspace") {
-            keyboard.sendWinVirtualKey(isDown, StreamKeys.VK_BACK, 0)
-        } else if (event.key == "Delete") {
-            keyboard.sendWinVirtualKey(isDown, StreamKeys.VK_DELETE, 0)
+        keyboard.onKeyDown(event)
+    }
+    private onKeyUp(event: KeyboardEvent) {
+        const stream = this.app.getStream()
+        if (!stream) {
+            return
         }
+        const keyboard = stream.getInput().getKeyboard()
+
+        keyboard.onKeyUp(event)
     }
 
     extended(): void {

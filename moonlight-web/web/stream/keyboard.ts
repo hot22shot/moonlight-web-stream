@@ -273,7 +273,11 @@ const VK_MAPPINGS: Record<string, number | null> = {
 }
 
 function convertToKey(event: KeyboardEvent): number | null {
-    return VK_MAPPINGS[event.code]
+    let key = VK_MAPPINGS[event.code] ?? null
+    if (key == null) {
+        key = VK_MAPPINGS[event.key] ?? null
+    }
+    return key
 }
 
 function convertToKeyText(event: KeyboardEvent): string | null {
