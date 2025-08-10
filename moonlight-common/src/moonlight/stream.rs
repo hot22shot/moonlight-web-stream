@@ -547,9 +547,9 @@ impl MoonlightStream {
         Ok(())
     }
 
-    // This function queues a vertical scroll event to the remote server.
-    // The number of "clicks" is multiplied by WHEEL_DELTA (120) before
-    // being sent to the PC.
+    /// This function queues a vertical scroll event to the remote server.
+    /// The number of "clicks" is multiplied by WHEEL_DELTA (120) before
+    /// being sent to the PC.
     pub fn send_scroll(&self, scroll_clicks: i8) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendScrollEvent(scroll_clicks)) {
@@ -559,10 +559,10 @@ impl MoonlightStream {
         Ok(())
     }
 
-    // This function queues a vertical scroll event to the remote server.
-    // Unlike LiSendScrollEvent(), this function can send wheel events
-    // smaller than 120 units for devices that support "high resolution"
-    // scrolling (Apple Trackpads, Microsoft Precision Touchpads, etc.).
+    /// This function queues a vertical scroll event to the remote server.
+    /// Unlike LiSendScrollEvent(), this function can send wheel events
+    /// smaller than 120 units for devices that support "high resolution"
+    /// scrolling (Apple Trackpads, Microsoft Precision Touchpads, etc.).
     pub fn send_high_res_scroll(&self, scroll_amount: i16) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendHighResScrollEvent(scroll_amount)) {
@@ -572,9 +572,9 @@ impl MoonlightStream {
         Ok(())
     }
 
-    // These functions send horizontal scroll events to the host which are
-    // analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
-    // This is a Sunshine protocol extension.
+    /// These functions send horizontal scroll events to the host which are
+    /// analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
+    /// This is a Sunshine protocol extension.
     pub fn send_horizontal_scroll(&self, scroll_clicks: i8) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendHScrollEvent(scroll_clicks)) {
@@ -584,9 +584,9 @@ impl MoonlightStream {
         Ok(())
     }
 
-    // These functions send horizontal scroll events to the host which are
-    // analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
-    // This is a Sunshine protocol extension.
+    /// These functions send horizontal scroll events to the host which are
+    /// analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
+    /// This is a Sunshine protocol extension.
     pub fn send_high_res_horizontal_scroll(
         &self,
         scroll_amount: i16,
