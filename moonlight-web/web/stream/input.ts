@@ -18,6 +18,7 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 
 export type StreamInputConfig = {
     keyboardOrdered: boolean
+    touchMode: "touch" | "mouseRelative"
 }
 
 export class StreamInput {
@@ -38,12 +39,11 @@ export class StreamInput {
         this.peer = peer
 
         this.config = config ?? {
-            keyboardOrdered: true
+            keyboardOrdered: true,
+            touchMode: "mouseRelative"
         }
 
-        this.createChannels({
-            keyboardOrdered: true
-        })
+        this.createChannels(this.config)
     }
 
     private createChannels(config: StreamInputConfig) {
@@ -156,6 +156,8 @@ export class StreamInput {
     }
 
     // -- Touch
+    private primaryTouch: { identifier: number, x: number, y: number } | null = null
+
     private onTouchMessage(event: MessageEvent) {
         const data = event.data
         const buffer = new ByteBuffer(data)
@@ -163,18 +165,54 @@ export class StreamInput {
     }
 
     onTouchStart(event: TouchEvent, rect: DOMRect) {
-        for (const touch of event.changedTouches) {
-            this.sendTouch(0, touch, rect)
+        if (this.config.touchMode == "touch") {
+            for (const touch of event.changedTouches) {
+                this.sendTouch(0, touch, rect)
+            }
+        } else if (this.config.touchMode == "mouseRelative") {
+            const touch = event.changedTouches[0]
+            if (!this.primaryTouch && touch) {
+                this.primaryTouch = {
+                    identifier: touch.identifier,
+                    x: touch.clientX,
+                    y: touch.clientY
+                }
+            }
         }
     }
     onTouchMove(event: TouchEvent, rect: DOMRect) {
-        for (const touch of event.changedTouches) {
-            this.sendTouch(1, touch, rect)
+        if (this.config.touchMode == "touch") {
+            for (const touch of event.changedTouches) {
+                this.sendTouch(1, touch, rect)
+            }
+        } else if (this.config.touchMode == "mouseRelative") {
+            for (const touch of event.changedTouches) {
+                if (this.primaryTouch?.identifier != touch.identifier) {
+                    continue
+                }
+
+                const movementX = touch.clientX - this.primaryTouch.x;
+                const movementY = touch.clientY - this.primaryTouch.y;
+
+                this.sendMouseMove(movementX, movementY)
+
+                this.primaryTouch.x = touch.clientX
+                this.primaryTouch.y = touch.clientY
+            }
         }
     }
+
     onTouchEnd(event: TouchEvent, rect: DOMRect) {
-        for (const touch of event.changedTouches) {
-            this.sendTouch(2, touch, rect)
+        if (this.config.touchMode == "touch") {
+            for (const touch of event.changedTouches) {
+                this.sendTouch(2, touch, rect)
+            }
+        } else if (this.config.touchMode == "mouseRelative") {
+            for (const touch of event.changedTouches) {
+                if (this.primaryTouch && this.primaryTouch.identifier == touch.identifier) {
+                    this.primaryTouch = null
+                }
+            }
         }
     }
 
@@ -184,6 +222,7 @@ export class StreamInput {
         this.buffer.putU8(type)
 
         this.buffer.putU32(touch.identifier)
+        // TODO: fix the rect it's not 100% on point
         // TODO: find out correct position value
         const x = (touch.clientX - rect.left) / (rect.right - rect.left)
         const y = (touch.clientY - rect.top) / (rect.bottom - rect.top)
