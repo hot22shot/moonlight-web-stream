@@ -243,6 +243,12 @@ where
 
         Ok(pair_status)
     }
+    pub async fn clear_pairing_info(&mut self) -> Result<(), HostError<C::Error>> {
+        self.client = C::with_defaults().map_err(ApiError::RequestClient)?;
+        self.paired = None;
+
+        Ok(())
+    }
 
     pub fn is_paired(&self) -> PairStatus {
         if self.paired.is_some() {
