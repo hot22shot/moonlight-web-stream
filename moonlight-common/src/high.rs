@@ -13,7 +13,7 @@ use crate::{
         ServerAppListResponse, host_app_box_art, host_app_list, host_info, pair::host_unpair,
         request_client::RequestClient,
     },
-    pair::high::{ClientAuth, PairError, PairSuccess, host_pair},
+    pair::{ClientAuth, PairError, PairSuccess, host_pair},
 };
 
 #[derive(Debug, Error)]
@@ -48,8 +48,6 @@ pub struct Paired {
     server_certificate: Pem,
     cache_app_list: Option<ServerAppListResponse>,
 }
-
-// TODO: for futures return impl Future<Output = ?> + Send + Sync
 
 impl<C> MoonlightHost<C>
 where

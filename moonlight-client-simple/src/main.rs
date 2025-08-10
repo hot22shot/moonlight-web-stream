@@ -8,7 +8,7 @@ use moonlight_common::{
         debug::DebugHandler,
         stream::{ColorRange, Colorspace},
     },
-    pair::high::{ClientAuth, generate_new_client},
+    pair::{ClientAuth, generate_new_client},
 };
 
 use tokio::{
