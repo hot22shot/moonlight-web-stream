@@ -4,7 +4,6 @@ import { showErrorPopup } from "./component/error.js";
 import { AppInfoEvent, startStream, Stream } from "./stream/index.js"
 import { showMessage } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
-import { StreamKeys } from "./api_bindings.js";
 
 async function startApp() {
     const api = await getApi()
@@ -92,40 +91,40 @@ class ViewerApp implements Component {
     // Keyboard
     onKeyDown(event: KeyboardEvent) {
         event.preventDefault()
-        this.stream?.getInput().getKeyboard().onKeyDown(event)
+        this.stream?.getInput().onKeyDown(event)
     }
     onKeyUp(event: KeyboardEvent) {
         event.preventDefault()
-        this.stream?.getInput().getKeyboard().onKeyUp(event)
+        this.stream?.getInput().onKeyUp(event)
     }
 
     // Mouse
     onMouseButtonDown(event: MouseEvent) {
         event.preventDefault()
-        this.stream?.getInput().getMouse().onMouseDown(event);
+        this.stream?.getInput().onMouseDown(event);
     }
     onMouseButtonUp(event: MouseEvent) {
         event.preventDefault()
-        this.stream?.getInput().getMouse().onMouseUp(event)
+        this.stream?.getInput().onMouseUp(event)
     }
     onMouseMove(event: MouseEvent) {
         event.preventDefault()
-        this.stream?.getInput().getMouse().onMouseMove(event)
+        this.stream?.getInput().onMouseMove(event)
     }
     onWheel(event: WheelEvent) {
         event.preventDefault()
-        this.stream?.getInput().getMouse().onWheel(event)
+        this.stream?.getInput().onWheel(event)
     }
 
     // Touch
     onTouchStart(event: TouchEvent) {
-        this.stream?.getInput().getTouch().onTouchStart(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchStart(event, this.videoElement.getBoundingClientRect())
     }
     onTouchEnd(event: TouchEvent) {
-        this.stream?.getInput().getTouch().onTouchEnd(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
     onTouchMove(event: TouchEvent) {
-        this.stream?.getInput().getTouch().onTouchMove(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchMove(event, this.videoElement.getBoundingClientRect())
     }
 
     mount(parent: HTMLElement): void {
@@ -199,10 +198,9 @@ class ViewerSidebar implements Component, Sidebar {
         if (!stream) {
             return
         }
-        const keyboard = stream.getInput().getKeyboard()
 
         if ((event.inputType == "insertText" || event.inputType == "insertFromPaste") && event.data != null) {
-            keyboard.sendText(event.data)
+            stream.getInput().sendText(event.data)
         } else if (event.inputType == "deleteContentBackward" || event.inputType == "deleteByCut") {
             // these are handled by on key down / up on mobile
         } else if (event.inputType == "deleteContentForward") {
@@ -214,18 +212,16 @@ class ViewerSidebar implements Component, Sidebar {
         if (!stream) {
             return
         }
-        const keyboard = stream.getInput().getKeyboard()
 
-        keyboard.onKeyDown(event)
+        stream.getInput().onKeyDown(event)
     }
     private onKeyUp(event: KeyboardEvent) {
         const stream = this.app.getStream()
         if (!stream) {
             return
         }
-        const keyboard = stream.getInput().getKeyboard()
 
-        keyboard.onKeyUp(event)
+        stream.getInput().onKeyUp(event)
     }
 
     extended(): void {

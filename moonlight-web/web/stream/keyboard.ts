@@ -1,91 +1,6 @@
-import { ByteBuffer } from "./buffer.js"
-import { trySendChannel } from "./input.js"
 import { StreamKeyModifiers, StreamKeys } from "../api_bindings.js"
 
-export type KeyboardConfig = {
-    enabled: boolean
-    ordered: boolean
-}
-export type KeyboardInputMode = "updown" | "text"
-
-export class StreamKeyboard {
-    private peer: RTCPeerConnection
-
-    private buffer: ByteBuffer
-
-    private config: KeyboardConfig
-    private channel: RTCDataChannel | null
-
-    constructor(peer: RTCPeerConnection, buffer?: ByteBuffer) {
-        this.peer = peer
-
-        this.buffer = buffer ?? new ByteBuffer(1024, false)
-        if (this.buffer.isLittleEndian()) {
-            throw "invalid buffer endianness"
-        }
-
-        this.config = {
-            enabled: true,
-            ordered: true,
-        }
-        this.channel = this.createChannel(this.config)
-    }
-
-    setConfig(config: KeyboardConfig) {
-        this.channel?.close()
-        this.channel = this.createChannel(config)
-    }
-    private createChannel(config: KeyboardConfig): RTCDataChannel | null {
-        this.config = config
-        if (!config.enabled) {
-            return null
-        }
-        const dataChannel = this.peer.createDataChannel("keyboard", {
-            ordered: config.ordered
-        })
-
-        return dataChannel
-    }
-
-    onKeyDown(event: KeyboardEvent) {
-        this.sendKeyEvent(true, event)
-    }
-    onKeyUp(event: KeyboardEvent) {
-        this.sendKeyEvent(false, event)
-    }
-
-    private sendKeyEvent(isDown: boolean, event: KeyboardEvent) {
-        this.buffer.reset()
-
-        const key = convertToKey(event)
-        if (!key) {
-            return
-        }
-        const modifiers = convertToModifiers(event)
-
-        this.sendWinVirtualKey(isDown, key, modifiers)
-    }
-
-    sendWinVirtualKey(isDown: boolean, key: number, modifiers: number) {
-        this.buffer.putU8(0)
-
-        this.buffer.putBool(isDown)
-        this.buffer.putU8(modifiers)
-        this.buffer.putU16(key)
-
-        trySendChannel(this.channel, this.buffer)
-    }
-    sendText(text: string) {
-        this.buffer.putU8(1)
-
-        this.buffer.putU8(text.length)
-        this.buffer.putUtf8(text)
-
-        trySendChannel(this.channel, this.buffer)
-    }
-}
-
-function convertToModifiers(event: KeyboardEvent): number {
+export function convertToModifiers(event: KeyboardEvent): number {
     let modifiers = 0;
 
     if (event.shiftKey) {
@@ -272,17 +187,10 @@ const VK_MAPPINGS: Record<string, number | null> = {
     // Lang1: null,
 }
 
-function convertToKey(event: KeyboardEvent): number | null {
+export function convertToKey(event: KeyboardEvent): number | null {
     let key = VK_MAPPINGS[event.code] ?? null
     if (key == null) {
         key = VK_MAPPINGS[event.key] ?? null
     }
     return key
-}
-
-function convertToKeyText(event: KeyboardEvent): string | null {
-    if (event.key == "Unidentified") {
-        return null
-    }
-    return event.key
 }
