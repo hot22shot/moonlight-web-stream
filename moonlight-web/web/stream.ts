@@ -202,8 +202,6 @@ class ViewerSidebar implements Component, Sidebar {
         const keyboard = stream.getInput().getKeyboard()
 
         if ((event.inputType == "insertText" || event.inputType == "insertFromPaste") && event.data) {
-            console.info("INPUT5")
-            console.info("DATA:", event.data)
             keyboard.sendText(event.data)
         } else if (event.inputType == "deleteContentBackward" || event.inputType == "deleteByCut") {
             // these are handled by on key down / up on mobile
