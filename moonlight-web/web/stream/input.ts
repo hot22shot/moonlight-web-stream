@@ -299,11 +299,9 @@ export class StreamInput {
     }
 
     private calcTouchPosition(touch: Touch, rect: DOMRect): [number, number] | null {
-        // TODO: fix the rect it's not 100% on point
-        // TODO: find out correct position value
-        const x = (touch.clientX - rect.left) / (rect.right - rect.left)
-        const y = (touch.clientY - rect.top) / (rect.bottom - rect.top)
-        console.info("TOUCH", x, y)
+        const x = (touch.clientX - (rect.right - rect.width)) / rect.width
+        const y = (touch.clientY - (rect.bottom - rect.height)) / rect.height
+        console.info("TOUCH", x, y, rect)
         if (x < 0 || x > 1.0 || y < 0 || y > 1.0) {
             // invalid touch
             return null
