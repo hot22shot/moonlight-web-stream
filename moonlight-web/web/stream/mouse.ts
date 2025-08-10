@@ -5,10 +5,12 @@ import { trySendChannel } from "./input.js"
 export type MouseConfig = {
     enabled: boolean
     reliable: boolean
-    mode: KeyboardInputMode
+    mode: MouseInputMode
+    touchMode: MouseTouchMode
 }
 
-export type KeyboardInputMode = "relative"
+export type MouseInputMode = "relative"
+export type MouseTouchMode = "disabled" | "movement"
 
 export class StreamMouse {
     private peer: RTCPeerConnection
@@ -31,6 +33,7 @@ export class StreamMouse {
             enabled: true,
             reliable: true,
             mode: "relative",
+            touchMode: "disabled"
         }
         this.channel = this.createChannel(this.config)
     }

@@ -59,8 +59,8 @@ class ViewerApp implements Component {
         this.videoElement.autoplay = true
 
         // Configure input
-        this.videoElement.addEventListener("keydown", this.onKeyDown.bind(this))
-        this.videoElement.addEventListener("keyup", this.onKeyUp.bind(this))
+        document.addEventListener("keydown", this.onKeyDown.bind(this))
+        document.addEventListener("keyup", this.onKeyUp.bind(this))
 
         this.videoElement.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
         this.videoElement.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
