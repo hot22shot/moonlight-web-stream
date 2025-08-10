@@ -1,6 +1,10 @@
+import { StreamMouseButton } from "../api_bindings.js"
 import { ByteBuffer } from "./buffer.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
+
+const TOUCH_AS_CLICK_MAX_DISTANCE = 30
+const TOUCH_AS_CLICK_MAX_TIME_MS = 300
 
 function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
     if (!channel || channel.readyState != "open") {
@@ -156,7 +160,14 @@ export class StreamInput {
     }
 
     // -- Touch
-    private primaryTouch: { identifier: number, x: number, y: number } | null = null
+    private touchTracker: Map<number, {
+        startTime: number
+        originX: number
+        originY: number
+        x: number
+        y: number
+    }> = new Map()
+    private primaryTouch: number | null = null
 
     private onTouchMessage(event: MessageEvent) {
         const data = event.data
@@ -164,19 +175,36 @@ export class StreamInput {
         this.touchSupported = buffer.getBool()
     }
 
+    private updateTouchTracker(touch: Touch) {
+        const oldTouch = this.touchTracker.get(touch.identifier)
+        if (!oldTouch) {
+            this.touchTracker.set(touch.identifier, {
+                startTime: Date.now(),
+                originX: touch.clientX,
+                originY: touch.clientY,
+                x: touch.clientX,
+                y: touch.clientY
+            })
+        } else {
+            oldTouch.x = touch.clientX
+            oldTouch.y = touch.clientY
+        }
+    }
+
     onTouchStart(event: TouchEvent, rect: DOMRect) {
+        for (const touch of event.changedTouches) {
+            this.updateTouchTracker(touch)
+        }
+
         if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
                 this.sendTouch(0, touch, rect)
             }
         } else if (this.config.touchMode == "mouseRelative") {
             const touch = event.changedTouches[0]
-            if (!this.primaryTouch && touch) {
-                this.primaryTouch = {
-                    identifier: touch.identifier,
-                    x: touch.clientX,
-                    y: touch.clientY
-                }
+
+            if (this.primaryTouch == null && touch) {
+                this.primaryTouch = touch.identifier
             }
         }
     }
@@ -187,18 +215,24 @@ export class StreamInput {
             }
         } else if (this.config.touchMode == "mouseRelative") {
             for (const touch of event.changedTouches) {
-                if (this.primaryTouch?.identifier != touch.identifier) {
+                if (this.primaryTouch != touch.identifier) {
+                    continue
+                }
+                const oldTouch = this.touchTracker.get(this.primaryTouch)
+                if (!oldTouch) {
                     continue
                 }
 
-                const movementX = touch.clientX - this.primaryTouch.x;
-                const movementY = touch.clientY - this.primaryTouch.y;
+                // mouse move
+                const movementX = touch.clientX - oldTouch.x;
+                const movementY = touch.clientY - oldTouch.y;
 
                 this.sendMouseMove(movementX, movementY)
-
-                this.primaryTouch.x = touch.clientX
-                this.primaryTouch.y = touch.clientY
             }
+        }
+
+        for (const touch of event.changedTouches) {
+            this.updateTouchTracker(touch)
         }
     }
 
@@ -209,10 +243,24 @@ export class StreamInput {
             }
         } else if (this.config.touchMode == "mouseRelative") {
             for (const touch of event.changedTouches) {
-                if (this.primaryTouch && this.primaryTouch.identifier == touch.identifier) {
-                    this.primaryTouch = null
+                if (this.primaryTouch != touch.identifier) {
+                    continue
+                }
+                const oldTouch = this.touchTracker.get(this.primaryTouch)
+
+                // mouse click
+                if (oldTouch
+                    && Date.now() - oldTouch.startTime <= TOUCH_AS_CLICK_MAX_TIME_MS
+                    && Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY) <= TOUCH_AS_CLICK_MAX_DISTANCE
+                ) {
+                    this.sendMouseButton(true, StreamMouseButton.LEFT)
+                    this.sendMouseButton(false, StreamMouseButton.LEFT)
                 }
             }
+        }
+
+        for (const touch of event.changedTouches) {
+            this.touchTracker.delete(touch.identifier)
         }
     }
 

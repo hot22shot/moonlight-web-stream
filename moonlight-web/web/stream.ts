@@ -67,9 +67,9 @@ class ViewerApp implements Component {
         this.videoElement.addEventListener("mousemove", this.onMouseMove.bind(this))
         this.videoElement.addEventListener("wheel", this.onWheel.bind(this))
 
-        this.videoElement.addEventListener("touchstart", this.onTouchStart.bind(this))
-        this.videoElement.addEventListener("touchend", this.onTouchEnd.bind(this))
-        this.videoElement.addEventListener("touchmove", this.onTouchMove.bind(this))
+        this.videoElement.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
+        this.videoElement.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
+        this.videoElement.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
     }
 
     private async startStream(hostId: number, appId: number) {
@@ -118,12 +118,15 @@ class ViewerApp implements Component {
 
     // Touch
     onTouchStart(event: TouchEvent) {
+        event.preventDefault()
         this.stream?.getInput().onTouchStart(event, this.videoElement.getBoundingClientRect())
     }
     onTouchEnd(event: TouchEvent) {
+        event.preventDefault()
         this.stream?.getInput().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
     onTouchMove(event: TouchEvent) {
+        event.preventDefault()
         this.stream?.getInput().onTouchMove(event, this.videoElement.getBoundingClientRect())
     }
 
