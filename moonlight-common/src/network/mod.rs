@@ -234,7 +234,7 @@ pub async fn host_info<C: RequestClient>(
     hostport: &str,
     info: Option<ClientInfo<'_>>,
 ) -> Result<HostInfo, ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<2>::new();
+    let mut query_params = LocalQueryParams::<2>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     if let Some(info) = info {
@@ -245,12 +245,12 @@ pub async fn host_info<C: RequestClient>(
         client
             .send_https_request_text_response(hostport, "serverinfo", &query_params)
             .await
-            .map_err(|err| ApiError::RequestClient(err))?
+            .map_err(ApiError::RequestClient)?
     } else {
         client
             .send_http_request_text_response(hostport, "serverinfo", &query_params)
             .await
-            .map_err(|err| ApiError::RequestClient(err))?
+            .map_err(ApiError::RequestClient)?
     };
 
     let doc = Document::parse(response.as_ref())?;
@@ -320,7 +320,7 @@ pub async fn host_pair1<C: RequestClient>(
     info: ClientInfo<'_>,
     request: ClientPairRequest1<'_>,
 ) -> Result<HostPairResponse1, ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<{ 2 + 7 }>::new();
+    let mut query_params = LocalQueryParams::<{ 2 + 7 }>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -340,7 +340,7 @@ pub async fn host_pair1<C: RequestClient>(
     let response = client
         .send_http_request_text_response(http_hostport, "pair", &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
@@ -378,7 +378,7 @@ pub async fn host_pair2<C: RequestClient>(
     info: ClientInfo<'_>,
     request: ClientPairRequest2<'_>,
 ) -> Result<HostPairResponse2, ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -392,7 +392,7 @@ pub async fn host_pair2<C: RequestClient>(
     let response = client
         .send_http_request_text_response(http_hostport, "pair", &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
@@ -424,7 +424,7 @@ pub async fn host_pair3<C: RequestClient>(
     info: ClientInfo<'_>,
     request: ClientPairRequest3<'_>,
 ) -> Result<HostPairResponse3, ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -438,7 +438,7 @@ pub async fn host_pair3<C: RequestClient>(
     let response = client
         .send_http_request_text_response(http_hostport, "pair", &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
@@ -469,7 +469,7 @@ pub async fn host_pair4<C: RequestClient>(
     info: ClientInfo<'_>,
     request: ClientPairRequest4<'_>,
 ) -> Result<HostPairResponse4, ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -486,7 +486,7 @@ pub async fn host_pair4<C: RequestClient>(
     let response = client
         .send_http_request_text_response(http_hostport, "pair", &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
@@ -510,7 +510,7 @@ pub async fn host_pair5<C: RequestClient>(
     info: ClientInfo<'_>,
     request: ClientPairRequest5<'_>,
 ) -> Result<ServerPairResponse5, ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -522,7 +522,7 @@ pub async fn host_pair5<C: RequestClient>(
     let response = client
         .send_http_request_text_response(http_hostport, "pair", &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
@@ -537,12 +537,15 @@ pub async fn host_unpair<C: RequestClient>(
     http_hostport: &str,
     info: ClientInfo<'_>,
 ) -> Result<(), ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<2>::new();
+    let mut query_params = LocalQueryParams::<2>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
 
-    client.send_http_request_text_response(http_hostport, "unpair", &query_params);
+    client
+        .send_http_request_text_response(http_hostport, "unpair", &query_params)
+        .await
+        .map_err(ApiError::RequestClient)?;
 
     Ok(())
 }
@@ -564,7 +567,7 @@ pub async fn host_app_list<C: RequestClient>(
     https_hostport: &str,
     info: ClientInfo<'_>,
 ) -> Result<ServerAppListResponse, ApiError<C::Error>> {
-    let mut query_params = LocalQueryParams::<2>::new();
+    let mut query_params = LocalQueryParams::<2>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -572,7 +575,7 @@ pub async fn host_app_list<C: RequestClient>(
     let response = client
         .send_https_request_text_response(https_hostport, "applist", &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     let doc = Document::parse(response.as_ref())?;
     let root = xml_root_node(&doc)?;
@@ -613,7 +616,7 @@ pub async fn host_app_box_art<C: RequestClient>(
     request: ClientAppBoxArtRequest,
 ) -> Result<C::Bytes, ApiError<C::Error>> {
     // Assets: https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L721
-    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::new();
+    let mut query_params = LocalQueryParams::<{ 2 + 3 }>::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -626,7 +629,7 @@ pub async fn host_app_box_art<C: RequestClient>(
     let response = client
         .send_https_request_data_response(https_address, "appasset", &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     Ok(response)
 }
@@ -704,7 +707,7 @@ async fn inner_launch_host<C: RequestClient>(
     request: ClientStreamRequest,
 ) -> Result<C::Text, ApiError<C::Error>> {
     // TODO: figure out negotiated width / height https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L765
-    let mut query_params = DynamicQueryParams::new();
+    let mut query_params = DynamicQueryParams::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
@@ -754,7 +757,7 @@ async fn inner_launch_host<C: RequestClient>(
     let response = client
         .send_https_request_text_response(https_hostport, verb, &query_params)
         .await
-        .map_err(|err| ApiError::RequestClient(err))?;
+        .map_err(ApiError::RequestClient)?;
 
     Ok(response)
 }

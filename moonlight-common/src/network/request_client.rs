@@ -24,8 +24,8 @@ pub struct LocalQueryParams<'a, const T: usize> {
     params: [QueryParam<'a>; T],
 }
 
-impl<'a, const T: usize> LocalQueryParams<'a, T> {
-    pub fn new() -> Self {
+impl<'a, const T: usize> Default for LocalQueryParams<'a, T> {
+    fn default() -> Self {
         Self {
             len: 0,
             params: std::array::from_fn(|_| empty_query_param()),
@@ -47,14 +47,9 @@ impl<'a, const T: usize> Deref for LocalQueryParams<'a, T> {
     }
 }
 
+#[derive(Default)]
 pub struct DynamicQueryParams<'a> {
     params: Vec<QueryParam<'a>>,
-}
-
-impl<'a> DynamicQueryParams<'a> {
-    pub fn new() -> Self {
-        Self { params: Vec::new() }
-    }
 }
 
 impl<'a> QueryBuilder<'a> for DynamicQueryParams<'a> {
@@ -84,24 +79,24 @@ pub trait RequestClient: Sized {
         server_certificate: &Pem,
     ) -> Result<Self, Self::Error>;
 
-    async fn send_http_request_text_response(
+    fn send_http_request_text_response(
         &mut self,
         hostport: &str,
         path: &str,
         query_params: &QueryParamsRef,
-    ) -> Result<Self::Text, Self::Error>;
+    ) -> impl std::future::Future<Output = Result<Self::Text, Self::Error>> + Send;
 
-    async fn send_https_request_text_response(
+    fn send_https_request_text_response(
         &mut self,
         hostport: &str,
         path: &str,
         query_params: &QueryParamsRef,
-    ) -> Result<Self::Text, Self::Error>;
+    ) -> impl std::future::Future<Output = Result<Self::Text, Self::Error>> + Send;
 
-    async fn send_https_request_data_response(
+    fn send_https_request_data_response(
         &mut self,
         hostport: &str,
         path: &str,
         query_params: &QueryParamsRef,
-    ) -> Result<Self::Bytes, Self::Error>;
+    ) -> impl std::future::Future<Output = Result<Self::Bytes, Self::Error>> + Send;
 }
