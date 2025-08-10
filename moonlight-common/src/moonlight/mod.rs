@@ -29,7 +29,7 @@ pub mod video;
 
 static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
 
-struct Handle {
+pub(crate) struct Handle {
     /// This is also the lock because start / stop Connection is not thread safe
     connection_exists: Mutex<bool>,
 }

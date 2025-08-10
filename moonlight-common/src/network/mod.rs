@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::Write as _, num::ParseIntError, str::FromStr, string::FromUtf8Error};
+use std::{borrow::Cow, num::ParseIntError, str::FromStr, string::FromUtf8Error};
 
 use roxmltree::{Document, Error, Node};
 use thiserror::Error;
