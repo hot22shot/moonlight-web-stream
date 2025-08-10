@@ -4,6 +4,7 @@ import { showErrorPopup } from "./component/error.js";
 import { AppInfoEvent, startStream, Stream } from "./stream/index.js"
 import { showMessage } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
+import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
 
 async function startApp() {
     const api = await getApi()
@@ -149,16 +150,23 @@ class ViewerApp implements Component {
 class ViewerSidebar implements Component, Sidebar {
     private app: ViewerApp
 
-    private test: HTMLElement = document.createElement("p")
     private keyboardButton = document.createElement("button")
     private keyboardInput = document.createElement("input")
 
     private lockMouseButton = document.createElement("button")
 
+    private mouseModeDiv = document.createElement("div")
+    private mouseModeLabel = document.createElement("label")
+    private mouseModeSelect = document.createElement("select")
+
+    private touchModeDiv = document.createElement("div")
+    private touchModeLabel = document.createElement("label")
+    private touchModeSelect = document.createElement("select")
+
+    private config: StreamInputConfig = defaultStreamInputConfig()
+
     constructor(app: ViewerApp) {
         this.app = app
-
-        this.test.innerText = "TEST"
 
         // Pop up keyboard
         // TODO: try to push stream up to account for the pop up keyboard
@@ -175,13 +183,14 @@ class ViewerSidebar implements Component, Sidebar {
         })
 
         this.keyboardInput.classList.add("hiddeninput")
+        this.keyboardInput.name = "keyboard"
         this.keyboardInput.autocomplete = "off"
         this.keyboardInput.autocapitalize = "off"
         this.keyboardInput.spellcheck = false
         if ("autocorrect" in this.keyboardInput) {
             this.keyboardInput.autocorrect = false
         }
-        this.keyboardInput.addEventListener("input", this.onInput.bind(this))
+        this.keyboardInput.addEventListener("input", this.onKeyInput.bind(this))
         this.keyboardInput.addEventListener("keydown", this.onKeyDown.bind(this))
         this.keyboardInput.addEventListener("keyup", this.onKeyUp.bind(this))
 
@@ -192,9 +201,76 @@ class ViewerSidebar implements Component, Sidebar {
 
             await app.getElement().requestPointerLock()
         })
+
+        // Select Mouse Mode
+        this.mouseModeLabel.htmlFor = "mouseMode"
+        this.mouseModeLabel.innerText = "Mouse Mode"
+
+        this.mouseModeDiv.appendChild(this.mouseModeLabel)
+
+        this.mouseModeSelect.name = "mouseMode"
+        this.mouseModeSelect.addEventListener("change", this.onMouseModeChange.bind(this))
+
+        const mouseModeRelative = document.createElement("option")
+        mouseModeRelative.value = "relative"
+        mouseModeRelative.innerText = "Relative"
+        this.mouseModeSelect.appendChild(mouseModeRelative)
+
+        const mouseModePointAndDrag = document.createElement("option")
+        mouseModePointAndDrag.value = "pointAndDrag"
+        mouseModePointAndDrag.innerText = "Point and Drag"
+        this.mouseModeSelect.appendChild(mouseModePointAndDrag)
+
+        if (this.config.mouseMode == "relative") {
+            this.mouseModeSelect.selectedIndex = 0
+        } else if (this.config.mouseMode == "pointAndDrag") {
+            this.mouseModeSelect.selectedIndex = 1
+        } else {
+            throw ""
+        }
+
+        this.mouseModeDiv.appendChild(this.mouseModeSelect)
+
+        // Select Touch Mode
+        this.touchModeLabel.htmlFor = "touchMode"
+        this.touchModeLabel.innerText = "Touch Mode"
+
+        this.touchModeDiv.appendChild(this.touchModeLabel)
+
+        this.touchModeSelect.name = "touchMode"
+        this.touchModeSelect.value = this.config.touchMode
+        this.touchModeSelect.addEventListener("change", this.onTouchModeChange.bind(this))
+
+        const touchModeTouch = document.createElement("option")
+        touchModeTouch.value = "touch"
+        touchModeTouch.innerText = "Touch"
+        this.touchModeSelect.appendChild(touchModeTouch)
+
+        const touchModeRelative = document.createElement("option")
+        touchModeRelative.value = "mouseRelative"
+        touchModeRelative.innerText = "Relative"
+        this.touchModeSelect.appendChild(touchModeRelative)
+
+        const touchModePointAndDrag = document.createElement("option")
+        touchModePointAndDrag.value = "pointAndDrag"
+        touchModePointAndDrag.innerText = "Point and Drag"
+        this.touchModeSelect.appendChild(touchModePointAndDrag)
+
+        if (this.config.touchMode == "touch") {
+            this.touchModeSelect.selectedIndex = 0
+        } else if (this.config.touchMode == "mouseRelative") {
+            this.touchModeSelect.selectedIndex = 1
+        } else if (this.config.touchMode == "pointAndDrag") {
+            this.touchModeSelect.selectedIndex = 2
+        } else {
+            throw ""
+        }
+
+        this.touchModeDiv.appendChild(this.touchModeSelect)
     }
 
-    private onInput(event: Event) {
+    // -- Keyboard
+    private onKeyInput(event: Event) {
         if (!(event instanceof InputEvent)) {
             return
         }
@@ -232,6 +308,18 @@ class ViewerSidebar implements Component, Sidebar {
         stream.getInput().onKeyUp(event)
     }
 
+    // -- Mouse Mode
+    private onMouseModeChange(event: Event) {
+        this.config.mouseMode = this.mouseModeSelect.value as "relative" | "pointAndDrag"
+        this.app.getStream()?.getInput().setConfig(this.config)
+    }
+
+    // -- Touch Mode
+    private onTouchModeChange(event: Event) {
+        this.config.touchMode = this.touchModeSelect.value as "touch" | "mouseRelative" | "pointAndDrag"
+        this.app.getStream()?.getInput().setConfig(this.config)
+    }
+
     extended(): void {
 
     }
@@ -240,15 +328,17 @@ class ViewerSidebar implements Component, Sidebar {
     }
 
     mount(parent: HTMLElement): void {
-        parent.appendChild(this.test)
         parent.appendChild(this.keyboardButton)
         parent.appendChild(this.keyboardInput)
         parent.appendChild(this.lockMouseButton)
+        parent.appendChild(this.mouseModeDiv)
+        parent.appendChild(this.touchModeDiv)
     }
     unmount(parent: HTMLElement): void {
-        parent.removeChild(this.test)
         parent.removeChild(this.keyboardButton)
         parent.removeChild(this.keyboardInput)
         parent.removeChild(this.lockMouseButton)
+        parent.removeChild(this.mouseModeDiv)
+        parent.removeChild(this.touchModeDiv)
     }
 }

@@ -25,10 +25,12 @@ export type StreamInputConfig = {
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
 }
 
-export const DEFAULT_STREAM_INPUT_CONFIG: StreamInputConfig = {
-    keyboardOrdered: true,
-    mouseMode: "pointAndDrag",
-    touchMode: "pointAndDrag"
+export function defaultStreamInputConfig(): StreamInputConfig {
+    return {
+        keyboardOrdered: true,
+        mouseMode: "pointAndDrag",
+        touchMode: "pointAndDrag"
+    }
 }
 
 export class StreamInput {
@@ -48,16 +50,18 @@ export class StreamInput {
     constructor(peer: RTCPeerConnection, config?: StreamInputConfig) {
         this.peer = peer
 
-        this.config = config ?? DEFAULT_STREAM_INPUT_CONFIG
+        this.config = defaultStreamInputConfig()
+        if (config) {
+            this.setConfig(config)
+        }
 
-        this.createChannels(this.config)
+        this.createChannels()
     }
 
-    private createChannels(config: StreamInputConfig) {
-        this.config = config
-
+    private createChannels() {
+        // TODO: recreate channels when required
         this.keyboard = this.peer.createDataChannel("keyboard", {
-            ordered: config.keyboardOrdered
+            ordered: this.config.keyboardOrdered
         })
 
         this.mouse = this.peer.createDataChannel("mouse", {
@@ -68,8 +72,7 @@ export class StreamInput {
     }
 
     setConfig(config: StreamInputConfig) {
-        this.config = config
-        this.createChannels(config)
+        Object.assign(this.config, config)
 
         // Touch
         this.primaryTouch = null
@@ -320,7 +323,7 @@ export class StreamInput {
     private calcNormalizedPosition(clientX: number, clientY: number, rect: DOMRect): [number, number] | null {
         const x = (clientX - rect.left) / rect.width
         const y = (clientY - rect.top) / rect.height
-        console.info("TOUCH", x, y, rect)
+
         if (x < 0 || x > 1.0 || y < 0 || y > 1.0) {
             // invalid touch
             return null
