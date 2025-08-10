@@ -6,7 +6,7 @@ use pem::Pem;
 use uuid::Uuid;
 
 use crate::{
-    Error, PairPin, PairStatus, ServerState, ServerVersion,
+    Error, MoonlightError, PairPin, PairStatus, ServerState, ServerVersion,
     moonlight::crypto::MoonlightCrypto,
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, DEFAULT_UNIQUE_ID, HostInfo,
@@ -19,7 +19,7 @@ use crate::{
 #[derive(Debug, Error)]
 pub enum HostError<RequestError> {
     #[error("{0}")]
-    Moonlight(#[from] Error),
+    Moonlight(#[from] MoonlightError),
     #[error("this action requires pairing")]
     NotPaired,
     #[error("{0}")]
@@ -27,9 +27,6 @@ pub enum HostError<RequestError> {
     #[error("{0}")]
     Pair(#[from] PairError<RequestError>),
 }
-
-#[cfg(feature = "backend_reqwest")]
-pub type SimpleMoonlightHost = MoonlightHost<reqwest::Client>;
 
 pub struct MoonlightHost<Client> {
     client_unique_id: String,
@@ -42,7 +39,7 @@ pub struct MoonlightHost<Client> {
 }
 
 #[derive(Clone)]
-pub struct Paired {
+struct Paired {
     client_private_key: Pem,
     client_certificate: Pem,
     server_certificate: Pem,

@@ -1,4 +1,4 @@
-use moonlight_common::network::ServerState;
+use moonlight_common::ServerState;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
@@ -30,9 +30,9 @@ pub enum PairStatus {
     Paired,
 }
 
-impl From<moonlight_common::network::PairStatus> for PairStatus {
-    fn from(value: moonlight_common::network::PairStatus) -> Self {
-        use moonlight_common::network::PairStatus as MlPairStatus;
+impl From<moonlight_common::PairStatus> for PairStatus {
+    fn from(value: moonlight_common::PairStatus) -> Self {
+        use moonlight_common::PairStatus as MlPairStatus;
         match value {
             MlPairStatus::NotPaired => Self::NotPaired,
             MlPairStatus::Paired => Self::Paired,
@@ -715,17 +715,17 @@ ts_consts!(
 ts_consts!(
     pub StreamKeyModifiers(export_bindings_key_modifiers: EXPORT_PATH):
 
-    pub const MASK_SHIFT: i8 = moonlight_common::stream::KeyModifiers::SHIFT.bits();
-    pub const MASK_CTRL: i8 = moonlight_common::stream::KeyModifiers::CTRL.bits();
-    pub const MASK_ALT: i8 = moonlight_common::stream::KeyModifiers::ALT.bits();
-    pub const MASK_META: i8 = moonlight_common::stream::KeyModifiers::META.bits();
+    pub const MASK_SHIFT: i8 = moonlight_common::moonlight::stream::KeyModifiers::SHIFT.bits();
+    pub const MASK_CTRL: i8 = moonlight_common::moonlight::stream::KeyModifiers::CTRL.bits();
+    pub const MASK_ALT: i8 = moonlight_common::moonlight::stream::KeyModifiers::ALT.bits();
+    pub const MASK_META: i8 = moonlight_common::moonlight::stream::KeyModifiers::META.bits();
 );
 
 // Mouse Buttons
 ts_consts!(
     pub StreamMouseButton(export_bindings_mouse_buttons: EXPORT_PATH):
 
-    pub const LEFT: i32 = moonlight_common::stream::MouseButton::Left as i32;
-    pub const MIDDLE: i32 = moonlight_common::stream::MouseButton::Middle as i32;
-    pub const RIGHT: i32 = moonlight_common::stream::MouseButton::Right as i32;
+    pub const LEFT: i32 = moonlight_common::moonlight::stream::MouseButton::Left as i32;
+    pub const MIDDLE: i32 = moonlight_common::moonlight::stream::MouseButton::Middle as i32;
+    pub const RIGHT: i32 = moonlight_common::moonlight::stream::MouseButton::Right as i32;
 );

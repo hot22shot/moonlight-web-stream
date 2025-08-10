@@ -1,7 +1,7 @@
 use std::{pin::Pin, sync::Arc};
 
 use log::{info, warn};
-use moonlight_common::{
+use moonlight_common::moonlight::{
     input::TouchEventType,
     stream::{KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction},
 };

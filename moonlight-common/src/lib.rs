@@ -12,7 +12,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum Error {
+pub enum MoonlightError {
     #[error("the host doesn't support this feature")]
     NotSupportedOnHost,
     #[error("an error happened whilst sending an event")]

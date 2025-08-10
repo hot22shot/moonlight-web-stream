@@ -10,7 +10,7 @@ use actix_web::{
     web::{Data, scope},
 };
 use log::LevelFilter;
-use moonlight_common::MoonlightInstance;
+use moonlight_common::moonlight::MoonlightInstance;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 

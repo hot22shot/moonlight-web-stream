@@ -3,10 +3,10 @@ use std::{collections::HashMap, path::Path};
 use actix_web::web::{Bytes, Data};
 use log::warn;
 use moonlight_common::{
-    MoonlightInstance,
-    crypto::MoonlightCrypto,
-    high::{MaybePaired, MoonlightHost},
-    pair::high::ClientAuth,
+    PairStatus,
+    moonlight::{MoonlightInstance, crypto::MoonlightCrypto},
+    network::reqwest::ReqwestMoonlightHost,
+    pair::ClientAuth,
 };
 use serde::{Deserialize, Serialize};
 use slab::Slab;
@@ -39,8 +39,7 @@ pub struct PairedHost {
 }
 
 pub struct RuntimeApiHost {
-    pub moonlight: MoonlightHost<MaybePaired>,
-    pub pair_info: Option<PairedHost>,
+    pub moonlight: ReqwestMoonlightHost,
     pub app_images_cache: HashMap<u32, Bytes>,
 }
 
@@ -56,12 +55,18 @@ impl RuntimeApiData {
         // TODO: do this concurrently
         let mut hosts = Slab::new();
         for host_data in data.hosts {
-            let host = MoonlightHost::new(host_data.address, host_data.http_port, None);
-            let host = try_pair_state(host, host_data.paired.as_ref()).await;
+            let mut host =
+                match ReqwestMoonlightHost::new(host_data.address, host_data.http_port, None) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        warn!("[Load]: failed to load host: {err:?}");
+                        continue;
+                    }
+                };
+            try_pair_state(&mut host, host_data.paired.as_ref()).await;
 
             hosts.insert(Mutex::new(RuntimeApiHost {
                 moonlight: host,
-                pair_info: host_data.paired,
                 app_images_cache: Default::default(),
             }));
         }
@@ -99,25 +104,33 @@ impl RuntimeApiData {
         for (_, host) in &*hosts {
             let host = host.lock().await;
 
+            let paired = Self::extract_paired(&host.moonlight);
+
             output.hosts.push(Host {
                 address: host.moonlight.address().to_string(),
                 http_port: host.moonlight.http_port(),
-                paired: host.pair_info.clone(),
+                paired,
             });
         }
 
         output
     }
+    fn extract_paired(host: &ReqwestMoonlightHost) -> Option<PairedHost> {
+        let client_private_key = host.client_private_key()?;
+        let client_certificate = host.client_certificate()?;
+        let server_certificate = host.server_certificate()?;
+
+        Some(PairedHost {
+            client_private_key: client_private_key.to_string(),
+            client_certificate: client_certificate.to_string(),
+            server_certificate: server_certificate.to_string(),
+        })
+    }
 }
 
-async fn try_pair_state<Pair>(
-    host: MoonlightHost<Pair>,
-    paired: Option<&PairedHost>,
-) -> MoonlightHost<MaybePaired> {
-    let host = host.into_unpaired();
-
+async fn try_pair_state(host: &mut ReqwestMoonlightHost, paired: Option<&PairedHost>) {
     let Some(paired) = paired else {
-        return host.maybe_paired();
+        return;
     };
 
     let Ok(client_private_key) = pem::parse(&paired.client_private_key) else {
@@ -125,42 +138,49 @@ async fn try_pair_state<Pair>(
             "failed to parse client private key as pem. Client: {}",
             host.address()
         );
-        return host.maybe_paired();
+        return;
     };
     let Ok(client_certificate) = pem::parse(&paired.client_certificate) else {
         warn!(
             "failed to parse client certificate as pem. Client: {}",
             host.address()
         );
-        return host.maybe_paired();
+        return;
     };
     let Ok(server_certificate) = pem::parse(&paired.server_certificate) else {
         warn!(
             "failed to parse server certificate as pem. Client: {}",
             host.address()
         );
-        return host.maybe_paired();
+        return;
     };
 
-    match host
-        .pair_state(Some((
+    let status = match host
+        .set_pairing_info(
             &ClientAuth {
                 key_pair: client_private_key,
                 certificate: client_certificate,
             },
             &server_certificate,
-        )))
+        )
         .await
     {
-        Ok(host) => host,
-        Err((host, err)) => {
+        Ok(value) => value,
+        Err(err) => {
             warn!(
                 "failed to pair client even though it has pair data: Client: {}, Error: {:?}",
                 host.address(),
                 err
             );
-            host.maybe_paired()
+            return;
         }
+    };
+
+    if status != PairStatus::Paired {
+        warn!(
+            "failed to pair client even though it has pair data: Client: {}",
+            host.address(),
+        );
     }
 }
 

@@ -7,9 +7,13 @@ use actix_web::{
 use futures::future::join_all;
 use log::{info, warn};
 use moonlight_common::{
-    high::{MaybePaired, MoonlightHost},
-    network::{ApiError, PairStatus},
-    pair::high::generate_new_client,
+    PairStatus,
+    high::HostError,
+    network::{
+        ApiError,
+        reqwest::{ReqwestError, ReqwestMoonlightHost},
+    },
+    pair::generate_new_client,
 };
 use std::io::Write as _;
 use tokio::sync::Mutex;
@@ -21,7 +25,7 @@ use crate::{
         GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1,
         PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost,
     },
-    data::{PairedHost, RuntimeApiData, RuntimeApiHost},
+    data::{RuntimeApiData, RuntimeApiHost},
 };
 
 mod stream;
@@ -92,22 +96,26 @@ async fn put_host(
     Json(query): Json<PutHostRequest>,
 ) -> Either<Json<PutHostResponse>, HttpResponse> {
     // Create and Try to connect to host
-    let mut host = MoonlightHost::new(
+    let mut host = match ReqwestMoonlightHost::new(
         query.address,
         query
             .http_port
             .unwrap_or(config.moonlight_default_http_port),
         None,
-    )
-    .into_unpaired()
-    .maybe_paired();
+    ) {
+        Ok(value) => value,
+        Err(err) => {
+            warn!("[Api] failed to create new moonlight host: {err:?}");
+            return Either::Right(HttpResponse::InternalServerError().finish());
+        }
+    };
 
     match host.host_name().await {
         Ok(_) => {}
-        Err(ApiError::Reqwest(err)) if err.is_timeout() => {
+        Err(HostError::Api(ApiError::RequestClient(err))) if err.is_timeout() => {
             return Either::Right(HttpResponse::NotFound().finish());
         }
-        Err(ApiError::Reqwest(err)) if err.is_connect() => {
+        Err(HostError::Api(ApiError::RequestClient(err))) if err.is_connect() => {
             return Either::Right(HttpResponse::NotFound().finish());
         }
         Err(_) => return Either::Right(HttpResponse::BadRequest().finish()),
@@ -119,7 +127,6 @@ async fn put_host(
     let host_id = hosts.vacant_key();
     hosts.insert(Mutex::new(RuntimeApiHost {
         moonlight: host,
-        pair_info: None,
         app_images_cache: Default::default(),
     }));
 
@@ -199,7 +206,7 @@ async fn pair_host(
         let mut host = host.lock().await;
 
         let Ok(client_auth) = generate_new_client() else {
-            warn!("failed to generate new client to host authentication data");
+            warn!("[Api]: failed to generate new client to host authentication data");
 
             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
                 unreachable!()
@@ -229,7 +236,7 @@ async fn pair_host(
             )
             .await
         {
-            info!("failed to pair host {}: {:?}", host.moonlight.address(), err);
+            info!("[Api]: failed to pair host {}: {:?}", host.moonlight.address(), err);
 
             let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
                 unreachable!()
@@ -240,12 +247,6 @@ async fn pair_host(
 
             return;
         };
-
-        host.pair_info = Some(PairedHost {
-            client_private_key: client_auth.key_pair.to_string(),
-            client_certificate: client_auth.certificate.to_string(),
-            server_certificate: host.moonlight.server_certificate().expect("server certificate after pairing").to_string(),
-        });
 
         let detailed_host = match into_detailed_host(host_id as usize, &mut host.moonlight).await {
             Err(err) => {
@@ -290,17 +291,16 @@ async fn get_apps(
     let mut host = host.lock().await;
 
     let app_list = match host.moonlight.app_list().await {
-        None => todo!(), // NO auth
-        Some(Err(err)) => {
-            warn!("failed to get app list for host {host_id}: {err:?}");
+        Err(err) => {
+            warn!("[Api]: failed to get app list for host {host_id}: {err:?}");
 
             return Either::Right(HttpResponse::InternalServerError().finish());
         }
-        Some(Ok(value)) => value,
+        Ok(value) => value,
     };
 
     Either::Left(Json(GetAppsResponse {
-        apps: app_list.into_iter().map(|x| x.into()).collect(),
+        apps: app_list.into_iter().map(|x| x.to_owned().into()).collect(),
     }))
 }
 
@@ -324,16 +324,12 @@ async fn get_app_image(
 
     let image = host.moonlight.request_app_image(app_id).await;
     match image {
-        None => {
-            // Not paired
-            todo!()
-        }
-        Some(Err(err)) => {
-            warn!("failed to get host {host_id} app image {app_id}: {err:?}");
+        Err(err) => {
+            warn!("[Api]: failed to get host {host_id} app image {app_id}: {err:?}");
 
             Either::Right(HttpResponse::InternalServerError().finish())
         }
-        Some(Ok(image)) => {
+        Ok(image) => {
             host.app_images_cache.insert(app_id, image.clone());
 
             Either::Left(image)
@@ -359,8 +355,8 @@ pub fn api_service() -> impl HttpServiceFactory {
 
 async fn into_undetailed_host(
     id: usize,
-    host: &mut MoonlightHost<MaybePaired>,
-) -> Result<UndetailedHost, ApiError> {
+    host: &mut ReqwestMoonlightHost,
+) -> Result<UndetailedHost, HostError<ReqwestError>> {
     Ok(UndetailedHost {
         host_id: id as u32,
         name: host.host_name().await?.to_string(),
@@ -370,8 +366,8 @@ async fn into_undetailed_host(
 }
 async fn into_detailed_host(
     id: usize,
-    host: &mut MoonlightHost<MaybePaired>,
-) -> Result<DetailedHost, ApiError> {
+    host: &mut ReqwestMoonlightHost,
+) -> Result<DetailedHost, HostError<ReqwestError>> {
     Ok(DetailedHost {
         host_id: id as u32,
         name: host.host_name().await?.to_string(),
@@ -388,6 +384,6 @@ async fn into_detailed_host(
         local_ip: host.local_ip().await?.to_string(),
         current_game: host.current_game().await?,
         max_luma_pixels_hevc: host.max_luma_pixels_hevc().await?,
-        server_codec_mode_support: host.server_codec_mode_support_raw().await?.bits(),
+        server_codec_mode_support: host.server_codec_mode_support_raw().await?,
     })
 }

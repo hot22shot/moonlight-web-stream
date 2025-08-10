@@ -1,18 +1,18 @@
 use log::info;
-use moonlight_common::connection::ConnectionListener;
+use moonlight_common::moonlight::connection::{ConnectionListener, ConnectionStatus, Stage};
 
 pub struct StreamConnectionListener {}
 
 impl ConnectionListener for StreamConnectionListener {
-    fn stage_starting(&mut self, stage: moonlight_common::connection::Stage) {
+    fn stage_starting(&mut self, stage: Stage) {
         todo!()
     }
 
-    fn stage_complete(&mut self, stage: moonlight_common::connection::Stage) {
+    fn stage_complete(&mut self, stage: Stage) {
         todo!()
     }
 
-    fn stage_failed(&mut self, stage: moonlight_common::connection::Stage, error_code: i32) {
+    fn stage_failed(&mut self, stage: Stage, error_code: i32) {
         todo!()
     }
 
@@ -28,7 +28,7 @@ impl ConnectionListener for StreamConnectionListener {
         info!("[Stream Moonlight]: {message}");
     }
 
-    fn connection_status_update(&mut self, status: moonlight_common::connection::ConnectionStatus) {
+    fn connection_status_update(&mut self, status: ConnectionStatus) {
         todo!()
     }
 

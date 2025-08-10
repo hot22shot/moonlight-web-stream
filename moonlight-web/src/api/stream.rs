@@ -1,9 +1,6 @@
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use actix_web::{
@@ -13,18 +10,19 @@ use actix_web::{
 use actix_ws::{Closed, Message, MessageStream, Session};
 use log::{debug, info, warn};
 use moonlight_common::{
-    debug::DebugHandler,
-    high::StreamError,
-    stream::{ColorRange, Colorspace, MoonlightStream},
-    video::SupportedVideoFormats,
+    MoonlightError,
+    high::HostError,
+    moonlight::{
+        debug::DebugHandler,
+        stream::{ColorRange, Colorspace, MoonlightStream},
+        video::SupportedVideoFormats,
+    },
 };
 use tokio::{
-    io::Take,
     runtime::Handle,
     spawn,
-    sync::{Mutex, Notify, RwLock},
-    task::{spawn_blocking, spawn_local},
-    time::sleep,
+    sync::{Notify, RwLock},
+    task::spawn_blocking,
 };
 use webrtc::{
     api::{
@@ -38,7 +36,6 @@ use webrtc::{
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
         ice_connection_state::RTCIceConnectionState,
-        ice_server::RTCIceServer,
     },
     interceptor::registry::Registry,
     peer_connection::{
@@ -46,9 +43,8 @@ use webrtc::{
         configuration::RTCConfiguration,
         peer_connection_state::RTCPeerConnectionState,
         sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
-        signaling_state::RTCSignalingState,
     },
-    rtp_transceiver::{rtp_codec::RTCRtpCodecCapability, rtp_sender::RTCRtpSender},
+    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
@@ -505,16 +501,7 @@ impl StreamConnection {
         };
         let mut host = host.lock().await;
 
-        let Some(result) = host.moonlight.app_list().await else {
-            let _ = Self::send_ws_message(
-                &mut self.ws_sender.clone(),
-                StreamServerMessage::AppNotFound,
-            )
-            .await;
-
-            todo!()
-        };
-        let app_list = result?;
+        let app_list = host.moonlight.app_list().await?;
 
         let Some(app) = app_list
             .into_iter()
@@ -530,6 +517,7 @@ impl StreamConnection {
         };
 
         // Send App Update
+        let app = app.to_owned();
         spawn({
             let mut sender = self.ws_sender.clone();
             async move {
@@ -565,13 +553,13 @@ impl StreamConnection {
             )
             .await
         {
-            Some(Ok(value)) => value,
-            Some(Err(err)) => {
+            Ok(value) => value,
+            Err(err) => {
                 warn!("[Stream]: failed to start moonlight stream: {err:?}");
 
                 #[allow(clippy::single_match)]
                 match err {
-                    StreamError::Moonlight(moonlight_common::Error::ConnectionAlreadyExists) => {
+                    HostError::Moonlight(MoonlightError::ConnectionAlreadyExists) => {
                         let _ = Self::send_ws_message(
                             &mut self.ws_sender.clone(),
                             StreamServerMessage::AlreadyStreaming,
@@ -583,7 +571,6 @@ impl StreamConnection {
 
                 return Err(err.into());
             }
-            None => todo!(),
         };
 
         let mut stream_guard = self.stream.write().await;

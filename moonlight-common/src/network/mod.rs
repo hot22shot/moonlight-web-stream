@@ -47,7 +47,7 @@ pub mod pair;
 pub mod request_client;
 
 #[cfg(feature = "backend_reqwest")]
-mod reqwest;
+pub mod reqwest;
 
 pub const DEFAULT_UNIQUE_ID: &str = "0123456789ABCDEF";
 

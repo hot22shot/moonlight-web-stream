@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use moonlight_common::{
     PairStatus,
-    high::SimpleMoonlightHost,
     moonlight::{
         MoonlightInstance,
         debug::DebugHandler,
         stream::{ColorRange, Colorspace},
     },
+    network::reqwest::ReqwestMoonlightHost,
     pair::{ClientAuth, generate_new_client},
 };
 
@@ -40,7 +40,7 @@ async fn main() {
 
     // Create a host
     // - client_info = None -> Generates a client
-    let mut host = SimpleMoonlightHost::new(host_ip.to_string(), host_http_port, None).unwrap();
+    let mut host = ReqwestMoonlightHost::new(host_ip.to_string(), host_http_port, None).unwrap();
 
     // Pair to the Host using Generated / Loaded Client Private Key, Certificate and Server Certificate
     if let Ok(true) = try_exists(key_file).await

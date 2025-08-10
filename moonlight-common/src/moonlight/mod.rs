@@ -9,7 +9,7 @@ use std::{
 use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
 
 use crate::{
-    Error,
+    MoonlightError,
     moonlight::{
         audio::AudioDecoder,
         connection::ConnectionListener,
@@ -61,8 +61,8 @@ pub struct MoonlightInstance {
 
 impl MoonlightInstance {
     // TODO: don't error but use global handle
-    pub fn global() -> Result<Self, Error> {
-        let handle = Handle::aquire().ok_or(Error::InstanceAlreadyExists)?;
+    pub fn global() -> Result<Self, MoonlightError> {
+        let handle = Handle::aquire().ok_or(MoonlightError::InstanceAlreadyExists)?;
 
         Ok(Self {
             handle: Arc::new(handle),
@@ -86,7 +86,7 @@ impl MoonlightInstance {
         connection_listener: impl ConnectionListener + Send + 'static,
         video_decoder: impl VideoDecoder + Send + 'static,
         audio_decoder: impl AudioDecoder + Send + 'static,
-    ) -> Result<MoonlightStream, Error> {
+    ) -> Result<MoonlightStream, MoonlightError> {
         MoonlightStream::start(
             self.handle.clone(),
             server_info,

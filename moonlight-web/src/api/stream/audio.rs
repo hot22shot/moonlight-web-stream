@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use actix_web::web::Bytes;
 use log::warn;
-use moonlight_common::{
+use moonlight_common::moonlight::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
     stream::Capabilities,
 };
@@ -11,7 +11,7 @@ use webrtc::{
     media::Sample, track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::api::stream::{StreamConnection, StreamStages};
+use crate::api::stream::StreamStages;
 
 pub struct OpusTrackSampleAudioDecoder {
     runtime: Handle,

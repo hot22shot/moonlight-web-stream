@@ -5,7 +5,16 @@ use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
 use url::Url;
 
-use crate::network::request_client::{QueryParamsRef, RequestClient};
+use crate::network::{
+    ApiError,
+    request_client::{QueryParamsRef, RequestClient},
+};
+
+#[cfg(feature = "high")]
+pub type ReqwestMoonlightHost = crate::high::MoonlightHost<reqwest::Client>;
+
+pub type ReqwestError = reqwest::Error;
+pub type ReqwestApiError = ApiError<ReqwestError>;
 
 fn default_builder() -> ClientBuilder {
     ClientBuilder::new()
@@ -18,7 +27,7 @@ fn build_url(
     hostport: &str,
     path: &str,
     query_params: &QueryParamsRef<'_>,
-) -> Result<Url, reqwest::Error> {
+) -> Result<Url, ReqwestError> {
     let protocol = if use_https { "https" } else { "http" };
 
     let authority = format!("{protocol}://{hostport}/{path}");
@@ -29,7 +38,7 @@ fn build_url(
 }
 
 impl RequestClient for Client {
-    type Error = reqwest::Error;
+    type Error = ReqwestError;
 
     type Text = String;
     type Bytes = Bytes;

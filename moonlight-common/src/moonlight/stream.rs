@@ -24,7 +24,7 @@ use moonlight_common_sys::limelight::{
 use num_derive::FromPrimitive;
 
 use crate::{
-    Error, ServerVersion,
+    MoonlightError, ServerVersion,
     moonlight::{
         Handle,
         audio::{self, AudioDecoder},
@@ -213,14 +213,14 @@ impl MoonlightStream {
         connection_listener: impl ConnectionListener + Send + 'static,
         video_decoder: impl VideoDecoder + Send + 'static,
         audio_decoder: impl AudioDecoder + Send + 'static,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, MoonlightError> {
         unsafe {
             let mut connection_guard = handle
                 .connection_exists
                 .lock()
                 .expect("connection lock poisoned");
             if *connection_guard {
-                return Err(Error::ConnectionAlreadyExists);
+                return Err(MoonlightError::ConnectionAlreadyExists);
             }
 
             let address = CString::from_str(server_info.address)?;
@@ -287,7 +287,7 @@ impl MoonlightStream {
             );
 
             if result != 0 {
-                return Err(Error::ConnectionFailed);
+                return Err(MoonlightError::ConnectionFailed);
             }
 
             *connection_guard = true;
@@ -304,14 +304,14 @@ impl MoonlightStream {
         HostFeatures::from_bits(features).expect("valid host feature flags")
     }
 
-    pub fn estimated_rtt_info(&self) -> Result<EstimatedRttInfo, Error> {
+    pub fn estimated_rtt_info(&self) -> Result<EstimatedRttInfo, MoonlightError> {
         // TODO: look if we're connected on fail
         unsafe {
             let mut rtt = 0u32;
             let mut rtt_variance = 0u32;
 
             if !LiGetEstimatedRttInfo(&mut rtt as *mut _, &mut rtt_variance as *mut _) {
-                return Err(Error::ENetRequired);
+                return Err(MoonlightError::ENetRequired);
             }
 
             Ok(EstimatedRttInfo {
@@ -321,16 +321,16 @@ impl MoonlightStream {
         }
     }
 
-    fn send_event_error(error: i32) -> Option<Error> {
+    fn send_event_error(error: i32) -> Option<MoonlightError> {
         match error {
             0 => None,
-            LI_ERR_UNSUPPORTED => Some(Error::NotSupportedOnHost),
-            _ => Some(Error::EventSendError(error)),
+            LI_ERR_UNSUPPORTED => Some(MoonlightError::NotSupportedOnHost),
+            _ => Some(MoonlightError::EventSendError(error)),
         }
     }
 
     /// This function queues a relative mouse move event to be sent to the remote server.
-    pub fn send_mouse_move(&self, delta_x: i16, delta_y: i16) -> Result<(), Error> {
+    pub fn send_mouse_move(&self, delta_x: i16, delta_y: i16) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendMouseMoveEvent(delta_x, delta_y)) {
                 return Err(err);
@@ -361,7 +361,7 @@ impl MoonlightStream {
         absolute_y: i16,
         reference_width: i16,
         reference_height: i16,
-    ) -> Result<(), Error> {
+    ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendMousePositionEvent(
                 absolute_x,
@@ -398,7 +398,7 @@ impl MoonlightStream {
         delta_y: i16,
         reference_width: i16,
         reference_height: i16,
-    ) -> Result<(), Error> {
+    ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendMouseMoveAsMousePositionEvent(
                 delta_x,
@@ -458,7 +458,7 @@ impl MoonlightStream {
         contact_area_minor: f32,
         rotation: Option<u16>,
         event_type: TouchEventType,
-    ) -> Result<(), Error> {
+    ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendTouchEvent(
                 event_type as u32 as u8,
@@ -481,7 +481,7 @@ impl MoonlightStream {
         &self,
         action: MouseButtonAction,
         button: MouseButton,
-    ) -> Result<(), Error> {
+    ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) =
                 Self::send_event_error(LiSendMouseButtonEvent(action as i8, button as i32))
@@ -500,7 +500,7 @@ impl MoonlightStream {
         code: i16,
         action: KeyAction,
         modifiers: KeyModifiers,
-    ) -> Result<(), Error> {
+    ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) =
                 Self::send_event_error(LiSendKeyboardEvent(code, action as i8, modifiers.bits()))
@@ -520,7 +520,7 @@ impl MoonlightStream {
         key_action: KeyAction,
         modifiers: KeyModifiers,
         flags: KeyFlags,
-    ) -> Result<(), Error> {
+    ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendKeyboardEvent2(
                 key_code,
@@ -535,7 +535,7 @@ impl MoonlightStream {
     }
 
     /// This function queues an UTF-8 encoded text to be sent to the remote server.
-    pub fn send_text(&self, text: &str) -> Result<(), Error> {
+    pub fn send_text(&self, text: &str) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendUtf8TextEvent(
                 text.as_ptr() as *const i8,
@@ -550,7 +550,7 @@ impl MoonlightStream {
     // This function queues a vertical scroll event to the remote server.
     // The number of "clicks" is multiplied by WHEEL_DELTA (120) before
     // being sent to the PC.
-    pub fn send_scroll(&self, scroll_clicks: i8) -> Result<(), Error> {
+    pub fn send_scroll(&self, scroll_clicks: i8) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendScrollEvent(scroll_clicks)) {
                 return Err(err);
@@ -563,7 +563,7 @@ impl MoonlightStream {
     // Unlike LiSendScrollEvent(), this function can send wheel events
     // smaller than 120 units for devices that support "high resolution"
     // scrolling (Apple Trackpads, Microsoft Precision Touchpads, etc.).
-    pub fn send_high_res_scroll(&self, scroll_amount: i16) -> Result<(), Error> {
+    pub fn send_high_res_scroll(&self, scroll_amount: i16) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendHighResScrollEvent(scroll_amount)) {
                 return Err(err);
@@ -575,7 +575,7 @@ impl MoonlightStream {
     // These functions send horizontal scroll events to the host which are
     // analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
     // This is a Sunshine protocol extension.
-    pub fn send_horizontal_scroll(&self, scroll_clicks: i8) -> Result<(), Error> {
+    pub fn send_horizontal_scroll(&self, scroll_clicks: i8) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendHScrollEvent(scroll_clicks)) {
                 return Err(err);
@@ -587,7 +587,10 @@ impl MoonlightStream {
     // These functions send horizontal scroll events to the host which are
     // analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
     // This is a Sunshine protocol extension.
-    pub fn send_high_res_horizontal_scroll(&self, scroll_amount: i16) -> Result<(), Error> {
+    pub fn send_high_res_horizontal_scroll(
+        &self,
+        scroll_amount: i16,
+    ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendHighResHScrollEvent(scroll_amount)) {
                 return Err(err);
