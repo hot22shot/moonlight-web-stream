@@ -10,10 +10,11 @@ use moonlight_common_sys::limelight::{
     COLOR_RANGE_LIMITED, COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL,
     ENCFLG_AUDIO, ENCFLG_NONE, ENCFLG_VIDEO, KEY_ACTION_DOWN, KEY_ACTION_UP, LI_ERR_UNSUPPORTED,
     LI_FF_CONTROLLER_TOUCH_EVENTS, LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo,
-    LiGetHostFeatureFlags, LiSendKeyboardEvent, LiSendKeyboardEvent2, LiSendMouseButtonEvent,
+    LiGetHostFeatureFlags, LiSendHScrollEvent, LiSendHighResHScrollEvent, LiSendHighResScrollEvent,
+    LiSendKeyboardEvent, LiSendKeyboardEvent2, LiSendMouseButtonEvent,
     LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
-    LiSendTouchEvent, LiSendUtf8TextEvent, LiStartConnection, LiStopConnection, MODIFIER_ALT,
-    MODIFIER_CTRL, MODIFIER_META, MODIFIER_SHIFT, PAUDIO_RENDERER_CALLBACKS,
+    LiSendScrollEvent, LiSendTouchEvent, LiSendUtf8TextEvent, LiStartConnection, LiStopConnection,
+    MODIFIER_ALT, MODIFIER_CTRL, MODIFIER_META, MODIFIER_SHIFT, PAUDIO_RENDERER_CALLBACKS,
     PCONNECTION_LISTENER_CALLBACKS, PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION,
     PSTREAM_CONFIGURATION, SCM_AV1_HIGH8_444, SCM_AV1_HIGH10_444, SCM_AV1_MAIN8, SCM_AV1_MAIN10,
     SCM_H264, SCM_H264_HIGH8_444, SCM_HEVC, SCM_HEVC_MAIN10, SCM_HEVC_REXT8_444,
@@ -538,6 +539,55 @@ impl MoonlightStream {
                 text.as_ptr() as *const i8,
                 text.len() as u32,
             )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    // This function queues a vertical scroll event to the remote server.
+    // The number of "clicks" is multiplied by WHEEL_DELTA (120) before
+    // being sent to the PC.
+    pub fn send_scroll(&self, scroll_clicks: i8) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendScrollEvent(scroll_clicks)) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    // This function queues a vertical scroll event to the remote server.
+    // Unlike LiSendScrollEvent(), this function can send wheel events
+    // smaller than 120 units for devices that support "high resolution"
+    // scrolling (Apple Trackpads, Microsoft Precision Touchpads, etc.).
+    pub fn send_high_res_scroll(&self, scroll_amount: i16) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendHighResScrollEvent(scroll_amount)) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    // These functions send horizontal scroll events to the host which are
+    // analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
+    // This is a Sunshine protocol extension.
+    pub fn send_horizontal_scroll(&self, scroll_clicks: i8) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendHScrollEvent(scroll_clicks)) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    // These functions send horizontal scroll events to the host which are
+    // analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
+    // This is a Sunshine protocol extension.
+    pub fn send_high_res_horizontal_scroll(&self, scroll_amount: i16) -> Result<(), Error> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendHighResHScrollEvent(scroll_amount)) {
                 return Err(err);
             }
         }

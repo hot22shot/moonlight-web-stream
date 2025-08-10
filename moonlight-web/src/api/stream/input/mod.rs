@@ -135,6 +135,13 @@ impl StreamInput {
             };
 
             let _ = stream.send_mouse_button(action, button);
+        } else if ty == 2 {
+            // Mouse Wheel
+            let delta_x = buffer.get_i16();
+            let delta_y = buffer.get_i16();
+
+            let _ = stream.send_high_res_scroll(delta_x);
+            let _ = stream.send_high_res_horizontal_scroll(delta_y);
         }
     }
 

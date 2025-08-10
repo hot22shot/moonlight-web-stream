@@ -65,6 +65,7 @@ class ViewerApp implements Component {
         this.videoElement.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
         this.videoElement.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
         this.videoElement.addEventListener("mousemove", this.onMouseMove.bind(this))
+        this.videoElement.addEventListener("wheel", this.onWheel.bind(this))
 
         this.videoElement.addEventListener("touchstart", this.onTouchStart.bind(this))
         this.videoElement.addEventListener("touchend", this.onTouchEnd.bind(this))
@@ -109,6 +110,10 @@ class ViewerApp implements Component {
     private onMouseMove(event: MouseEvent) {
         event.preventDefault()
         this.stream?.getInput().getMouse().onMouseMove(event)
+    }
+    private onWheel(event: WheelEvent) {
+        event.preventDefault()
+        this.stream?.getInput().getMouse().onWheel(event)
     }
 
     // Touch

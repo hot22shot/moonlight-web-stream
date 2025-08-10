@@ -64,6 +64,10 @@ export class StreamMouse {
         this.sendMouseMove(event)
     }
 
+    onWheel(event: WheelEvent) {
+        this.sendMouseWheel(event)
+    }
+
     private sendMouseMove(event: MouseEvent) {
         this.buffer.reset()
 
@@ -84,6 +88,15 @@ export class StreamMouse {
         this.buffer.putU8(1) // TODO: remove this for two channels
         this.buffer.putBool(isDown)
         this.buffer.putU8(button)
+
+        trySendChannel(this.channel, this.buffer)
+    }
+    private sendMouseWheel(wheel: WheelEvent) {
+        this.buffer.reset()
+
+        this.buffer.putU8(2) // TODO: remove this for two channels
+        this.buffer.putI16(wheel.deltaX)
+        this.buffer.putI16(wheel.deltaY)
 
         trySendChannel(this.channel, this.buffer)
     }
