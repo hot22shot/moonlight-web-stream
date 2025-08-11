@@ -267,8 +267,9 @@ where
         device_name: String,
         pin: PairPin,
     ) -> Result<(), HostError<C::Error>> {
+        // TODO: pairing requires unlimited timeout
+
         let http_address = self.http_address();
-        // TODO: convert error
         let server_version = self.version().await?;
 
         let client_info = ClientInfo {

@@ -16,6 +16,9 @@ moonlight-common-sys = { path = "./moonlight-common-sys", features = [
     "vendored",
 ] }
 
+openssl = "0.10.73"
+openssl-sys = "0.9.109"
+
 [workspace.lints.clippy]
 too_many_arguments = "allow"
 unwrap_used = "warn"

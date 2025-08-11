@@ -19,7 +19,7 @@ pub type ReqwestApiError = ApiError<ReqwestError>;
 fn default_builder() -> ClientBuilder {
     ClientBuilder::new()
         .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(7))
+        .timeout(Duration::from_secs(20))
 }
 
 fn build_url(

@@ -1,4 +1,4 @@
-use std::string::FromUtf8Error;
+// TODO: Make it possible to specify this in the bindings
 
 pub struct ByteBuffer<T> {
     position: usize,

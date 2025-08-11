@@ -14,7 +14,10 @@ use moonlight_common::{
     high::HostError,
     moonlight::{
         debug::DebugHandler,
-        stream::{ColorRange, Colorspace, MoonlightStream},
+        stream::{
+            ActiveGamepads, ColorRange, Colorspace, ControllerButtons, ControllerCapabilities,
+            ControllerType, MoonlightStream,
+        },
         video::SupportedVideoFormats,
     },
 };

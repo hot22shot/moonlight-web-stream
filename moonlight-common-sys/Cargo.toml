@@ -5,7 +5,7 @@ edition = "2024"
 license = { workspace = true }
 
 [dependencies]
-openssl-sys = "0.9.109"
+openssl-sys = { workspace = true }
 
 [features]
 default = ["vendored", "openssl-sys/vendored"]

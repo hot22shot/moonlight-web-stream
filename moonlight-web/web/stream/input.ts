@@ -1,10 +1,13 @@
 import { StreamMouseButton } from "../api_bindings.js"
 import { ByteBuffer } from "./buffer.js"
+import { convertStandardButton as convertStandardControllerButton } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
 const TOUCH_AS_CLICK_MAX_TIME_MS = 300
+
+const CONTROLLER_SEND_INTERVAL_MS = 50
 
 function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
     if (!channel || channel.readyState != "open") {
@@ -44,6 +47,7 @@ export class StreamInput {
     private keyboard: RTCDataChannel | null = null
     private mouse: RTCDataChannel | null = null
     private touch: RTCDataChannel | null = null
+    private controllers: RTCDataChannel | null = null
 
     private touchSupported: boolean | null = null
 
@@ -69,6 +73,10 @@ export class StreamInput {
 
         this.touch = this.peer.createDataChannel("touch")
         this.touch.onmessage = this.onTouchMessage.bind(this)
+
+        this.controllers = this.peer.createDataChannel("controllers", {
+            maxRetransmits: 0
+        })
     }
 
     setConfig(config: StreamInputConfig) {
@@ -356,6 +364,95 @@ export class StreamInput {
 
     isTouchSupported(): boolean | null {
         return this.touchSupported
+    }
+
+    // -- Controller
+    private gamepadIntervalId: number | null = null
+    private gamepads: Array<Gamepad | null> = []
+
+    onGamepadConnect(event: GamepadEvent) {
+        console.debug(event)
+
+        let inserted = false
+        for (let i = 0; i < this.gamepads.length; i++) {
+            if (!this.gamepads[i]) {
+                this.gamepads[i] = event.gamepad
+                inserted = true
+                break
+            }
+        }
+        if (!inserted) {
+            this.gamepads.push(event.gamepad)
+        }
+
+        if (event.gamepad.mapping != "standard") {
+            console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${event.gamepad.mapping}`)
+        }
+
+        if (this.gamepadIntervalId == null) {
+            this.gamepadIntervalId = setInterval(this.sendAllGamepads.bind(this), CONTROLLER_SEND_INTERVAL_MS)
+        }
+    }
+    onGamepadDisconnect(event: GamepadEvent) {
+        console.debug(event)
+
+        const index = this.gamepads.indexOf(event.gamepad)
+        this.gamepads[index] = null
+
+        let containsElement = false
+        for (const gamepad in this.gamepads) {
+            if (gamepad) {
+                containsElement = true
+                break
+            }
+        }
+        if (!containsElement && this.gamepadIntervalId != null) {
+            clearInterval(this.gamepadIntervalId)
+        }
+    }
+    private sendAllGamepads() {
+        for (let gamepadId = 0; gamepadId < this.gamepads.length; gamepadId++) {
+            const gamepad = this.gamepads[gamepadId]
+            if (!gamepad) {
+                continue
+            }
+
+            if (gamepad.mapping != "standard") {
+                continue
+            }
+
+            let buttonFlags = 0
+            for (let buttonId = 0; buttonId < gamepad.buttons.length; buttonId++) {
+                const button = gamepad.buttons[buttonId]
+
+                const buttonFlag = convertStandardControllerButton(buttonId)
+                if (button.pressed && buttonFlag != null) {
+                    buttonFlags |= buttonFlag
+                }
+            }
+
+            const leftStickX = gamepad.axes[0]
+            const leftStickY = gamepad.axes[1]
+            const rightStickX = gamepad.axes[2]
+            const rightStickY = gamepad.axes[3]
+
+            this.sendController(gamepadId, buttonFlags, leftStickX, leftStickY, rightStickX, rightStickY)
+        }
+    }
+
+    // Note: all stick values must be in range -1..1
+    sendController(id: number, buttonFlags: number, leftStickX: number, leftStickY: number, rightStickX: number, rightStickY: number) {
+        this.buffer.reset()
+
+        this.buffer.putU8(0)
+        this.buffer.putU8(id)
+        this.buffer.putU32(buttonFlags)
+        this.buffer.putI16(leftStickX)
+        this.buffer.putI16(leftStickY)
+        this.buffer.putI16(rightStickX)
+        this.buffer.putI16(rightStickY)
+
+        trySendChannel(this.controllers, this.buffer)
     }
 
 }

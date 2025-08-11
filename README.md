@@ -24,7 +24,5 @@ Go into moonlight-web directory `cd moonlight-web`
 - Make sure [moonlight-common-sys](#moonlight-common-sys) compiled correctly
 - Build the frontend with `npm run build-web`
 
-TODO: ssl / tls info https://actix.rs/docs/server/
-
 ## Interesting
 - WebRTC Signaling: https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling

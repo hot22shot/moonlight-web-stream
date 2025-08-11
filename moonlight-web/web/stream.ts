@@ -71,6 +71,9 @@ class ViewerApp implements Component {
         this.videoElement.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
         this.videoElement.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
         this.videoElement.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
+
+        window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
+        window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
     }
 
     private async startStream(hostId: number, appId: number) {
@@ -129,6 +132,16 @@ class ViewerApp implements Component {
     onTouchMove(event: TouchEvent) {
         event.preventDefault()
         this.stream?.getInput().onTouchMove(event, this.videoElement.getBoundingClientRect())
+    }
+
+    // Gamepad
+    onGamepadConnect(event: GamepadEvent) {
+        console.log(event)
+        this.stream?.getInput().onGamepadConnect(event)
+    }
+    onGamepadDisconnect(event: GamepadEvent) {
+        console.log(event)
+        this.stream?.getInput().onGamepadDisconnect(event)
     }
 
     mount(parent: HTMLElement): void {

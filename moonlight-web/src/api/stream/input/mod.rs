@@ -3,7 +3,10 @@ use std::{pin::Pin, sync::Arc};
 use log::{info, warn};
 use moonlight_common::moonlight::{
     input::TouchEventType,
-    stream::{KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction},
+    stream::{
+        ControllerButtons, KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton,
+        MouseButtonAction,
+    },
 };
 use num_traits::FromPrimitive;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
@@ -47,6 +50,12 @@ impl StreamInput {
                 data_channel.on_message(Self::create_handler(
                     connection.clone(),
                     Self::on_keyboard_message,
+                ));
+            }
+            "controllers" => {
+                data_channel.on_message(Self::create_handler(
+                    connection.clone(),
+                    Self::on_controller_message,
                 ));
             }
             _ => return false,
@@ -183,6 +192,36 @@ impl StreamInput {
             };
 
             let _ = stream.send_text(key);
+        }
+    }
+
+    fn on_controller_message(stream: &MoonlightStream, message: DataChannelMessage) {
+        let mut buffer = ByteBuffer::new(message.data);
+
+        let ty = buffer.get_u8();
+        if ty == 0 {
+            // TODO: id?
+
+            let id = buffer.get_u8();
+            let Some(buttons) = ControllerButtons::from_bits(buffer.get_u32()) else {
+                warn!("[Stream Input]: received invalid controller buttons");
+                return;
+            };
+            let left_stick_x = buffer.get_i16();
+            let left_stick_y = buffer.get_i16();
+            let right_stick_x = buffer.get_i16();
+            let right_stick_y = buffer.get_i16();
+
+            // TODO: triggers?
+            let _ = stream.send_controller(
+                buttons,
+                0,
+                0,
+                left_stick_x,
+                left_stick_y,
+                right_stick_x,
+                right_stick_y,
+            );
         }
     }
 }

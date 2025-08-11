@@ -2,24 +2,34 @@ use std::{ffi::CString, mem::transmute, ptr::null_mut, str::FromStr, sync::Arc, 
 
 use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
-    _SERVER_INFORMATION, _STREAM_CONFIGURATION, BUTTON_ACTION_PRESS, BUTTON_ACTION_RELEASE,
-    BUTTON_LEFT, BUTTON_MIDDLE, BUTTON_RIGHT, BUTTON_X1, BUTTON_X2, CAPABILITY_DIRECT_SUBMIT,
-    CAPABILITY_PULL_RENDERER, CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1,
-    CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC, CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC,
-    CAPABILITY_SLOW_OPUS_DECODER, CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION, COLOR_RANGE_FULL,
-    COLOR_RANGE_LIMITED, COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, ENCFLG_ALL,
-    ENCFLG_AUDIO, ENCFLG_NONE, ENCFLG_VIDEO, KEY_ACTION_DOWN, KEY_ACTION_UP, LI_ERR_UNSUPPORTED,
-    LI_FF_CONTROLLER_TOUCH_EVENTS, LI_FF_PEN_TOUCH_EVENTS, LI_ROT_UNKNOWN, LiGetEstimatedRttInfo,
-    LiGetHostFeatureFlags, LiSendHScrollEvent, LiSendHighResHScrollEvent, LiSendHighResScrollEvent,
-    LiSendKeyboardEvent, LiSendKeyboardEvent2, LiSendMouseButtonEvent,
-    LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent, LiSendMousePositionEvent,
-    LiSendScrollEvent, LiSendTouchEvent, LiSendUtf8TextEvent, LiStartConnection, LiStopConnection,
-    MODIFIER_ALT, MODIFIER_CTRL, MODIFIER_META, MODIFIER_SHIFT, PAUDIO_RENDERER_CALLBACKS,
-    PCONNECTION_LISTENER_CALLBACKS, PDECODER_RENDERER_CALLBACKS, PSERVER_INFORMATION,
-    PSTREAM_CONFIGURATION, SCM_AV1_HIGH8_444, SCM_AV1_HIGH10_444, SCM_AV1_MAIN8, SCM_AV1_MAIN10,
+    _SERVER_INFORMATION, _STREAM_CONFIGURATION, A_FLAG, B_FLAG, BACK_FLAG, BUTTON_ACTION_PRESS,
+    BUTTON_ACTION_RELEASE, BUTTON_LEFT, BUTTON_MIDDLE, BUTTON_RIGHT, BUTTON_X1, BUTTON_X2,
+    CAPABILITY_DIRECT_SUBMIT, CAPABILITY_PULL_RENDERER,
+    CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1, CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC,
+    CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC, CAPABILITY_SLOW_OPUS_DECODER,
+    CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION, COLOR_RANGE_FULL, COLOR_RANGE_LIMITED,
+    COLORSPACE_REC_601, COLORSPACE_REC_709, COLORSPACE_REC_2020, DOWN_FLAG, ENCFLG_ALL,
+    ENCFLG_AUDIO, ENCFLG_NONE, ENCFLG_VIDEO, KEY_ACTION_DOWN, KEY_ACTION_UP, LB_FLAG, LEFT_FLAG,
+    LI_BATTERY_PERCENTAGE_UNKNOWN, LI_BATTERY_STATE_CHARGING, LI_BATTERY_STATE_DISCHARGING,
+    LI_BATTERY_STATE_FULL, LI_BATTERY_STATE_NOT_CHARGING, LI_BATTERY_STATE_NOT_PRESENT,
+    LI_BATTERY_STATE_UNKNOWN, LI_CCAP_ACCEL, LI_CCAP_ANALOG_TRIGGERS, LI_CCAP_BATTERY_STATE,
+    LI_CCAP_GYRO, LI_CCAP_RGB_LED, LI_CCAP_RUMBLE, LI_CCAP_TOUCHPAD, LI_CCAP_TRIGGER_RUMBLE,
+    LI_CTYPE_NINTENDO, LI_CTYPE_PS, LI_CTYPE_UNKNOWN, LI_CTYPE_XBOX, LI_ERR_UNSUPPORTED,
+    LI_FF_CONTROLLER_TOUCH_EVENTS, LI_FF_PEN_TOUCH_EVENTS, LI_MOTION_TYPE_ACCEL,
+    LI_MOTION_TYPE_GYRO, LI_ROT_UNKNOWN, LS_CLK_FLAG, LiGetEstimatedRttInfo, LiGetHostFeatureFlags,
+    LiSendControllerArrivalEvent, LiSendControllerBatteryEvent, LiSendControllerEvent,
+    LiSendControllerMotionEvent, LiSendControllerTouchEvent, LiSendHScrollEvent,
+    LiSendHighResHScrollEvent, LiSendHighResScrollEvent, LiSendKeyboardEvent, LiSendKeyboardEvent2,
+    LiSendMouseButtonEvent, LiSendMouseMoveAsMousePositionEvent, LiSendMouseMoveEvent,
+    LiSendMousePositionEvent, LiSendMultiControllerEvent, LiSendScrollEvent, LiSendTouchEvent,
+    LiSendUtf8TextEvent, LiStartConnection, LiStopConnection, MISC_FLAG, MODIFIER_ALT,
+    MODIFIER_CTRL, MODIFIER_META, MODIFIER_SHIFT, PADDLE1_FLAG, PADDLE2_FLAG, PADDLE3_FLAG,
+    PADDLE4_FLAG, PAUDIO_RENDERER_CALLBACKS, PCONNECTION_LISTENER_CALLBACKS,
+    PDECODER_RENDERER_CALLBACKS, PLAY_FLAG, PSERVER_INFORMATION, PSTREAM_CONFIGURATION, RB_FLAG,
+    RIGHT_FLAG, RS_CLK_FLAG, SCM_AV1_HIGH8_444, SCM_AV1_HIGH10_444, SCM_AV1_MAIN8, SCM_AV1_MAIN10,
     SCM_H264, SCM_H264_HIGH8_444, SCM_HEVC, SCM_HEVC_MAIN10, SCM_HEVC_REXT8_444,
-    SCM_HEVC_REXT10_444, SS_KBE_FLAG_NON_NORMALIZED, STREAM_CFG_AUTO, STREAM_CFG_LOCAL,
-    STREAM_CFG_REMOTE,
+    SCM_HEVC_REXT10_444, SPECIAL_FLAG, SS_KBE_FLAG_NON_NORMALIZED, STREAM_CFG_AUTO,
+    STREAM_CFG_LOCAL, STREAM_CFG_REMOTE, TOUCHPAD_FLAG, UP_FLAG, X_FLAG, Y_FLAG,
 };
 use num_derive::FromPrimitive;
 
@@ -205,6 +215,150 @@ pub enum MouseButton {
     X2 = BUTTON_X2 as i32,
 }
 
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct ControllerButtons: u32 {
+        const A        = A_FLAG;
+        const B        = B_FLAG;
+        const X        = X_FLAG;
+        const Y        = Y_FLAG;
+        const UP       = UP_FLAG;
+        const DOWN     = DOWN_FLAG;
+        const LEFT     = LEFT_FLAG;
+        const RIGHT    = RIGHT_FLAG;
+        const LB       = LB_FLAG;
+        const RB       = RB_FLAG;
+        const PLAY     = PLAY_FLAG;
+        const BACK     = BACK_FLAG;
+        const LS_CLK   = LS_CLK_FLAG;
+        const RS_CLK   = RS_CLK_FLAG;
+        const SPECIAL  = SPECIAL_FLAG;
+
+        /// Extended buttons (Sunshine only)
+        const PADDLE1  = PADDLE1_FLAG;
+        /// Extended buttons (Sunshine only)
+        const PADDLE2  = PADDLE2_FLAG;
+        /// Extended buttons (Sunshine only)
+        const PADDLE3  = PADDLE3_FLAG;
+        /// Extended buttons (Sunshine only)
+        const PADDLE4  = PADDLE4_FLAG;
+        /// Extended buttons (Sunshine only)
+        /// Touchpad buttons on Sony controllers
+        const TOUCHPAD = TOUCHPAD_FLAG;
+        /// Extended buttons (Sunshine only)
+        /// Share/Mic/Capture/Mute buttons on various controllers
+        const MISC     = MISC_FLAG;
+    }
+}
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct ActiveGamepads: u16 {
+        const GAMEPAD_1  = 0b0000_0000_0000_0001;
+        const GAMEPAD_2  = 0b0000_0000_0000_0010;
+        const GAMEPAD_3  = 0b0000_0000_0000_0100;
+        const GAMEPAD_4  = 0b0000_0000_0000_1000;
+
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_5  = 0b0000_0000_0001_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_6  = 0b0000_0000_0010_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_7  = 0b0000_0000_0100_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_8  = 0b0000_0000_1000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_9  = 0b0000_0001_0000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_10 = 0b0000_0010_0000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_11 = 0b0000_0100_0000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_12 = 0b0000_1000_0000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_13 = 0b0001_0000_0000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_14 = 0b0010_0000_0000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_15 = 0b0100_0000_0000_0000;
+        /// Extended gamepads (Sunshine only)
+        const GAMEPAD_16 = 0b1000_0000_0000_0000;
+    }
+}
+
+bitflags! {
+    /// Represents the type of controller.
+    ///
+    /// This is used to inform the host of what type of controller has arrived,
+    /// which can help the host decide how to emulate it and what features to expose.
+    #[derive(Debug, Clone, Copy)]
+    pub struct ControllerType: u8 {
+        /// Unknown controller type.
+        const UNKNOWN  = LI_CTYPE_UNKNOWN as u8;
+        /// Microsoft Xbox-compatible controller.
+        const XBOX     = LI_CTYPE_XBOX as u8;
+        /// Sony PlayStation-compatible controller.
+        const PS       = LI_CTYPE_PS as u8;
+        /// Nintendo-compatible controller (e.g., Switch Pro Controller).
+        const NINTENDO = LI_CTYPE_NINTENDO as u8;
+    }
+}
+
+bitflags! {
+    /// Represents the capabilities of a controller.
+    ///
+    /// This is typically sent along with controller arrival information so the host
+    /// knows which features the controller supports.
+    #[derive(Debug, Clone, Copy)]
+    pub struct ControllerCapabilities: u16 {
+        /// Reports values between `0x00` and `0xFF` for trigger axes.
+        const ANALOG_TRIGGERS  = LI_CCAP_ANALOG_TRIGGERS as u16;
+        /// Can rumble in response to `ConnListenerRumble()` callback.
+        const RUMBLE           = LI_CCAP_RUMBLE as u16;
+        /// Can rumble triggers in response to `ConnListenerRumbleTriggers()` callback.
+        const TRIGGER_RUMBLE   = LI_CCAP_TRIGGER_RUMBLE as u16;
+        /// Reports touchpad events via `LiSendControllerTouchEvent()`.
+        const TOUCHPAD         = LI_CCAP_TOUCHPAD as u16;
+        /// Can report accelerometer events via `LiSendControllerMotionEvent()`.
+        const ACCEL            = LI_CCAP_ACCEL as u16;
+        /// Can report gyroscope events via `LiSendControllerMotionEvent()`.
+        const GYRO             = LI_CCAP_GYRO as u16;
+        /// Reports battery state via `LiSendControllerBatteryEvent()`.
+        const BATTERY_STATE    = LI_CCAP_BATTERY_STATE as u16;
+        /// Can set RGB LED state via `ConnListenerSetControllerLED()`.
+        const RGB_LED          = LI_CCAP_RGB_LED as u16;
+    }
+}
+
+bitflags! {
+    /// Motion sensor types for [`LiSendControllerMotionEvent`].
+    #[derive(Debug, Clone, Copy)]
+    pub struct MotionType: u8 {
+        /// Accelerometer data in m/s² (inclusive of gravitational acceleration).
+        const ACCEL = LI_MOTION_TYPE_ACCEL as u8;
+        /// Gyroscope data in degrees per second.
+        const GYRO  = LI_MOTION_TYPE_GYRO as u8;
+    }
+}
+
+bitflags! {
+    /// Battery states for [`LiSendControllerBatteryEvent`].
+    #[derive(Debug, Clone, Copy)]
+    pub struct BatteryState: u8 {
+        /// Unknown battery state.
+        const UNKNOWN       = LI_BATTERY_STATE_UNKNOWN as u8;
+        /// No battery present.
+        const NOT_PRESENT   = LI_BATTERY_STATE_NOT_PRESENT as u8;
+        /// Battery is discharging.
+        const DISCHARGING   = LI_BATTERY_STATE_DISCHARGING as u8;
+        /// Battery is charging.
+        const CHARGING      = LI_BATTERY_STATE_CHARGING as u8;
+        /// Connected to power but not charging.
+        const NOT_CHARGING  = LI_BATTERY_STATE_NOT_CHARGING as u8;
+        /// Battery is full.
+        const FULL          = LI_BATTERY_STATE_FULL as u8;
+    }
+}
+
 impl MoonlightStream {
     pub(crate) fn start(
         handle: Arc<Handle>,
@@ -325,6 +479,8 @@ impl MoonlightStream {
             _ => Some(MoonlightError::EventSendError(error)),
         }
     }
+
+    // TODO: unify some function types. E.g: controllers
 
     /// This function queues a relative mouse move event to be sent to the remote server.
     pub fn send_mouse_move(&self, delta_x: i16, delta_y: i16) -> Result<(), MoonlightError> {
@@ -590,6 +746,193 @@ impl MoonlightStream {
     ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendHighResHScrollEvent(scroll_amount)) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function queues a controller event to be sent to the remote server. It will
+    /// be seen by the computer as the first controller.
+    pub fn send_controller(
+        &self,
+        buttons: ControllerButtons,
+        left_trigger: u8,
+        right_trigger: u8,
+        left_stick_x: i16,
+        left_stick_y: i16,
+        right_stick_x: i16,
+        right_stick_y: i16,
+    ) -> Result<(), MoonlightError> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendControllerEvent(
+                buttons.bits() as i32,
+                left_trigger,
+                right_trigger,
+                left_stick_x,
+                left_stick_y,
+                right_stick_x,
+                right_stick_y,
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function queues a controller event to be sent to the remote server. The controllerNumber
+    /// parameter is a zero-based index of which controller this event corresponds to. The largest legal
+    /// controller number is 3 for GFE hosts and 15 for Sunshine hosts. On generation 3 servers (GFE 2.1.x),
+    /// these will be sent as controller 0 regardless of the controllerNumber parameter.
+    ///
+    /// The activeGamepadMask parameter is a bitfield with bits set for each controller present.
+    /// On GFE, activeGamepadMask is limited to a maximum of 4 bits (0xF).
+    /// On Sunshine, it is limited to 16 bits (0xFFFF).
+    ///
+    /// To indicate arrival of a gamepad, you may send an empty event with the controller number
+    /// set to the new controller and the bit of the new controller set in the active gamepad mask.
+    /// However, you should prefer LiSendControllerArrivalEvent() instead of this function for
+    /// that purpose, because it allows the host to make a better choice of emulated controller.
+    ///
+    /// To indicate removal of a gamepad, send an empty event with the controller number set to the
+    /// removed controller and the bit of the removed controller cleared in the active gamepad mask.
+    pub fn send_multi_controller(
+        &self,
+        controller_number: i16,
+        active_gamepads: ActiveGamepads,
+        buttons: ControllerButtons,
+        left_trigger: u8,
+        right_trigger: u8,
+        left_stick_x: i16,
+        left_stick_y: i16,
+        right_stick_x: i16,
+        right_stick_y: i16,
+    ) -> Result<(), MoonlightError> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendMultiControllerEvent(
+                controller_number,
+                active_gamepads.bits() as i16,
+                buttons.bits() as i32,
+                left_trigger,
+                right_trigger,
+                left_stick_x,
+                left_stick_y,
+                right_stick_x,
+                right_stick_y,
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function provides a method of informing the host of the available buttons and capabilities
+    /// on a new controller. This is the recommended approach for indicating the arrival of a new controller.
+    ///
+    /// This can allow the host to make better decisions about what type of controller to emulate and what
+    /// capabilities to advertise to the OS on the virtual controller.
+    ///
+    /// If controller arrival events are unsupported by the host, this will fall back to indicating
+    /// arrival via LiSendMultiControllerEvent().
+    pub fn send_controller_arrival(
+        &self,
+        controller_number: u8,
+        active_gamepads: ActiveGamepads,
+        ty: ControllerType,
+        supported_button_flags: ControllerButtons,
+        capabilities: ControllerCapabilities,
+    ) -> Result<(), MoonlightError> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendControllerArrivalEvent(
+                controller_number,
+                active_gamepads.bits(),
+                ty.bits(),
+                supported_button_flags.bits(),
+                capabilities.bits(),
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function is similar to LiSendTouchEvent(), but the touch events are associated with a
+    /// touchpad device present on a game controller instead of a touchscreen.
+    ///
+    /// If unsupported by the host, this will return LI_ERR_UNSUPPORTED and the caller should consider
+    /// using this touch input to simulate trackpad input.
+    ///
+    /// To determine if LiSendControllerTouchEvent() is supported without calling it, call LiGetHostFeatureFlags()
+    /// and check for the LI_FF_CONTROLLER_TOUCH_EVENTS flag.
+    pub fn send_controller_touch_event(
+        &self,
+        controller_number: u8,
+        event_type: u8,
+        pointer_id: u32,
+        x: f32,
+        y: f32,
+        pressure: f32,
+    ) -> Result<(), MoonlightError> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendControllerTouchEvent(
+                controller_number,
+                event_type,
+                pointer_id,
+                x,
+                y,
+                pressure,
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function allows clients to send controller-associated motion events to a supported host.
+    ///
+    /// For power and performance reasons, motion sensors should not be enabled unless the host has
+    /// explicitly asked for motion event reports via ConnListenerSetMotionEventState().
+    ///
+    /// LI_MOTION_TYPE_ACCEL should report data in m/s^2 (inclusive of gravitational acceleration).
+    /// LI_MOTION_TYPE_GYRO should report data in deg/s.
+    ///
+    /// The x/y/z axis assignments follow SDL's convention documented here:
+    /// https://github.com/libsdl-org/SDL/blob/96720f335002bef62115e39327940df454d78f6c/include/SDL3/SDL_sensor.h#L80-L124
+    pub fn send_controller_motion_event(
+        &self,
+        controller_number: u8,
+        motion_type: MotionType,
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Result<(), MoonlightError> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendControllerMotionEvent(
+                controller_number,
+                motion_type.bits(),
+                x,
+                y,
+                z,
+            )) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// Sends the battery state of a controller to the remote host.
+    pub fn send_controller_battery_event(
+        &self,
+        controller_number: u8,
+        battery_state: BatteryState,
+        battery_percentage: Option<u8>,
+    ) -> Result<(), MoonlightError> {
+        unsafe {
+            if let Some(err) = Self::send_event_error(LiSendControllerBatteryEvent(
+                controller_number,
+                battery_state.bits(),
+                battery_percentage.unwrap_or(LI_BATTERY_PERCENTAGE_UNKNOWN as u8),
+            )) {
                 return Err(err);
             }
         }

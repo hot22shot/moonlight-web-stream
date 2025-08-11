@@ -1,3 +1,4 @@
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{
     io::ErrorKind,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -9,7 +10,7 @@ use actix_web::{
     App, HttpServer, middleware,
     web::{Data, scope},
 };
-use log::LevelFilter;
+use log::{LevelFilter, info};
 use moonlight_common::moonlight::MoonlightInstance;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
@@ -55,22 +56,38 @@ async fn main() -> std::io::Result<()> {
     )
     .await;
 
-    // Get socket address
+    let server = HttpServer::new({
+        let config = config.clone();
 
-    HttpServer::new(move || {
-        App::new()
-            .app_data(config.clone())
-            .service(
-                scope("/api")
-                    .app_data(data.clone())
-                    .wrap(middleware::from_fn(auth_middleware))
-                    .service(api_service()),
-            )
-            .service(web_service())
-    })
-    .bind(bind_address)?
-    .run()
-    .await
+        move || {
+            App::new()
+                .app_data(config.clone())
+                .service(
+                    scope("/api")
+                        .app_data(data.clone())
+                        .wrap(middleware::from_fn(auth_middleware))
+                        .service(api_service()),
+                )
+                .service(web_service())
+        }
+    });
+
+    if let Some(certificate) = config.certificate.as_ref() {
+        info!("[Server]: Running Https Server with ssl tls");
+
+        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
+            .expect("failed to create ssl tls acceptor");
+        builder
+            .set_private_key_file(&certificate.private_key_pem, SslFiletype::PEM)
+            .expect("failed to set private key");
+        builder
+            .set_certificate_chain_file(&certificate.certificate_pem)
+            .expect("failed to set certificate");
+
+        server.bind_openssl(bind_address, builder)?.run().await
+    } else {
+        server.bind(bind_address)?.run().await
+    }
 }
 
 async fn read_or_default<T>(path: impl AsRef<Path>) -> T
@@ -110,6 +127,13 @@ pub struct Config {
     moonlight_default_http_port: u16,
     #[serde(default = "default_pair_device_name")]
     pair_device_name: String,
+    certificate: Option<ConfigSsl>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigSsl {
+    private_key_pem: String,
+    certificate_pem: String,
 }
 
 impl Default for Config {
@@ -120,6 +144,7 @@ impl Default for Config {
             bind_address: default_bind_address(),
             moonlight_default_http_port: moonlight_default_http_port_default(),
             pair_device_name: default_pair_device_name(),
+            certificate: None,
         }
     }
 }

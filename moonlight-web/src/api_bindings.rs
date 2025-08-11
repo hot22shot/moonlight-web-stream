@@ -729,3 +729,30 @@ ts_consts!(
     pub const MIDDLE: i32 = moonlight_common::moonlight::stream::MouseButton::Middle as i32;
     pub const RIGHT: i32 = moonlight_common::moonlight::stream::MouseButton::Right as i32;
 );
+
+// Controller Buttons
+ts_consts!(
+    pub StreamControllerButton(export_bindings_controller_buttons: EXPORT_PATH):
+
+    pub const BUTTON_A: u32       = moonlight_common::moonlight::stream::ControllerButtons::A.bits();
+    pub const BUTTON_B: u32       = moonlight_common::moonlight::stream::ControllerButtons::B.bits();
+    pub const BUTTON_X: u32       = moonlight_common::moonlight::stream::ControllerButtons::X.bits();
+    pub const BUTTON_Y: u32       = moonlight_common::moonlight::stream::ControllerButtons::Y.bits();
+    pub const BUTTON_UP: u32      = moonlight_common::moonlight::stream::ControllerButtons::UP.bits();
+    pub const BUTTON_DOWN: u32    = moonlight_common::moonlight::stream::ControllerButtons::DOWN.bits();
+    pub const BUTTON_LEFT: u32    = moonlight_common::moonlight::stream::ControllerButtons::LEFT.bits();
+    pub const BUTTON_RIGHT: u32   = moonlight_common::moonlight::stream::ControllerButtons::RIGHT.bits();
+    pub const BUTTON_LB: u32      = moonlight_common::moonlight::stream::ControllerButtons::LB.bits();
+    pub const BUTTON_RB: u32      = moonlight_common::moonlight::stream::ControllerButtons::RB.bits();
+    pub const BUTTON_PLAY: u32    = moonlight_common::moonlight::stream::ControllerButtons::PLAY.bits();
+    pub const BUTTON_BACK: u32    = moonlight_common::moonlight::stream::ControllerButtons::BACK.bits();
+    pub const BUTTON_LS_CLK: u32  = moonlight_common::moonlight::stream::ControllerButtons::LS_CLK.bits();
+    pub const BUTTON_RS_CLK: u32  = moonlight_common::moonlight::stream::ControllerButtons::RS_CLK.bits();
+    pub const BUTTON_SPECIAL: u32 = moonlight_common::moonlight::stream::ControllerButtons::SPECIAL.bits();
+    pub const BUTTON_PADDLE1: u32 = moonlight_common::moonlight::stream::ControllerButtons::PADDLE1.bits();
+    pub const BUTTON_PADDLE2: u32 = moonlight_common::moonlight::stream::ControllerButtons::PADDLE2.bits();
+    pub const BUTTON_PADDLE3: u32 = moonlight_common::moonlight::stream::ControllerButtons::PADDLE3.bits();
+    pub const BUTTON_PADDLE4: u32 = moonlight_common::moonlight::stream::ControllerButtons::PADDLE4.bits();
+    pub const BUTTON_TOUCHPAD: u32 = moonlight_common::moonlight::stream::ControllerButtons::TOUCHPAD.bits();
+    pub const BUTTON_MISC: u32     = moonlight_common::moonlight::stream::ControllerButtons::MISC.bits();
+);
