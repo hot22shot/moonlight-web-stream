@@ -4,6 +4,7 @@ import { App } from "../../api_bindings.js";
 import { setContextMenu } from "../context_menu.js";
 import { showMessage } from "../modal/index.js";
 import { APP_NO_IMAGE } from "../../resources/index.js";
+import CONFIG from "../../config.js"
 
 export class Game implements Component {
     private api: Api
@@ -86,7 +87,7 @@ export class Game implements Component {
             appId: this.getAppId(),
         } as any)
 
-        window.open(`/stream.html?${query}`, "_blank")
+        window.open(`${CONFIG?.pathPrefix ?? ""}/stream.html?${query}`, "_blank")
     }
 
     private onContextMenu(event: MouseEvent) {

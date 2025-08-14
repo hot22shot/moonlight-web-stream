@@ -12,7 +12,7 @@ export async function getApi(host_url?: string): Promise<Api> {
     }
 
     if (!host_url) {
-        host_url = `${window.location.origin}${CONFIG.pathPrefix}/api`
+        host_url = `${window.location.origin}${CONFIG?.pathPrefix ?? ""}/api`
     }
 
     let credentials = sessionStorage.getItem("mlCredentials");
