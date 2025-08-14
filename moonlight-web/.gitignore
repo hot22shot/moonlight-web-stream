@@ -3,8 +3,5 @@ dist
 bindings
 web/api_bindings.ts
 
-# Config
-web/config.ts
-
 # Server
 server
