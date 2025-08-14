@@ -1,6 +1,7 @@
 import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showPrompt } from "./component/modal/index.js";
+import CONFIG from "./config.js";
 
 // TODO: move api stuff into api file
 let currentApi: Api | null = null
@@ -11,7 +12,7 @@ export async function getApi(host_url?: string): Promise<Api> {
     }
 
     if (!host_url) {
-        host_url = `${window.location.origin}/api`
+        host_url = `${window.location.origin}${CONFIG.pathPrefix}/api`
     }
 
     let credentials = sessionStorage.getItem("mlCredentials");
