@@ -292,6 +292,12 @@ class ViewerSidebar implements Component, Sidebar {
         }
 
         this.touchModeDiv.appendChild(this.touchModeSelect)
+
+        window.requestAnimationFrame(this.requestAnimationFrame.bind(this))
+    }
+
+    private requestAnimationFrame() {
+        this.app.getStream()?.getInput().onGamepadUpdate()
     }
 
     // -- Keyboard

@@ -371,7 +371,6 @@ export class StreamInput {
     }
 
     // -- Controller
-    private gamepadIntervalId: number | null = null
     private gamepads: Array<number | null> = []
 
     onGamepadConnect(gamepad: Gamepad) {
@@ -391,25 +390,10 @@ export class StreamInput {
         if (gamepad.mapping != "standard") {
             console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${gamepad.mapping}`)
         }
-
-        if (this.gamepadIntervalId == null) {
-            this.gamepadIntervalId = setInterval(this.onGamepadUpdate.bind(this), CONTROLLER_SEND_INTERVAL_MS)
-        }
     }
     onGamepadDisconnect(event: GamepadEvent) {
         const index = this.gamepads.indexOf(event.gamepad.index)
         this.gamepads[index] = null
-
-        let containsElement = false
-        for (const gamepad in this.gamepads) {
-            if (gamepad) {
-                containsElement = true
-                break
-            }
-        }
-        if (!containsElement && this.gamepadIntervalId != null) {
-            clearInterval(this.gamepadIntervalId)
-        }
     }
     onGamepadUpdate() {
         for (let gamepadId = 0; gamepadId < this.gamepads.length; gamepadId++) {
