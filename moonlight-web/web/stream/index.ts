@@ -6,7 +6,7 @@ import { StreamInput } from "./input.js"
 
 export function startStream(api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]): Promise<Stream> {
     return new Promise((resolve, reject) => {
-        const ws = new WebSocket("/api/stream")
+        const ws = new WebSocket(`${api.host_url}/stream`)
         ws.onopen = () => {
             const stream = new Stream(ws, api, hostId, appId, settings, viewerScreenSize)
 

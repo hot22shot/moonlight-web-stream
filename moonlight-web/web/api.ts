@@ -1,7 +1,7 @@
 import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showPrompt } from "./component/modal/index.js";
-import CONFIG from "./config.js";
+import { buildUrl } from "./config_.js";
 
 // TODO: move api stuff into api file
 let currentApi: Api | null = null
@@ -12,7 +12,7 @@ export async function getApi(host_url?: string): Promise<Api> {
     }
 
     if (!host_url) {
-        host_url = `${window.location.origin}${CONFIG?.pathPrefix ?? ""}/api`
+        host_url = buildUrl("/api")
     }
 
     let credentials = sessionStorage.getItem("mlCredentials");
@@ -59,7 +59,7 @@ export function isDetailedHost(host: UndetailedHost | DetailedHost): host is Det
 function buildRequest(api: Api, endpoint: string, method: string, init?: { response?: "json" | "ignore" } & ApiFetchInit): [string, RequestInit] {
     const query = new URLSearchParams(init?.query)
     const queryString = query.size > 0 ? `?${query.toString()}` : "";
-    const url = `${api.host_url}/${endpoint}${queryString}`
+    const url = `${api.host_url}${endpoint}${queryString}`
 
     const headers: any = {
         "Authorization": `Bearer ${api.credentials}`,
@@ -103,13 +103,13 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
 }
 
 export async function apiAuthenticate(api: Api): Promise<boolean> {
-    const response = await fetchApi(api, "authenticate", "get", { response: "ignore" })
+    const response = await fetchApi(api, "/authenticate", "get", { response: "ignore" })
 
     return response != null
 }
 
 export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {
-    const response = await fetchApi(api, "hosts", "get")
+    const response = await fetchApi(api, "/hosts", "get")
 
     if (response == null) {
         showErrorPopup("failed to fetch hosts")
@@ -123,7 +123,7 @@ export async function apiGetHost(api: Api, hostId: number): Promise<DetailedHost
         host_id: hostId
     };
 
-    const response = await fetchApi(api, "host", "get", { query })
+    const response = await fetchApi(api, "/host", "get", { query })
 
     if (response == null) {
         return null
@@ -132,7 +132,7 @@ export async function apiGetHost(api: Api, hostId: number): Promise<DetailedHost
     return (response as GetHostResponse).host
 }
 export async function apiPutHost(api: Api, data: PutHostRequest): Promise<DetailedHost | null> {
-    const response = await fetchApi(api, "host", "put", { json: data })
+    const response = await fetchApi(api, "/host", "put", { json: data })
 
     if (response == null) {
         return null
@@ -141,13 +141,13 @@ export async function apiPutHost(api: Api, data: PutHostRequest): Promise<Detail
     return (response as PutHostResponse).host
 }
 export async function apiDeleteHost(api: Api, query: DeleteHostQuery): Promise<boolean> {
-    const response = await fetchApi(api, "host", "delete", { query, response: "ignore" })
+    const response = await fetchApi(api, "/host", "delete", { query, response: "ignore" })
 
     return response != null
 }
 
 export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost | null> } | { error: string } | null> {
-    const response = await fetchApi(api, "pair", "post", {
+    const response = await fetchApi(api, "/pair", "post", {
         json: request,
         response: "ignore"
     })
@@ -184,13 +184,13 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{
 }
 
 export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App> | null> {
-    const response = await fetchApi(api, "apps", "get", { query }) as GetAppsResponse
+    const response = await fetchApi(api, "/apps", "get", { query }) as GetAppsResponse
 
     return response?.apps
 }
 
 export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise<Blob | null> {
-    const response = await fetchApi(api, "app/image", "get", {
+    const response = await fetchApi(api, "/app/image", "get", {
         query,
         response: "ignore"
     })
