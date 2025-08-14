@@ -58,6 +58,7 @@ export class StreamSettingsComponent implements Component {
 
     private divElement: HTMLDivElement = document.createElement("div")
 
+    // TODO: move these to the input component
     private bitrate: Input = createInput()
     private packetSize: Input = createInput()
     private fps: Input = createInput()

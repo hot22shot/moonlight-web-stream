@@ -1,9 +1,10 @@
 import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
-import { showMessage, showPrompt } from "./component/modal/index.js";
+import { InputComponent } from "./component/input.js";
+import { FormModal } from "./component/modal/form.js";
+import { showMessage, showModal, showPrompt } from "./component/modal/index.js";
 import { buildUrl } from "./config_.js";
 
-// TODO: move api stuff into api file
 let currentApi: Api | null = null
 
 export async function getApi(host_url?: string): Promise<Api> {
@@ -18,9 +19,10 @@ export async function getApi(host_url?: string): Promise<Api> {
     let credentials = sessionStorage.getItem("mlCredentials");
 
     while (credentials == null) {
-        const testCredentials = await showPrompt("Enter Credentials", { name: "ml-api-credentials", type: "password" })
+        const prompt = new ApiCredentialsPrompt()
+        const testCredentials = await showModal(prompt)
 
-        if (!testCredentials) {
+        if (testCredentials == null) {
             continue;
         }
 
@@ -40,6 +42,65 @@ export async function getApi(host_url?: string): Promise<Api> {
     currentApi = { host_url, credentials }
 
     return currentApi
+}
+
+class ApiCredentialsPrompt extends FormModal<string> {
+
+    private text: HTMLElement = document.createElement("p")
+    private credentials: InputComponent
+    private credentialsFile: InputComponent
+
+    constructor() {
+        super()
+
+        this.text.innerText = "Enter Credentials"
+
+        this.credentials = new InputComponent("ml-api-credentials", "password", "Credentials")
+
+        this.credentialsFile = new InputComponent("ml-api-credentials-file", "file", "Credentials as File", { accept: ".txt" })
+    }
+
+    reset(): void {
+        this.credentials.reset()
+    }
+    submit(): string | null {
+        return this.credentials.getValue()
+    }
+
+    onFinish(abort: AbortSignal): Promise<string | null> {
+        const abortController = new AbortController()
+        abort.addEventListener("abort", abortController.abort.bind(abortController))
+
+        return new Promise((resolve, reject) => {
+            this.credentialsFile.addChangeListener((event) => {
+                const files = this.credentialsFile.getFiles()
+                if (files && files.length >= 1) {
+                    const file = files[0]
+
+                    file.text().then((credentials) => {
+                        abortController.abort()
+
+                        resolve(credentials)
+                    })
+                }
+            }, { signal: abortController.signal })
+
+            super.onFinish(abortController.signal).then((data) => {
+                abortController.abort()
+                resolve(data)
+            }, (data) => {
+                abortController.abort()
+                reject(data)
+            })
+        })
+    }
+
+    mountForm(form: HTMLFormElement): void {
+        form.appendChild(this.text)
+
+        this.credentials.mount(form)
+        this.credentialsFile.mount(form)
+    }
 }
 
 export type Api = {
@@ -82,7 +143,6 @@ export async function fetchApi(api: Api, endpoint: string, method: string, init?
 export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response | null>
 
 export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: { response?: "json" | "ignore" } & ApiFetchInit) {
-
     const [url, request] = buildRequest(api, endpoint, method, init)
 
     const response = await fetch(url, request)

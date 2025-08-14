@@ -3,10 +3,10 @@ import { showErrorPopup } from "../error.js"
 import { FormModal } from "./form.js"
 
 export interface Modal<Output> extends Component {
-    onFinish(): Promise<Output>
+    onFinish(abort: AbortSignal): Promise<Output>
 }
 
-let modalUsed = false
+let modalAbort: AbortController | null = null
 const modalBackground = document.getElementById("modal-overlay")
 const modalParent = document.getElementById("modal-parent")
 let previousModal: Modal<unknown> | null = null
@@ -25,8 +25,10 @@ export async function showModal<Output>(modal: Modal<Output>): Promise<Output | 
         showErrorPopup("the modal overlay cannot be found")
     }
 
-    if (modalUsed) {
+    if (modalAbort != null) {
         showErrorPopup("cannot mount 2 modals at the same time")
+
+        modalAbort.abort()
         return null
     }
 
@@ -35,14 +37,17 @@ export async function showModal<Output>(modal: Modal<Output>): Promise<Output | 
     }
     previousModal = modal
 
-    modalUsed = true
+    const abortController = new AbortController()
+
+    modalAbort = abortController
     modal.mount(modalParent)
     modalBackground?.classList.remove("modal-disabled")
 
-    const output = await modal.onFinish()
+    const output = await modal.onFinish(abortController.signal)
 
     modalBackground?.classList.add("modal-disabled")
-    modalUsed = false
+    modalAbort.abort()
+    modalAbort = null
 
     return output
 }
@@ -127,9 +132,10 @@ class MessageModal implements Component, Modal<void> {
         parent.removeChild(this.okButton)
     }
 
-    onFinish(): Promise<void> {
+    onFinish(abort: AbortSignal): Promise<void> {
         return new Promise((resolve, reject) => {
             let customController: AbortController | null = null
+
             if (this.signal) {
                 customController = new AbortController()
                 this.signal.addEventListener("abort", () => {
@@ -142,6 +148,10 @@ class MessageModal implements Component, Modal<void> {
                 resolve()
                 customController?.abort()
             }, { signal: customController?.signal })
+
+            if (customController) {
+                abort.addEventListener("abort", customController.abort.bind(customController))
+            }
         })
     }
 }

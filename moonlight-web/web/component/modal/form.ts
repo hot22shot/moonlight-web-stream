@@ -13,6 +13,8 @@ export abstract class FormModal<Output> implements Component, Modal<Output | nul
         this.submitButton.innerText = "Ok"
 
         this.cancelButton.innerText = "Cancel"
+
+        this.formElement.addEventListener("submit", (event) => event.preventDefault())
     }
 
     abstract reset(): void
@@ -35,13 +37,12 @@ export abstract class FormModal<Output> implements Component, Modal<Output | nul
         parent.removeChild(this.formElement)
     }
 
-    onFinish(): Promise<Output | null> {
+    onFinish(signal: AbortSignal): Promise<Output | null> {
         const abortController = new AbortController()
+        signal.addEventListener("abort", abortController.abort.bind(abortController))
 
         return new Promise((resolve, reject) => {
             this.formElement.addEventListener("submit", event => {
-                event.preventDefault()
-
                 const output = this.submit()
 
                 if (output == null) {
