@@ -95,6 +95,9 @@ class ViewerApp implements Component {
 
         // Set video
         this.videoElement.srcObject = this.stream.getMediaStream()
+
+        // Start animation frame loop
+        this.onGamepadUpdate()
     }
 
     private onAppInfo(event: AppInfoEvent) {
@@ -154,6 +157,11 @@ class ViewerApp implements Component {
     }
     onGamepadDisconnect(event: GamepadEvent) {
         this.stream?.getInput().onGamepadDisconnect(event)
+    }
+    onGamepadUpdate() {
+        this.stream?.getInput().onGamepadUpdate()
+
+        window.requestAnimationFrame(this.onGamepadUpdate.bind(this))
     }
 
     mount(parent: HTMLElement): void {
@@ -292,12 +300,6 @@ class ViewerSidebar implements Component, Sidebar {
         }
 
         this.touchModeDiv.appendChild(this.touchModeSelect)
-
-        window.requestAnimationFrame(this.requestAnimationFrame.bind(this))
-    }
-
-    private requestAnimationFrame() {
-        this.app.getStream()?.getInput().onGamepadUpdate()
     }
 
     // -- Keyboard
@@ -340,13 +342,13 @@ class ViewerSidebar implements Component, Sidebar {
     }
 
     // -- Mouse Mode
-    private onMouseModeChange(event: Event) {
+    private onMouseModeChange() {
         this.config.mouseMode = this.mouseModeSelect.value as "relative" | "pointAndDrag"
         this.app.getStream()?.getInput().setConfig(this.config)
     }
 
     // -- Touch Mode
-    private onTouchModeChange(event: Event) {
+    private onTouchModeChange() {
         this.config.touchMode = this.touchModeSelect.value as "touch" | "mouseRelative" | "pointAndDrag"
         this.app.getStream()?.getInput().setConfig(this.config)
     }

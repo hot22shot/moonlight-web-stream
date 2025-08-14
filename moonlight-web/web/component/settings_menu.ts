@@ -1,13 +1,16 @@
+import { ControllerConfig } from "../stream/gamepad.js";
 import { Component, ComponentEvent } from "./index.js";
+import { InputComponent } from "./input.js";
 
 export type StreamSettings = {
     bitrate: number
     packetSize: number
     videoSize?: {
-        width: number,
-        height: number,
+        width: number
+        height: number
     },
     fps: number
+    controllerConfig: ControllerConfig
 }
 
 export function defaultStreamSettings(): StreamSettings {
@@ -15,6 +18,10 @@ export function defaultStreamSettings(): StreamSettings {
         bitrate: 5000,
         packetSize: 4096,
         fps: 60,
+        controllerConfig: {
+            invertAB: false,
+            invertXY: false
+        }
     }
 }
 
@@ -41,31 +48,23 @@ export function setLocalStreamSettings(settings?: StreamSettings) {
 
 export type StreamSettingsChangeListener = (event: ComponentEvent<StreamSettingsComponent>) => void
 
-type Input = {
-    div: HTMLDivElement
-    label: HTMLLabelElement
-    input: HTMLInputElement
-}
-function createInput(): Input {
-    return {
-        div: document.createElement("div"),
-        label: document.createElement("label"),
-        input: document.createElement("input")
-    }
-}
-
 export class StreamSettingsComponent implements Component {
 
     private divElement: HTMLDivElement = document.createElement("div")
 
     // TODO: move these to the input component
-    private bitrate: Input = createInput()
-    private packetSize: Input = createInput()
-    private fps: Input = createInput()
+    private streamHeader: HTMLHeadingElement = document.createElement("h2")
+    private bitrate: InputComponent
+    private packetSize: InputComponent
+    private fps: InputComponent
 
-    private videoSizeEnabled = createInput()
-    private videoSizeWidth = createInput()
-    private videoSizeHeight = createInput()
+    private videoSizeEnabled: InputComponent
+    private videoSizeWidth: InputComponent
+    private videoSizeHeight: InputComponent
+
+    private controllerHeader: HTMLHeadingElement = document.createElement("h2")
+    private controllerInvertAB: InputComponent
+    private controllerInvertXY: InputComponent
 
     constructor(settings?: StreamSettings) {
         const defaultSettings = defaultStreamSettings()
@@ -73,59 +72,83 @@ export class StreamSettingsComponent implements Component {
         // Root div
         this.divElement.classList.add("settings")
 
+        this.streamHeader.innerText = "Streaming"
+        this.divElement.appendChild(this.streamHeader)
+
         // Bitrate
-        this.configureInput(this.bitrate, "bitrate", "Bitrate", "number", defaultSettings.bitrate.toString(), settings?.bitrate.toString(), {
+        this.bitrate = new InputComponent("bitrate", "number", "Bitrate", {
+            defaultValue: defaultSettings.bitrate.toString(),
+            value: settings?.bitrate?.toString(),
             step: "100",
         })
+        this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
+        this.bitrate.mount(this.divElement)
 
         // Packet Size
-        this.configureInput(this.packetSize, "packetSize", "Packet Size", "number", defaultSettings.packetSize.toString(), settings?.packetSize.toString(), {
-            step: "100",
+        this.packetSize = new InputComponent("packetSize", "number", "Packet Size", {
+            defaultValue: defaultSettings.packetSize.toString(),
+            value: settings?.packetSize?.toString(),
+            step: "100"
         })
+        this.packetSize.addChangeListener(this.onSettingsChange.bind(this))
+        this.packetSize.mount(this.divElement)
 
         // Fps
-        this.configureInput(this.fps, "fps", "Fps", "number", defaultSettings.fps.toString(), settings?.fps.toString(), {
-            step: "5",
+        this.fps = new InputComponent("fps", "number", "Fps", {
+            defaultValue: defaultSettings.fps.toString(),
+            value: settings?.fps?.toString(),
+            step: "100"
         })
+        this.fps.addChangeListener(this.onSettingsChange.bind(this))
+        this.fps.mount(this.divElement)
 
         // Video Size
-        this.configureInput(this.videoSizeEnabled, "videoSizeEnabled", "Fixed Video Size", "checkbox", "", settings?.videoSize ? "on" : undefined)
-        this.configureInput(this.videoSizeWidth, "videoSizeWidth", "Video Width", "number", "1920", settings?.videoSize ? settings.videoSize.width.toString() : undefined)
-        this.configureInput(this.videoSizeHeight, "videoSizeHeight", "Video Height", "number", "1080", settings?.videoSize ? settings.videoSize.height.toString() : undefined)
+        this.videoSizeEnabled = new InputComponent("videoSizeEnabled", "checkbox", "Fixed Video Size", {
+            checked: settings?.videoSize != null
+        })
+        this.videoSizeEnabled.addChangeListener(this.onSettingsChange.bind(this))
+        this.videoSizeEnabled.mount(this.divElement)
+
+        this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", "Video Width", {
+            defaultValue: "1920",
+            value: settings?.videoSize?.width?.toString()
+        })
+        this.videoSizeWidth.addChangeListener(this.onSettingsChange.bind(this))
+        this.videoSizeWidth.mount(this.divElement)
+
+        this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", "Video Height", {
+            defaultValue: "1080",
+            value: settings?.videoSize?.height?.toString()
+        })
+        this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
+        this.videoSizeHeight.mount(this.divElement)
+
+        // Controller
+        this.controllerHeader.innerText = "Controller"
+        this.divElement.appendChild(this.controllerHeader)
+
+        this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", "Invert A and B", {
+            checked: settings?.controllerConfig.invertAB
+        })
+        this.controllerInvertAB.addChangeListener(this.onSettingsChange.bind(this))
+        this.controllerInvertAB.mount(this.divElement)
+
+        this.controllerInvertXY = new InputComponent("controllerInvertXY", "checkbox", "Invert X and Y", {
+            checked: settings?.controllerConfig.invertXY
+        })
+        this.controllerInvertXY.addChangeListener(this.onSettingsChange.bind(this))
+        this.controllerInvertXY.mount(this.divElement)
 
         this.onSettingsChange()
     }
 
-    private configureInput(
-        input: Input, internalName: string, displayName: string, type: string, defaultValue: string, value?: string | null,
-        extra?: { step?: string }
-    ) {
-        input.label.htmlFor = internalName
-        input.label.innerText = displayName
-        input.div.appendChild(input.label)
-
-        input.input.name = internalName
-        input.input.type = type
-        input.input.defaultValue = defaultValue
-        if (value != null) {
-            input.input.value = value
-        }
-        if (extra && extra.step != undefined) {
-            input.input.step = extra.step
-        }
-        input.input.addEventListener("change", this.onSettingsChange.bind(this))
-        input.div.appendChild(input.input)
-
-        this.divElement.appendChild(input.div)
-    }
-
     private onSettingsChange() {
-        if (this.videoSizeEnabled.input.checked) {
-            this.videoSizeWidth.input.disabled = false
-            this.videoSizeHeight.input.disabled = false
+        if (this.videoSizeEnabled.isChecked()) {
+            this.videoSizeWidth.setEnabled(true)
+            this.videoSizeHeight.setEnabled(true)
         } else {
-            this.videoSizeWidth.input.disabled = true
-            this.videoSizeHeight.input.disabled = true
+            this.videoSizeWidth.setEnabled(false)
+            this.videoSizeHeight.setEnabled(false)
         }
 
         this.divElement.dispatchEvent(new ComponentEvent("ml-settingschange", this))
@@ -141,15 +164,17 @@ export class StreamSettingsComponent implements Component {
     getStreamSettings(): StreamSettings {
         const settings = defaultStreamSettings()
 
-        settings.bitrate = parseInt(this.bitrate.input.value)
-        settings.packetSize = parseInt(this.packetSize.input.value)
-        settings.fps = parseInt(this.fps.input.value)
-        if (this.videoSizeEnabled.input.checked) {
+        settings.bitrate = parseInt(this.bitrate.getValue())
+        settings.packetSize = parseInt(this.packetSize.getValue())
+        settings.fps = parseInt(this.fps.getValue())
+        if (this.videoSizeEnabled.isChecked()) {
             settings.videoSize = {
-                width: parseInt(this.videoSizeWidth.input.value),
-                height: parseInt(this.videoSizeHeight.input.value)
+                width: parseInt(this.videoSizeWidth.getValue()),
+                height: parseInt(this.videoSizeHeight.getValue())
             }
         }
+        settings.controllerConfig.invertAB = this.controllerInvertAB.isChecked()
+        settings.controllerConfig.invertXY = this.controllerInvertXY.isChecked()
 
         return settings
     }

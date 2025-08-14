@@ -2,7 +2,7 @@ import { Api } from "../api.js"
 import { App, RtcIceCandidate, StreamClientMessage, StreamServerMessage } from "../api_bindings.js"
 import { showMessage } from "../component/modal/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
-import { StreamInput } from "./input.js"
+import { defaultStreamInputConfig, StreamInput } from "./input.js"
 
 export function startStream(api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]): Promise<Stream> {
     return new Promise((resolve, reject) => {
@@ -100,7 +100,11 @@ export class Stream {
         // })
         // audioTransceiver.receiver.jitterBufferTarget = 0
 
-        this.input = new StreamInput(this.peer)
+        const streamInputConfig = defaultStreamInputConfig()
+        Object.assign(streamInputConfig, {
+            controllerConfig: settings.controllerConfig
+        })
+        this.input = new StreamInput(this.peer, streamInputConfig)
     }
 
     private async onMessage(message: StreamServerMessage) {

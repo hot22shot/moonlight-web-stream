@@ -1,7 +1,7 @@
 import { StreamControllerButton, StreamMouseButton } from "../api_bindings.js"
 import { showMessage } from "../component/modal/index.js"
 import { ByteBuffer } from "./buffer.js"
-import { convertStandardButton as convertStandardControllerButton } from "./gamepad.js"
+import { ControllerConfig, convertStandardButton as convertStandardControllerButton } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
@@ -27,13 +27,18 @@ export type StreamInputConfig = {
     keyboardOrdered: boolean
     mouseMode: "relative" | "pointAndDrag"
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
+    controllerConfig: ControllerConfig
 }
 
 export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         keyboardOrdered: true,
         mouseMode: "pointAndDrag",
-        touchMode: "pointAndDrag"
+        touchMode: "pointAndDrag",
+        controllerConfig: {
+            invertAB: false,
+            invertXY: false
+        }
     }
 }
 
@@ -414,7 +419,7 @@ export class StreamInput {
             for (let buttonId = 0; buttonId < gamepad.buttons.length; buttonId++) {
                 const button = gamepad.buttons[buttonId]
 
-                const buttonFlag = convertStandardControllerButton(buttonId)
+                const buttonFlag = convertStandardControllerButton(buttonId, this.config.controllerConfig)
                 if (button.pressed && buttonFlag !== null) {
                     buttonFlags |= buttonFlag
                 }

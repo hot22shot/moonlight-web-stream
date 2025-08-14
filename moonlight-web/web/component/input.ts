@@ -3,6 +3,7 @@ import { Component, ComponentEvent } from "./index.js"
 export type InputInit = {
     defaultValue?: string
     value?: string
+    checked?: boolean
     step?: string
     accept?: string
 }
@@ -30,6 +31,9 @@ export class InputComponent implements Component {
         if (init?.value != null) {
             this.input.value = init.value
         }
+        if (init && init.checked != null) {
+            this.input.checked = init.checked
+        }
         if (init && init.step != null) {
             this.input.step = init.step
         }
@@ -51,8 +55,16 @@ export class InputComponent implements Component {
         return this.input.value
     }
 
+    isChecked(): boolean {
+        return this.input.checked
+    }
+
     getFiles(): FileList | null {
         return this.input.files
+    }
+
+    setEnabled(enabled: boolean) {
+        this.input.disabled = !enabled
     }
 
     addChangeListener(listener: InputChangeListener, options?: AddEventListenerOptions) {

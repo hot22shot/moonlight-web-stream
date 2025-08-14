@@ -1,5 +1,10 @@
 import { StreamControllerButton } from "../api_bindings.js"
 
+export type ControllerConfig = {
+    invertXY: boolean
+    invertAB: boolean
+}
+
 // https://w3c.github.io/gamepad/#remapping
 const STANDARD_BUTTONS = [
     StreamControllerButton.BUTTON_B,
@@ -22,6 +27,23 @@ const STANDARD_BUTTONS = [
     StreamControllerButton.BUTTON_SPECIAL,
 ]
 
-export function convertStandardButton(buttonIndex: number): number | null {
-    return STANDARD_BUTTONS[buttonIndex] ?? null
+export function convertStandardButton(buttonIndex: number, config?: ControllerConfig): number | null {
+    let button = STANDARD_BUTTONS[buttonIndex] ?? null
+
+    if (config?.invertAB) {
+        if (button == StreamControllerButton.BUTTON_A) {
+            button = StreamControllerButton.BUTTON_B
+        } else if (button == StreamControllerButton.BUTTON_B) {
+            button = StreamControllerButton.BUTTON_A
+        }
+    }
+    if (config?.invertXY) {
+        if (button == StreamControllerButton.BUTTON_X) {
+            button = StreamControllerButton.BUTTON_Y
+        } else if (button == StreamControllerButton.BUTTON_Y) {
+            button = StreamControllerButton.BUTTON_X
+        }
+    }
+
+    return button
 }
