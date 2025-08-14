@@ -53,7 +53,7 @@ async fn main() {
         let server_crt_contents = read_to_string(server_crt_file).await.unwrap();
 
         let auth = ClientAuth {
-            key_pair: pem::parse(key_contents).unwrap(),
+            private_key: pem::parse(key_contents).unwrap(),
             certificate: pem::parse(crt_contents).unwrap(),
         };
         let server_certificate = pem::parse(server_crt_contents).unwrap();
@@ -84,7 +84,7 @@ async fn main() {
         };
 
         // Save the pair information
-        write(key_file, auth.key_pair.to_string()).await.unwrap();
+        write(key_file, auth.private_key.to_string()).await.unwrap();
         write(crt_file, auth.certificate.to_string()).await.unwrap();
         write(server_crt_file, server_certificate.to_string())
             .await

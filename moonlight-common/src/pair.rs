@@ -1,17 +1,19 @@
 use std::str::FromStr;
 
 use openssl::{
+    asn1::Asn1Time,
     cipher::Cipher,
     cipher_ctx::CipherCtx,
     error::ErrorStack,
+    hash::MessageDigest,
     md::Md,
     md_ctx::MdCtx,
     pkey::{PKey, Private},
+    rsa::Rsa,
     sha::{sha1, sha256},
-    x509::X509,
+    x509::{X509, X509Builder, X509NameBuilder},
 };
 use pem::{Pem, PemError};
-use rcgen::{CertificateParams, KeyPair, PKCS_RSA_SHA256};
 use thiserror::Error;
 
 use crate::{
@@ -27,8 +29,6 @@ use crate::{
         request_client::RequestClient,
     },
 };
-
-// TODO: maybe migrate this pairing process to openssl?
 
 fn hash(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
     match algorithm {
@@ -134,17 +134,45 @@ fn sign_data(private_key: &PKey<Private>, data: &[u8]) -> Vec<u8> {
 // TOOD: maybe remove this struct?
 #[derive(Clone)]
 pub struct ClientAuth {
-    pub key_pair: Pem,
+    pub private_key: Pem,
     pub certificate: Pem,
 }
 
-pub fn generate_new_client() -> Result<ClientAuth, rcgen::Error> {
-    let generated_signing_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
-    let generated_cert = CertificateParams::new(Vec::new())?.self_signed(&generated_signing_key)?;
+pub fn generate_new_client() -> Result<ClientAuth, ErrorStack> {
+    let rsa = Rsa::generate(2048).unwrap();
+    let key = PKey::from_rsa(rsa).unwrap();
+
+    let private_key_pem = String::from_utf8(key.private_key_to_pem_pkcs8().unwrap()).unwrap();
+
+    // Build X.509 Name
+    let mut name = X509NameBuilder::new()?;
+    name.append_entry_by_text("C", "US")?;
+    name.append_entry_by_text("ST", "CA")?;
+    name.append_entry_by_text("L", "San Francisco")?;
+    name.append_entry_by_text("O", "Example Corp")?;
+    name.append_entry_by_text("CN", "example.com")?;
+    let name = name.build();
+
+    // Build certificate
+    let mut builder = X509Builder::new()?;
+    builder.set_version(2).unwrap(); // X509 v3
+    builder.set_subject_name(&name).unwrap();
+    builder.set_issuer_name(&name).unwrap();
+    builder.set_pubkey(&key).unwrap();
+    builder
+        .set_not_before(&Asn1Time::days_from_now(0).unwrap())
+        .unwrap();
+    builder
+        .set_not_after(&Asn1Time::days_from_now(365).unwrap())
+        .unwrap();
+    builder.sign(&key, MessageDigest::sha256())?;
+    let cert = builder.build();
+
+    let cert_pem = String::from_utf8(cert.to_pem().unwrap()).unwrap();
 
     Ok(ClientAuth {
-        key_pair: pem::parse(generated_signing_key.serialize_pem()).expect("valid private key"),
-        certificate: pem::parse(generated_cert.pem()).expect("valid certificate"),
+        private_key: pem::parse(private_key_pem).expect("valid private key"),
+        certificate: pem::parse(cert_pem).expect("valid certificate"),
     })
 }
 
@@ -157,8 +185,6 @@ pub enum PairError<RequestError> {
     #[error("{0}")]
     Api(#[from] ApiError<RequestError>),
     // Client
-    #[error("incorrect client certificate: {0}")]
-    ClientPrivateKeyPem(rcgen::Error),
     #[error("incorrect private key: make sure it's a PKCS_RSA_SHA256 key")]
     IncorrectPrivateKey,
     // Server

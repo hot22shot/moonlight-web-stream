@@ -158,7 +158,7 @@ async fn try_pair_state(host: &mut ReqwestMoonlightHost, paired: Option<&PairedH
     let status = match host
         .set_pairing_info(
             &ClientAuth {
-                key_pair: client_private_key,
+                private_key: client_private_key,
                 certificate: client_certificate,
             },
             &server_certificate,

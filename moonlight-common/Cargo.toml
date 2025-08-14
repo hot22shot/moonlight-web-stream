@@ -9,12 +9,11 @@ bitflags = "2.9.1"
 num = "0.4"
 num-derive = "0.4"
 num-traits = "0.2"
+thiserror = "2.0.12"
 
 # Stream
 moonlight-common-sys = { workspace = true, optional = true }
 printf-compat = { version = "0.2.1", optional = true }
-
-thiserror = "2.0.12"
 
 # Network
 uuid = { version = "1.17.0", features = ["v4"], optional = true }
@@ -25,6 +24,7 @@ form_urlencoded = { version = "1.2.1", optional = true }
 
 # Network Reqwest backend
 reqwest = { version = "0.12.22", optional = true }
+bytes = { version = "1.10.1", optional = true }
 
 # High
 log = { version = "0.4.27", optional = true }
@@ -34,8 +34,6 @@ tokio = { version = "1.46.1", default-features = false, features = [
 ], optional = true }
 pem = { version = "3.0.5", optional = true }
 openssl = { workspace = true }
-rcgen = { version = "0.14.3", features = ["aws_lc_rs"], optional = true }
-bytes = "1.10.1"
 
 [features]
 default = ["high", "moonlight", "backend_reqwest"]
@@ -50,11 +48,10 @@ moonlight = ["dep:moonlight-common-sys", "dep:printf-compat"]
 crypto = ["moonlight", "moonlight-common-sys/crypto"]
 
 # Pairing
-pair = ["network", "dep:rcgen"]
+pair = ["network"]
 
 # Network
 network = [
-    "dep:tokio",
     "dep:url",
     "dep:form_urlencoded",
     "dep:roxmltree",
@@ -64,7 +61,12 @@ network = [
     "dep:pem",
 ]
 # Reqwest Network Backend
-backend_reqwest = ["dep:reqwest", "reqwest/native-tls"]
+backend_reqwest = [
+    "dep:reqwest",
+    "reqwest/native-tls",
+    "dep:tokio",
+    "dep:bytes",
+]
 
 [lints]
 workspace = true

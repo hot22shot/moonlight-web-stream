@@ -205,14 +205,14 @@ where
         server_certificate: &Pem,
     ) -> Result<PairStatus, HostError<C::Error>> {
         self.client = C::with_certificates(
-            &client_auth.key_pair,
+            &client_auth.private_key,
             &client_auth.certificate,
             server_certificate,
         )
         .map_err(ApiError::RequestClient)?;
 
         self.paired = Some(Paired {
-            client_private_key: client_auth.key_pair.clone(),
+            client_private_key: client_auth.private_key.clone(),
             client_certificate: client_auth.certificate.clone(),
             server_certificate: server_certificate.clone(),
             cache_app_list: None,
@@ -282,7 +282,7 @@ where
             &mut self.client,
             &http_address,
             client_info,
-            &auth.key_pair,
+            &auth.private_key,
             &auth.certificate,
             &device_name,
             server_version,
@@ -290,11 +290,12 @@ where
         )
         .await?;
 
-        self.client = C::with_certificates(&auth.key_pair, &auth.certificate, &server_certificate)
-            .map_err(|err| HostError::Api(ApiError::RequestClient(err)))?;
+        self.client =
+            C::with_certificates(&auth.private_key, &auth.certificate, &server_certificate)
+                .map_err(|err| HostError::Api(ApiError::RequestClient(err)))?;
 
         self.paired = Some(Paired {
-            client_private_key: auth.key_pair.clone(),
+            client_private_key: auth.private_key.clone(),
             client_certificate: auth.certificate.clone(),
             server_certificate,
             cache_app_list: None,

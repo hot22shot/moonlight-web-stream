@@ -71,6 +71,8 @@ pub trait RequestClient: Sized {
     type Text: AsRef<str>;
     type Bytes: AsRef<[u8]>;
 
+    // TODO: add with_defaults_no_timeout for pairing
+
     fn with_defaults() -> Result<Self, Self::Error>;
 
     fn with_certificates(
