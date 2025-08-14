@@ -72,63 +72,55 @@ fn generate_aes_key(algorithm: HashAlgorithm, salt: [u8; SALT_LENGTH], pin: Pair
     hash
 }
 
-pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
-    let mut cipher_ctx = CipherCtx::new().unwrap();
+pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, ErrorStack> {
+    let mut cipher_ctx = CipherCtx::new()?;
 
-    cipher_ctx
-        .encrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)
-        .unwrap();
+    cipher_ctx.encrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)?;
     cipher_ctx.set_padding(false);
 
     let mut output = Vec::new();
-    cipher_ctx
-        .cipher_update_vec(plaintext, &mut output)
-        .unwrap();
-    output
+    cipher_ctx.cipher_update_vec(plaintext, &mut output)?;
+    Ok(output)
 }
 
 pub fn decrypt_aes<C: RequestClient>(
     key: &[u8],
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, PairError<C::Error>> {
-    let mut cipher_ctx = CipherCtx::new().unwrap();
+    let mut cipher_ctx = CipherCtx::new()?;
 
-    cipher_ctx
-        .decrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)
-        .unwrap();
+    cipher_ctx.decrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)?;
     cipher_ctx.set_padding(false);
 
     let mut decrypted = Vec::new();
-    cipher_ctx
-        .cipher_update_vec(ciphertext, &mut decrypted)
-        .unwrap();
+    cipher_ctx.cipher_update_vec(ciphertext, &mut decrypted)?;
 
     Ok(decrypted)
 }
 
-fn verify_signature(server_secret: &[u8], server_signature: &[u8], server_cert: &X509) -> bool {
-    let public_key = server_cert.public_key().unwrap();
+fn verify_signature(
+    server_secret: &[u8],
+    server_signature: &[u8],
+    server_cert: &X509,
+) -> Result<bool, ErrorStack> {
+    let public_key = server_cert.public_key()?;
 
-    let mut md_ctx = MdCtx::new().unwrap();
+    let mut md_ctx = MdCtx::new()?;
 
-    md_ctx
-        .digest_verify_init(Some(Md::sha256()), &public_key)
-        .unwrap();
-    md_ctx.digest_verify_update(server_secret).unwrap();
-    md_ctx.digest_verify_final(server_signature).unwrap()
+    md_ctx.digest_verify_init(Some(Md::sha256()), &public_key)?;
+    md_ctx.digest_verify_update(server_secret)?;
+    md_ctx.digest_verify_final(server_signature)
 }
 
-fn sign_data(private_key: &PKey<Private>, data: &[u8]) -> Vec<u8> {
-    let mut md_ctx = MdCtx::new().unwrap();
+fn sign_data(private_key: &PKey<Private>, data: &[u8]) -> Result<Vec<u8>, ErrorStack> {
+    let mut md_ctx = MdCtx::new()?;
 
-    md_ctx
-        .digest_sign_init(Some(Md::sha256()), &private_key)
-        .unwrap();
-    md_ctx.digest_sign_update(data).unwrap();
+    md_ctx.digest_sign_init(Some(Md::sha256()), private_key)?;
+    md_ctx.digest_sign_update(data)?;
 
     let mut out = Vec::new();
-    md_ctx.digest_sign_final_to_vec(&mut out).unwrap();
-    out
+    md_ctx.digest_sign_final_to_vec(&mut out)?;
+    Ok(out)
 }
 
 // TOOD: maybe remove this struct?
@@ -139,10 +131,11 @@ pub struct ClientAuth {
 }
 
 pub fn generate_new_client() -> Result<ClientAuth, ErrorStack> {
-    let rsa = Rsa::generate(2048).unwrap();
-    let key = PKey::from_rsa(rsa).unwrap();
+    let rsa = Rsa::generate(2048)?;
+    let key = PKey::from_rsa(rsa)?;
 
-    let private_key_pem = String::from_utf8(key.private_key_to_pem_pkcs8().unwrap()).unwrap();
+    let private_key_pem =
+        String::from_utf8(key.private_key_to_pem_pkcs8()?).expect("valid openssl private key pem");
 
     // Build X.509 Name
     let mut name = X509NameBuilder::new()?;
@@ -155,20 +148,16 @@ pub fn generate_new_client() -> Result<ClientAuth, ErrorStack> {
 
     // Build certificate
     let mut builder = X509Builder::new()?;
-    builder.set_version(2).unwrap(); // X509 v3
-    builder.set_subject_name(&name).unwrap();
-    builder.set_issuer_name(&name).unwrap();
-    builder.set_pubkey(&key).unwrap();
-    builder
-        .set_not_before(&Asn1Time::days_from_now(0).unwrap())
-        .unwrap();
-    builder
-        .set_not_after(&Asn1Time::days_from_now(365).unwrap())
-        .unwrap();
+    builder.set_version(2)?; // X509 v3
+    builder.set_subject_name(&name)?;
+    builder.set_issuer_name(&name)?;
+    builder.set_pubkey(&key)?;
+    builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
+    builder.set_not_after(Asn1Time::days_from_now(365)?.as_ref())?;
     builder.sign(&key, MessageDigest::sha256())?;
     let cert = builder.build();
 
-    let cert_pem = String::from_utf8(cert.to_pem().unwrap()).unwrap();
+    let cert_pem = String::from_utf8(cert.to_pem()?).expect("valid openssl certificate pem");
 
     Ok(ClientAuth {
         private_key: pem::parse(private_key_pem).expect("valid private key"),
@@ -253,7 +242,7 @@ pub async fn host_pair<C: RequestClient>(
     let mut challenge = [0u8; CHALLENGE_LENGTH];
     crypto.generate_random(&mut challenge);
 
-    let encrypted_challenge = encrypt_aes(&aes_key, &challenge);
+    let encrypted_challenge = encrypt_aes(&aes_key, &challenge)?;
 
     let server_response2 = host_pair2(
         client,
@@ -296,7 +285,7 @@ pub async fn host_pair<C: RequestClient>(
     let encrypted_challenge_response_hash = encrypt_aes(
         &aes_key,
         &challenge_response_hash[0..hash_algorithm.hash_len()],
-    );
+    )?;
 
     let server_response3 = host_pair3(
         client,
@@ -321,7 +310,7 @@ pub async fn host_pair<C: RequestClient>(
     let mut server_signature = Vec::new();
     server_signature.extend_from_slice(&server_response3.server_pairing_secret[16..]);
 
-    if !verify_signature(&server_secret, &server_signature, &server_cert) {
+    if !verify_signature(&server_secret, &server_signature, &server_cert)? {
         host_unpair(client, http_address, client_info).await?;
 
         // MITM likely
@@ -351,7 +340,7 @@ pub async fn host_pair<C: RequestClient>(
     // Send the server our signed secret
     let mut client_pairing_secret = Vec::new();
     client_pairing_secret.extend_from_slice(&client_secret);
-    client_pairing_secret.extend_from_slice(&sign_data(&client_private_key, &client_secret));
+    client_pairing_secret.extend_from_slice(&sign_data(&client_private_key, &client_secret)?);
 
     let server_response4 = host_pair4(
         client,
