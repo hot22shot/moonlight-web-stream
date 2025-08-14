@@ -112,10 +112,14 @@ async fn put_host(
 
     match host.host_name().await {
         Ok(_) => {}
-        Err(HostError::Api(ApiError::RequestClient(err))) if err.is_timeout() => {
+        Err(HostError::Api(ApiError::RequestClient(ReqwestError::Reqwest(err))))
+            if err.is_timeout() =>
+        {
             return Either::Right(HttpResponse::NotFound().finish());
         }
-        Err(HostError::Api(ApiError::RequestClient(err))) if err.is_connect() => {
+        Err(HostError::Api(ApiError::RequestClient(ReqwestError::Reqwest(err))))
+            if err.is_connect() =>
+        {
             return Either::Right(HttpResponse::NotFound().finish());
         }
         Err(_) => return Either::Right(HttpResponse::BadRequest().finish()),

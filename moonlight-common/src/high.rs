@@ -277,9 +277,11 @@ where
             uuid: Uuid::new_v4(),
         };
 
+        let mut client = C::with_defaults_long_timeout().map_err(ApiError::RequestClient)?;
+
         let PairSuccess { server_certificate } = host_pair(
             crypto,
-            &mut self.client,
+            &mut client,
             &http_address,
             client_info,
             &auth.private_key,

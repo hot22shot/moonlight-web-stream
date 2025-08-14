@@ -3,7 +3,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
-use url::Url;
+use thiserror::Error;
+use url::{ParseError, Url};
 
 use crate::network::{
     ApiError,
@@ -13,10 +14,16 @@ use crate::network::{
 #[cfg(feature = "high")]
 pub type ReqwestMoonlightHost = crate::high::MoonlightHost<reqwest::Client>;
 
-pub type ReqwestError = reqwest::Error;
+#[derive(Debug, Error)]
+pub enum ReqwestError {
+    #[error("{0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("{0}")]
+    UrlParse(#[from] ParseError),
+}
 pub type ReqwestApiError = ApiError<ReqwestError>;
 
-fn default_builder() -> ClientBuilder {
+fn timeout_builder() -> ClientBuilder {
     ClientBuilder::new()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(20))
@@ -32,7 +39,7 @@ fn build_url(
 
     let authority = format!("{protocol}://{hostport}/{path}");
     // TODO: remove unwrap
-    let url = Url::parse_with_params(&authority, query_params).unwrap();
+    let url = Url::parse_with_params(&authority, query_params)?;
 
     Ok(url)
 }
@@ -43,8 +50,14 @@ impl RequestClient for Client {
     type Text = String;
     type Bytes = Bytes;
 
+    fn with_defaults_long_timeout() -> Result<Self, Self::Error> {
+        Ok(ClientBuilder::new()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(100))
+            .build()?)
+    }
     fn with_defaults() -> Result<Self, Self::Error> {
-        default_builder().build()
+        Ok(timeout_builder().build()?)
     }
 
     fn with_certificates(
@@ -64,13 +77,13 @@ impl RequestClient for Client {
             client_private_key.to_string().as_bytes(),
         )?;
 
-        default_builder()
+        Ok(timeout_builder()
             .use_native_tls()
             .tls_built_in_root_certs(false)
             .add_root_certificate(server_cert)
             .identity(identity)
             .danger_accept_invalid_hostnames(true)
-            .build()
+            .build()?)
     }
 
     async fn send_http_request_text_response(
@@ -80,7 +93,7 @@ impl RequestClient for Client {
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Text, Self::Error> {
         let url = build_url(false, hostport, path, query_params)?;
-        self.get(url).send().await?.text().await
+        Ok(self.get(url).send().await?.text().await?)
     }
 
     async fn send_https_request_text_response(
@@ -90,7 +103,7 @@ impl RequestClient for Client {
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Text, Self::Error> {
         let url = build_url(true, hostport, path, query_params)?;
-        self.get(url).send().await?.text().await
+        Ok(self.get(url).send().await?.text().await?)
     }
 
     async fn send_https_request_data_response(
@@ -100,6 +113,6 @@ impl RequestClient for Client {
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Bytes, Self::Error> {
         let url = build_url(true, hostport, path, query_params)?;
-        self.get(url).send().await?.bytes().await
+        Ok(self.get(url).send().await?.bytes().await?)
     }
 }
