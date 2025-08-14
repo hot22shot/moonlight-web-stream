@@ -8,11 +8,7 @@ import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
 import { App } from "./api_bindings.js";
-
-type AppState = { display: number | "hosts" }
-function pushAppState(state: AppState) {
-    history.pushState(state, "")
-}
+import { getLocalStreamSettings, setLocalStreamSettings, StreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
 
 async function startApp() {
     const api = await getApi()
@@ -35,6 +31,12 @@ async function startApp() {
 
 startApp()
 
+type DisplayStates = "hosts" | "games" | "settings"
+
+type AppState = { display: DisplayStates, hostId?: number }
+function pushAppState(state: AppState) {
+    history.pushState(state, "")
+}
 
 class MainApp implements Component {
     private api: Api
@@ -44,13 +46,16 @@ class MainApp implements Component {
     private moonlightTextElement = document.createElement("h1")
     private actionElement = document.createElement("div")
 
-    private gamesBackButton: HTMLButtonElement = document.createElement("button")
+    private backToHostsButton: HTMLButtonElement = document.createElement("button")
 
     private hostAddButton: HTMLButtonElement = document.createElement("button")
+    private settingsButton: HTMLButtonElement = document.createElement("button")
 
-    private currentDisplay: "hosts" | "games" = "hosts"
+    private currentDisplay: DisplayStates | null = null
+
     private hostList: HostList
     private gameList: GameList | null = null
+    private settings: StreamSettingsComponent
 
     constructor(api: Api) {
         this.api = api
@@ -58,9 +63,12 @@ class MainApp implements Component {
         // Moonlight text
         this.moonlightTextElement.innerHTML = "Moonlight Web"
 
+        // Actions
+        this.actionElement.classList.add("actions-list")
+
         // Back button
-        this.gamesBackButton.innerText = "Back"
-        this.gamesBackButton.addEventListener("click", () => this.setCurrentGames(null))
+        this.backToHostsButton.innerText = "Back"
+        this.backToHostsButton.addEventListener("click", () => this.setCurrentDisplay("hosts"))
 
         // Host add button
         this.hostAddButton.classList.add("host-add")
@@ -70,24 +78,31 @@ class MainApp implements Component {
         this.hostList = new HostList(api)
         this.hostList.addHostOpenListener(this.onHostOpen.bind(this))
 
+        // Settings Button
+        this.settingsButton.classList.add("open-settings")
+        this.settingsButton.addEventListener("click", () => this.setCurrentDisplay("settings"))
+
+        // Settings
+        this.settings = new StreamSettingsComponent(getLocalStreamSettings() ?? undefined)
+        this.settings.addChangeListener(this.onSettingsChange.bind(this))
+
         // Append default elements
         this.divElement.appendChild(this.moonlightTextElement)
         this.divElement.appendChild(this.actionElement)
-        this.hostList.mount(this.divElement)
 
-        this.actionElement.appendChild(this.hostAddButton)
+        this.setCurrentDisplay("hosts")
 
         // Context Menu
         document.body.addEventListener("contextmenu", this.onContextMenu.bind(this))
-
-        pushAppState({ display: "hosts" })
     }
 
     setAppState(state: AppState) {
         if (state.display == "hosts") {
-            this.setCurrentGames(null)
-        } else {
-            this.setCurrentGames(state.display)
+            this.setCurrentDisplay("hosts")
+        } else if (state.display == "games" && state.hostId != null) {
+            this.setCurrentDisplay("games", state.hostId)
+        } else if (state.display == "settings") {
+            this.setCurrentDisplay("settings")
         }
     }
 
@@ -109,71 +124,93 @@ class MainApp implements Component {
     }
 
     private onContextMenu(event: MouseEvent) {
-        const elements = [
-            {
-                name: "Reload",
-                callback: this.forceFetch.bind(this)
-            }
-        ]
+        if (this.currentDisplay == "hosts" || this.currentDisplay == "games") {
+            const elements = [
+                {
+                    name: "Reload",
+                    callback: this.forceFetch.bind(this)
+                }
+            ]
 
-        setContextMenu(event, {
-            elements
-        })
+            setContextMenu(event, {
+                elements
+            })
+        }
     }
 
     private async onHostOpen(event: ComponentEvent<Host>) {
         const hostId = event.component.getHostId()
 
-        this.setCurrentGames(hostId)
+        this.setCurrentDisplay("games", hostId)
     }
-    private setCurrentGames(hostId: number | null, cache?: Array<App>) {
-        // We want to transition to host view
-        if (hostId == null) {
 
-            // We aren't currently in host view
-            if (this.currentDisplay == "games") {
-                // Action elements
-                this.actionElement.removeChild(this.gamesBackButton)
-                this.actionElement.appendChild(this.hostAddButton)
+    private onSettingsChange() {
+        const newSettings = this.settings.getStreamSettings()
 
-                this.gameList?.unmount(this.divElement)
-                this.hostList.mount(this.divElement)
+        setLocalStreamSettings(newSettings)
+    }
 
-                // Push new state
-                pushAppState({ display: "hosts" })
-            }
+    private setCurrentDisplay(display: "hosts"): void
+    private setCurrentDisplay(display: "games", hostId: number, hostCache?: Array<App>): void
+    private setCurrentDisplay(display: "settings"): void
 
-            this.currentDisplay = "hosts"
+    private setCurrentDisplay(display: "hosts" | "games" | "settings", hostId?: number | null, hostCache?: Array<App>) {
+        if (display == "games" && hostId == null) {
+            // invalid input state
             return
         }
 
-        // The old state is games
-        if (this.currentDisplay == "games") {
-            if (this.gameList?.getHostId() == hostId) {
-                // If we're already in the correct state
-                return
+        // Check if we need to change
+        if (this.currentDisplay == display) {
+            if (this.currentDisplay == "games" && this.gameList?.getHostId() != hostId) {
+                // fall through
             } else {
-                // If we're going to a different host
-                this.gameList?.unmount(this.divElement)
+                return
             }
         }
 
-        // Unmount host view if we're in the host view
+        // Unmount the current display
         if (this.currentDisplay == "hosts") {
-            // Action elements
-            this.actionElement.appendChild(this.gamesBackButton)
             this.actionElement.removeChild(this.hostAddButton)
+            this.actionElement.removeChild(this.settingsButton)
 
             this.hostList.unmount(this.divElement)
+        } else if (this.currentDisplay == "games") {
+            this.actionElement.removeChild(this.backToHostsButton)
 
-            pushAppState({ display: "hosts" })
+            this.gameList?.unmount(this.divElement)
+        } else if (this.currentDisplay == "settings") {
+            this.actionElement.removeChild(this.backToHostsButton)
+
+            this.settings.unmount(this.divElement)
         }
 
-        // Mount game view
-        this.gameList = new GameList(this.api, hostId, cache ?? null)
-        this.gameList.mount(this.divElement)
+        // Mount the new display
+        if (display == "hosts") {
+            this.actionElement.appendChild(this.hostAddButton)
+            this.actionElement.appendChild(this.settingsButton)
 
-        this.currentDisplay = "games"
+            this.hostList.mount(this.divElement)
+
+            pushAppState({ display: "hosts" })
+        } else if (display == "games" && hostId != null) {
+            this.actionElement.appendChild(this.backToHostsButton)
+
+            if (this.gameList?.getHostId() != hostId) {
+                this.gameList = new GameList(this.api, hostId, hostCache ?? null)
+            }
+            this.gameList.mount(this.divElement)
+
+            pushAppState({ display: "games", hostId: this.gameList?.getHostId() })
+        } else if (display == "settings") {
+            this.actionElement.appendChild(this.backToHostsButton)
+
+            this.settings.mount(this.divElement)
+
+            pushAppState({ display: "settings" })
+        }
+
+        this.currentDisplay = display
     }
 
     async forceFetch() {
@@ -182,11 +219,11 @@ class MainApp implements Component {
             this.gameList?.forceFetch()
         ])
 
-        if (this.currentDisplay == "games" &&
-            this.gameList &&
-            !this.hostList.getHost(this.gameList.getHostId())) {
+        if (this.currentDisplay == "games"
+            && this.gameList
+            && !this.hostList.getHost(this.gameList.getHostId())) {
             // The newly fetched list doesn't contain the hosts game view we're in -> go to hosts
-            this.setCurrentGames(null)
+            this.setCurrentDisplay("hosts")
         }
     }
 

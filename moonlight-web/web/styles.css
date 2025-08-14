@@ -197,6 +197,27 @@ button:hover {
     transition: opacity 0.3s ease-in;
 }
 
+/** Actions */
+.actions-list {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+/** Settings */
+.open-settings {
+    background-image: url("resources/settings.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
+.settings {
+    color: white;
+}
+
 /** Hosts */
 .host-add {
     background-image: url("resources/ic_add_to_queue_white_48px.svg");
@@ -235,6 +256,7 @@ button:hover {
 
 .host-name {
     margin: 0;
+    color: white;
     font-size: 3rem;
     text-align: center;
 }
@@ -272,7 +294,7 @@ button:hover {
 .app-image-loaded {
     /** animation */
     opacity: 1;
-    transition: opacity 0.3s ease-in;
+    transition: opacity 0.1s ease-in;
 }
 
 /** Stream */

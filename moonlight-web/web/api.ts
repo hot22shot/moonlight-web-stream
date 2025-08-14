@@ -14,10 +14,10 @@ export async function getApi(host_url?: string): Promise<Api> {
         host_url = `${window.location.origin}/api`
     }
 
-    let credentials = window.sessionStorage.getItem("credentials");
+    let credentials = sessionStorage.getItem("mlCredentials");
 
     while (credentials == null) {
-        const testCredentials = await showPrompt("Enter Credentials", { name: "api-credentials", type: "password" })
+        const testCredentials = await showPrompt("Enter Credentials", { name: "ml-api-credentials", type: "password" })
 
         if (!testCredentials) {
             continue;
@@ -26,7 +26,7 @@ export async function getApi(host_url?: string): Promise<Api> {
         let api = { host_url, credentials: testCredentials }
 
         if (await apiAuthenticate(api)) {
-            window.sessionStorage.setItem("credentials", testCredentials)
+            sessionStorage.setItem("mlCredentials", testCredentials)
 
             credentials = api.credentials;
 

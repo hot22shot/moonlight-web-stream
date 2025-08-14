@@ -1,13 +1,14 @@
 import { Api } from "../api.js"
 import { App, RtcIceCandidate, StreamClientMessage, StreamServerMessage } from "../api_bindings.js"
 import { showMessage } from "../component/modal/index.js"
+import { StreamSettings } from "../component/settings_menu.js"
 import { StreamInput } from "./input.js"
 
-export function startStream(api: Api, hostId: number, appId: number): Promise<Stream> {
+export function startStream(api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]): Promise<Stream> {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket("/api/stream")
         ws.onopen = () => {
-            const stream = new Stream(ws, api, hostId, appId)
+            const stream = new Stream(ws, api, hostId, appId, settings, viewerScreenSize)
 
             resolve(stream)
         };
@@ -25,6 +26,8 @@ export class Stream {
     private hostId: number
     private appId: number
 
+    private settings: StreamSettings
+
     private eventTarget = new EventTarget()
 
     private mediaStream: MediaStream = new MediaStream()
@@ -34,10 +37,16 @@ export class Stream {
 
     private peer: RTCPeerConnection
 
-    constructor(ws: WebSocket, api: Api, hostId: number, appId: number) {
+    constructor(ws: WebSocket, api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]) {
+        if (ws.readyState != WebSocket.OPEN) {
+            throw "WebSocket is not open whilst starting stream"
+        }
+
         this.api = api
         this.hostId = hostId
         this.appId = appId
+
+        this.settings = settings
 
         // Configure web socket
         this.ws = ws
@@ -49,6 +58,12 @@ export class Stream {
                 credentials: this.api.credentials,
                 host_id: this.hostId,
                 app_id: this.appId,
+                bitrate: this.settings.bitrate,
+                packet_size: this.settings.packetSize,
+                fps: this.settings.fps,
+                // TODO: figure out the width and height of the stream (with displaysize?)
+                width: this.settings.videoSize?.width ?? viewerScreenSize[0],
+                height: this.settings.videoSize?.height ?? viewerScreenSize[1],
             }
         })
 

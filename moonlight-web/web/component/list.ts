@@ -51,11 +51,9 @@ export class ListComponent<T extends Component> implements Component {
             element.classList.add("list-show")
         }, 0)
     }
-    private onAnimLengthDecrease(length?: number) {
-        let i = length ?? this.list.length
+    private onAnimElementRemoved(index: number) {
         let element
-
-        while ((element = this.divElements[i]).classList.contains("list-show")) {
+        while ((element = this.divElements[index]).classList.contains("list-show")) {
             element.classList.remove("list-show")
         }
     }
@@ -122,7 +120,7 @@ export class ListComponent<T extends Component> implements Component {
             return element[0] ?? null
         }
 
-        this.onAnimLengthDecrease()
+        this.onAnimElementRemoved(this.list.length + 1)
 
         return null
     }
@@ -173,7 +171,9 @@ export class ListComponent<T extends Component> implements Component {
             this.internalUnmountUntil(0)
 
             if (this.remountIsInsertTransition) {
-                this.onAnimLengthDecrease(0)
+                for (let i = 0; i < this.list.length; i++) {
+                    this.onAnimElementRemoved(i)
+                }
             }
         }
     }

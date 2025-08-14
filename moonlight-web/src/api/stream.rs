@@ -14,10 +14,7 @@ use moonlight_common::{
     high::HostError,
     moonlight::{
         debug::DebugHandler,
-        stream::{
-            ActiveGamepads, ColorRange, Colorspace, ControllerButtons, ControllerCapabilities,
-            ControllerType, MoonlightStream,
-        },
+        stream::{ColorRange, Colorspace, MoonlightStream},
         video::SupportedVideoFormats,
     },
 };
@@ -69,6 +66,14 @@ mod connection;
 mod input;
 mod video;
 
+struct StreamSettings {
+    bitrate: u32,
+    packet_size: u32,
+    fps: u32,
+    width: u32,
+    height: u32,
+}
+
 /// The stream handler WILL authenticate the client because it is a websocket
 #[get("/stream")]
 pub async fn start_stream(
@@ -109,6 +114,11 @@ pub async fn start_stream(
             credentials,
             host_id,
             app_id,
+            bitrate,
+            packet_size,
+            fps,
+            width,
+            height,
         } = message
         else {
             let _ = session.close(None).await;
@@ -119,15 +129,20 @@ pub async fn start_stream(
             return;
         }
 
-        if let Err(err) = start(
-            data,
-            host_id as usize,
-            app_id as usize,
-            session.clone(),
-            stream,
-        )
-        .await
-        {
+        let info = StreamInfo {
+            host_id: host_id as usize,
+            app_id: app_id as usize,
+        };
+
+        let stream_settings = StreamSettings {
+            bitrate,
+            packet_size,
+            fps,
+            width,
+            height,
+        };
+
+        if let Err(err) = start(data, info, stream_settings, session.clone(), stream).await {
             warn!("[Stream]: stream error: {err:?}");
 
             let _ = session.close(None).await;
@@ -182,6 +197,7 @@ struct StreamInfo {
 
 struct StreamConnection {
     pub info: StreamInfo,
+    pub settings: StreamSettings,
     pub runtime: Handle,
     pub stages: Arc<StreamStages>,
     pub data: Data<RuntimeApiData>,
@@ -200,6 +216,7 @@ struct StreamConnection {
 impl StreamConnection {
     pub async fn new(
         info: StreamInfo,
+        settings: StreamSettings,
         data: Data<RuntimeApiData>,
         ws_sender: Session,
         mut ws_receiver: MessageStream,
@@ -209,6 +226,7 @@ impl StreamConnection {
         let peer = Arc::new(api.new_peer_connection(config).await?);
 
         // -- Create and Add a video track
+        // TODO: is it possible to make the video channel unreliable?
         let video_track = Arc::new(TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
                 mime_type: MIME_TYPE_H264.to_string(),
@@ -255,6 +273,7 @@ impl StreamConnection {
 
         let this = Arc::new(Self {
             info,
+            settings,
             runtime: Handle::current(),
             data,
             stages: Arc::new(StreamStages {
@@ -513,7 +532,7 @@ impl StreamConnection {
         let app_list = host.moonlight.app_list().await?;
 
         let Some(app) = app_list
-            .into_iter()
+            .iter()
             .find(|app| app.id as usize == self.info.app_id)
         else {
             let _ = Self::send_ws_message(
@@ -549,13 +568,13 @@ impl StreamConnection {
                 &self.data.instance,
                 &self.data.crypto,
                 self.info.app_id as u32,
-                2560,
-                1440,
-                60,
+                self.settings.width,
+                self.settings.height,
+                self.settings.fps,
                 Colorspace::Rec709,
                 ColorRange::Limited,
-                3000,
-                16384,
+                self.settings.bitrate,
+                self.settings.packet_size,
                 DebugHandler,
                 video_decoder,
                 audio_decoder,
@@ -629,8 +648,8 @@ impl StreamConnection {
 
 async fn start(
     data: Data<RuntimeApiData>,
-    host_id: usize,
-    app_id: usize,
+    info: StreamInfo,
+    settings: StreamSettings,
     ws_sender: Session,
     ws_receiver: MessageStream,
 ) -> Result<Arc<StreamConnection>, anyhow::Error> {
@@ -701,15 +720,8 @@ async fn start(
         .build();
 
     // -- Create and Configure Peer
-    let connection = StreamConnection::new(
-        StreamInfo { host_id, app_id },
-        data,
-        ws_sender,
-        ws_receiver,
-        &api,
-        config,
-    )
-    .await?;
+    let connection =
+        StreamConnection::new(info, settings, data, ws_sender, ws_receiver, &api, config).await?;
 
     Ok(connection)
 }

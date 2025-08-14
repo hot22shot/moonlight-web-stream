@@ -69,6 +69,7 @@ export class Game implements Component {
         // revoke url
         if (this.imageBlobUrl && this.mounted <= 0) {
             URL.revokeObjectURL(this.imageBlobUrl)
+            this.imageBlobUrl = null
 
             this.imageElement.classList.remove("app-image-loaded")
             this.imageElement.src = ""
@@ -125,6 +126,7 @@ export class Game implements Component {
         parent.appendChild(this.divElement)
     }
     unmount(parent: HTMLElement): void {
+
         parent.removeChild(this.divElement)
 
         this.mounted--

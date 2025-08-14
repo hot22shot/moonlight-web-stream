@@ -16,6 +16,7 @@ use moonlight_common::moonlight::{
 use tokio::runtime::Handle;
 use webrtc::{
     media::{Sample, io::h264_reader::H264Reader},
+    rtp::extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
@@ -139,14 +140,22 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                     let video_track = video_track.clone();
 
                     self.runtime.spawn(async move {
+                        // TODO: implement sample queue and drop too old frames?
+
                         if let Err(err) = video_track
-                            .write_sample(&Sample {
-                                data: nal.data.into(),
-                                timestamp,
-                                duration: Duration::from_secs_f32(frame_time),
-                                packet_timestamp,
-                                ..Default::default()
-                            })
+                            .write_sample_with_extensions(
+                                &Sample {
+                                    data: nal.data.into(),
+                                    timestamp,
+                                    duration: Duration::from_secs_f32(frame_time),
+                                    packet_timestamp,
+                                    ..Default::default()
+                                },
+                                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
+                                    min_delay: 0,
+                                    max_delay: 0,
+                                })],
+                            )
                             .await
                         {
                             warn!("write_sample failed: {err}");

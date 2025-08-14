@@ -236,6 +236,11 @@ pub enum StreamClientMessage {
         credentials: String,
         host_id: u32,
         app_id: u32,
+        bitrate: u32,
+        packet_size: u32,
+        fps: u32,
+        width: u32,
+        height: u32,
     },
     Signaling(StreamSignalingMessage),
 }

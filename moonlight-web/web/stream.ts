@@ -5,6 +5,7 @@ import { AppInfoEvent, startStream, Stream } from "./stream/index.js"
 import { showMessage } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
+import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
 
 async function startApp() {
     const api = await getApi()
@@ -56,6 +57,7 @@ class ViewerApp implements Component {
 
         // Configure video element
         this.videoElement.classList.add("video-stream")
+        this.videoElement.preload = "none"
         this.videoElement.controls = false
         this.videoElement.autoplay = true
 
@@ -77,7 +79,10 @@ class ViewerApp implements Component {
     }
 
     private async startStream(hostId: number, appId: number) {
-        this.stream = await startStream(this.api, hostId, appId)
+        let viewerWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
+        let viewerHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+
+        this.stream = await startStream(this.api, hostId, appId, getLocalStreamSettings() ?? defaultStreamSettings(), [viewerWidth, viewerHeight])
 
         // Add app info listener
         this.stream.addAppInfoListener(this.onAppInfo.bind(this))

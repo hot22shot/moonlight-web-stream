@@ -131,17 +131,17 @@ export class Host implements Component {
     }
 
     addHostRemoveListener(listener: HostEventListener, options?: EventListenerOptions) {
-        this.divElement.addEventListener("ml-hostremove", listener as EventListenerOrEventListenerObject, options)
+        this.divElement.addEventListener("ml-hostremove", listener as any, options)
     }
     removeHostRemoveListener(listener: HostEventListener, options?: EventListenerOptions) {
-        this.divElement.removeEventListener("ml-hostremove", listener as EventListenerOrEventListenerObject, options)
+        this.divElement.removeEventListener("ml-hostremove", listener as any, options)
     }
 
     addHostOpenListener(listener: HostEventListener, options?: EventListenerOptions) {
-        this.divElement.addEventListener("ml-hostopen", listener as EventListenerOrEventListenerObject, options)
+        this.divElement.addEventListener("ml-hostopen", listener as any, options)
     }
     removeHostOpenListener(listener: HostEventListener, options?: EventListenerOptions) {
-        this.divElement.removeEventListener("ml-hostopen", listener as EventListenerOrEventListenerObject, options)
+        this.divElement.removeEventListener("ml-hostopen", listener as any, options)
     }
 
     private async remove() {
