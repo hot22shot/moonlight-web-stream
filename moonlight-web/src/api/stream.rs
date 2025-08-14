@@ -72,6 +72,7 @@ struct StreamSettings {
     fps: u32,
     width: u32,
     height: u32,
+    video_sample_queue_size: u32,
 }
 
 /// The stream handler WILL authenticate the client because it is a websocket
@@ -119,6 +120,7 @@ pub async fn start_stream(
             fps,
             width,
             height,
+            video_sample_queue_size,
         } = message
         else {
             let _ = session.close(None).await;
@@ -140,6 +142,7 @@ pub async fn start_stream(
             fps,
             width,
             height,
+            video_sample_queue_size,
         };
 
         if let Err(err) = start(data, info, stream_settings, session.clone(), stream).await {
@@ -557,8 +560,11 @@ impl StreamConnection {
             }
         });
 
-        let video_decoder =
-            H264TrackSampleVideoDecoder::new(self.video_track.clone(), self.stages.clone());
+        let video_decoder = H264TrackSampleVideoDecoder::new(
+            self.video_track.clone(),
+            self.stages.clone(),
+            self.settings.video_sample_queue_size as usize,
+        );
         let audio_decoder =
             OpusTrackSampleAudioDecoder::new(self.audio_track.clone(), self.stages.clone());
 

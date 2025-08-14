@@ -61,9 +61,9 @@ export class Stream {
                 bitrate: this.settings.bitrate,
                 packet_size: this.settings.packetSize,
                 fps: this.settings.fps,
-                // TODO: figure out the width and height of the stream (with displaysize?)
                 width: this.settings.videoSize?.width ?? viewerScreenSize[0],
                 height: this.settings.videoSize?.height ?? viewerScreenSize[1],
+                video_sample_queue_size: this.settings.videoSampleQueueSize
             }
         })
 

@@ -9,15 +9,17 @@ export type StreamSettings = {
         width: number
         height: number
     },
+    videoSampleQueueSize: number
     fps: number
     controllerConfig: ControllerConfig
 }
 
 export function defaultStreamSettings(): StreamSettings {
     return {
-        bitrate: 5000,
+        bitrate: 10000,
         packetSize: 4096,
         fps: 60,
+        videoSampleQueueSize: 2000,
         controllerConfig: {
             invertAB: false,
             invertXY: false
@@ -61,6 +63,8 @@ export class StreamSettingsComponent implements Component {
     private videoSizeEnabled: InputComponent
     private videoSizeWidth: InputComponent
     private videoSizeHeight: InputComponent
+
+    private videoSampleQueueSize: InputComponent
 
     private controllerHeader: HTMLHeadingElement = document.createElement("h2")
     private controllerInvertAB: InputComponent
@@ -123,6 +127,14 @@ export class StreamSettingsComponent implements Component {
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeHeight.mount(this.divElement)
 
+        // Video Sample Queue Size
+        this.videoSampleQueueSize = new InputComponent("videoSampleQueueSize", "number", "Video Sample Queue Size", {
+            defaultValue: defaultSettings.videoSampleQueueSize.toString(),
+            value: settings?.videoSampleQueueSize?.toString()
+        })
+        this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
+        this.videoSampleQueueSize.mount(this.divElement)
+
         // Controller
         this.controllerHeader.innerText = "Controller"
         this.divElement.appendChild(this.controllerHeader)
@@ -173,6 +185,8 @@ export class StreamSettingsComponent implements Component {
                 height: parseInt(this.videoSizeHeight.getValue())
             }
         }
+        settings.videoSampleQueueSize = parseInt(this.videoSampleQueueSize.getValue())
+
         settings.controllerConfig.invertAB = this.controllerInvertAB.isChecked()
         settings.controllerConfig.invertXY = this.controllerInvertXY.isChecked()
 
