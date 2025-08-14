@@ -601,6 +601,8 @@ impl StreamConnection {
             }
         };
 
+        self.input.on_stream_start(&stream).await;
+
         let mut stream_guard = self.stream.write().await;
         stream_guard.replace(stream);
 

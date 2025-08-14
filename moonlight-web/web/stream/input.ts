@@ -1,4 +1,5 @@
-import { StreamMouseButton } from "../api_bindings.js"
+import { StreamControllerButton, StreamMouseButton } from "../api_bindings.js"
+import { showMessage } from "../component/modal/index.js"
 import { ByteBuffer } from "./buffer.js"
 import { convertStandardButton as convertStandardControllerButton } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
@@ -76,7 +77,7 @@ export class StreamInput {
         this.touch.onmessage = this.onTouchMessage.bind(this)
 
         this.controllers = this.peer.createDataChannel("controllers")
-        this.controllers = this.peer.createDataChannel("controller_input", {
+        this.controllerInput = this.peer.createDataChannel("controller_input", {
             maxRetransmits: 0,
             ordered: true
         })
@@ -371,35 +372,32 @@ export class StreamInput {
 
     // -- Controller
     private gamepadIntervalId: number | null = null
-    private gamepads: Array<Gamepad | null> = []
+    private gamepads: Array<number | null> = []
 
-    onGamepadConnect(event: GamepadEvent) {
-        console.debug(event)
-
+    onGamepadConnect(gamepad: Gamepad) {
         let inserted = false
         for (let i = 0; i < this.gamepads.length; i++) {
             if (!this.gamepads[i]) {
-                this.gamepads[i] = event.gamepad
+                this.gamepads[i] = gamepad.index
                 inserted = true
                 break
             }
         }
         if (!inserted) {
-            this.gamepads.push(event.gamepad)
+            this.gamepads.push(gamepad.index)
         }
+        this.sendControllerAdd(this.gamepads.length - 1)
 
-        if (event.gamepad.mapping != "standard") {
-            console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${event.gamepad.mapping}`)
+        if (gamepad.mapping != "standard") {
+            console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${gamepad.mapping}`)
         }
 
         if (this.gamepadIntervalId == null) {
-            this.gamepadIntervalId = setInterval(this.sendAllGamepads.bind(this), CONTROLLER_SEND_INTERVAL_MS)
+            this.gamepadIntervalId = setInterval(this.onGamepadUpdate.bind(this), CONTROLLER_SEND_INTERVAL_MS)
         }
     }
     onGamepadDisconnect(event: GamepadEvent) {
-        console.debug(event)
-
-        const index = this.gamepads.indexOf(event.gamepad)
+        const index = this.gamepads.indexOf(event.gamepad.index)
         this.gamepads[index] = null
 
         let containsElement = false
@@ -413,9 +411,13 @@ export class StreamInput {
             clearInterval(this.gamepadIntervalId)
         }
     }
-    private sendAllGamepads() {
+    onGamepadUpdate() {
         for (let gamepadId = 0; gamepadId < this.gamepads.length; gamepadId++) {
-            const gamepad = this.gamepads[gamepadId]
+            const gamepadIndex = this.gamepads[gamepadId]
+            if (gamepadIndex == null) {
+                return
+            }
+            const gamepad = navigator.getGamepads()[gamepadIndex]
             if (!gamepad) {
                 continue
             }
@@ -429,34 +431,56 @@ export class StreamInput {
                 const button = gamepad.buttons[buttonId]
 
                 const buttonFlag = convertStandardControllerButton(buttonId)
-                if (button.pressed && buttonFlag != null) {
+                if (button.pressed && buttonFlag !== null) {
                     buttonFlags |= buttonFlag
                 }
             }
+
+            const leftTrigger = gamepad.buttons[6].value
+            const rightTrigger = gamepad.buttons[7].value
 
             const leftStickX = gamepad.axes[0]
             const leftStickY = gamepad.axes[1]
             const rightStickX = gamepad.axes[2]
             const rightStickY = gamepad.axes[3]
 
-            this.sendController(gamepadId, buttonFlags, leftStickX, leftStickY, rightStickX, rightStickY)
+            this.sendController(gamepadId, buttonFlags, leftTrigger, rightTrigger, leftStickX, leftStickY, rightStickX, rightStickY)
         }
     }
 
-    // Note: all stick values must be in range -1..1
-    sendController(id: number, buttonFlags: number, leftStickX: number, leftStickY: number, rightStickX: number, rightStickY: number) {
+    sendControllerAdd(id: number) {
+        this.buffer.reset()
+
+        this.buffer.putU8(0)
+        this.buffer.putU8(id)
+
+        trySendChannel(this.controllers, this.buffer)
+    }
+    sendControllerRemove(id: number) {
+        this.buffer.reset()
+
+        this.buffer.putU8(1)
+        this.buffer.putU8(id)
+
+        trySendChannel(this.controllers, this.buffer)
+    }
+    // Values
+    // - Trigger: range 0..1
+    // - Stick: range -1..1
+    sendController(id: number, buttonFlags: number, leftTrigger: number, rightTrigger: number, leftStickX: number, leftStickY: number, rightStickX: number, rightStickY: number) {
         this.buffer.reset()
 
         this.buffer.putU8(0)
         this.buffer.putU8(id)
         this.buffer.putU32(buttonFlags)
-        this.buffer.putI16(leftStickX)
-        this.buffer.putI16(leftStickY)
-        this.buffer.putI16(rightStickX)
-        this.buffer.putI16(rightStickY)
+        this.buffer.putU8(Math.max(0.0, Math.min(1.0, leftTrigger)) * 255)
+        this.buffer.putU8(Math.max(0.0, Math.min(1.0, rightTrigger)) * 255)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, leftStickX)) * 32767)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -leftStickY)) * 32767)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, rightStickX)) * 32767)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -rightStickY)) * 32767)
 
-        // TODO: implement controller input
-        trySendChannel(this.controllers, this.buffer)
+        trySendChannel(this.controllerInput, this.buffer)
     }
 
 }

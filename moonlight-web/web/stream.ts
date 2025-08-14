@@ -76,6 +76,12 @@ class ViewerApp implements Component {
 
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
+        // Connect all gamepads
+        for (const gamepad of navigator.getGamepads()) {
+            if (gamepad != null) {
+                this.onGamepadAdd(gamepad)
+            }
+        }
     }
 
     private async startStream(hostId: number, appId: number) {
@@ -141,11 +147,12 @@ class ViewerApp implements Component {
 
     // Gamepad
     onGamepadConnect(event: GamepadEvent) {
-        console.log(event)
-        this.stream?.getInput().onGamepadConnect(event)
+        this.onGamepadAdd(event.gamepad)
+    }
+    onGamepadAdd(gamepad: Gamepad) {
+        this.stream?.getInput().onGamepadConnect(gamepad)
     }
     onGamepadDisconnect(event: GamepadEvent) {
-        console.log(event)
         this.stream?.getInput().onGamepadDisconnect(event)
     }
 

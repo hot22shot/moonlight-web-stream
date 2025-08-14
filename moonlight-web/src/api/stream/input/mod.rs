@@ -4,20 +4,25 @@ use log::{info, warn};
 use moonlight_common::moonlight::{
     input::TouchEventType,
     stream::{
-        ControllerButtons, KeyAction, KeyFlags, KeyModifiers, MoonlightStream, MouseButton,
-        MouseButtonAction,
+        ActiveGamepads, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction,
+        KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
     },
 };
 use num_traits::FromPrimitive;
+use tokio::sync::RwLock;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 
 use crate::api::stream::{StreamConnection, buffer::ByteBuffer};
 
-pub struct StreamInput {}
+pub struct StreamInput {
+    active_gamepads: RwLock<ActiveGamepads>,
+}
 
 impl StreamInput {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            active_gamepads: RwLock::new(ActiveGamepads::empty()),
+        }
     }
 
     /// Returns if this added events
@@ -53,9 +58,19 @@ impl StreamInput {
                 ));
             }
             "controllers" => {
+                let connection = connection.clone();
+                data_channel.on_message(Box::new(move |message| {
+                    let connection = connection.clone();
+
+                    Box::pin(async move {
+                        Self::on_controller_message(message, &connection).await;
+                    })
+                }));
+            }
+            "controller_input" => {
                 data_channel.on_message(Self::create_handler(
                     connection.clone(),
-                    Self::on_controller_message,
+                    Self::on_controller_input_message,
                 ));
             }
             _ => return false,
@@ -67,13 +82,12 @@ impl StreamInput {
     #[allow(clippy::type_complexity)]
     fn create_handler(
         connection: Arc<StreamConnection>,
-        f: impl Fn(&MoonlightStream, DataChannelMessage) + Send + Sync + 'static,
+        f: impl Fn(&MoonlightStream, DataChannelMessage, &StreamConnection) + Send + Sync + 'static,
     ) -> Box<
         dyn FnMut(DataChannelMessage) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>
             + Send
             + Sync,
     > {
-        info!("HANDLER");
         let f = Arc::new(f);
 
         Box::new(move |message| {
@@ -83,14 +97,38 @@ impl StreamInput {
             Box::pin(async move {
                 let stream = connection.stream.read().await;
                 if let Some(stream) = stream.as_ref() {
-                    f(stream, message);
+                    f(stream, message, &connection);
                 }
             })
         })
     }
 
-    fn on_touch_message(stream: &MoonlightStream, message: DataChannelMessage) {
+    pub async fn on_stream_start(&self, stream: &MoonlightStream) {
+        // Add known gamepads
+        let gamepads = self.active_gamepads.read().await;
+        for i in 0..16 {
+            let bit = 1 << i;
+            if gamepads.bits() & bit != 0 {
+                // TODO: find out ty, buttons, capabilities
+                let _ = stream.send_controller_arrival(
+                    i as u8,
+                    *gamepads,
+                    ControllerType::UNKNOWN,
+                    ControllerButtons::all(),
+                    ControllerCapabilities::empty(),
+                );
+            }
+        }
+    }
+
+    fn on_touch_message(
+        stream: &MoonlightStream,
+        message: DataChannelMessage,
+        _connection: &StreamConnection,
+    ) {
         let mut buffer = ByteBuffer::new(message.data);
+
+        // TODO: call clear when js says there are no more pointers
 
         let event_type = match buffer.get_u8() {
             0 => TouchEventType::Down,
@@ -121,7 +159,11 @@ impl StreamInput {
         );
     }
 
-    fn on_mouse_message(stream: &MoonlightStream, message: DataChannelMessage) {
+    fn on_mouse_message(
+        stream: &MoonlightStream,
+        message: DataChannelMessage,
+        _connection: &StreamConnection,
+    ) {
         let mut buffer = ByteBuffer::new(message.data);
 
         let ty = buffer.get_u8();
@@ -157,12 +199,16 @@ impl StreamInput {
             let delta_x = buffer.get_i16();
             let delta_y = buffer.get_i16();
 
-            let _ = stream.send_high_res_scroll(delta_x);
-            let _ = stream.send_high_res_horizontal_scroll(delta_y);
+            let _ = stream.send_high_res_horizontal_scroll(delta_x);
+            let _ = stream.send_high_res_scroll(delta_y);
         }
     }
 
-    fn on_keyboard_message(stream: &MoonlightStream, message: DataChannelMessage) {
+    fn on_keyboard_message(
+        stream: &MoonlightStream,
+        message: DataChannelMessage,
+        _connection: &StreamConnection,
+    ) {
         let mut buffer = ByteBuffer::new(message.data);
 
         let ty = buffer.get_u8();
@@ -195,7 +241,39 @@ impl StreamInput {
         }
     }
 
-    fn on_controller_message(stream: &MoonlightStream, message: DataChannelMessage) {
+    async fn on_controller_message(message: DataChannelMessage, connection: &StreamConnection) {
+        let mut buffer = ByteBuffer::new(message.data);
+
+        let ty = buffer.get_u8();
+        if ty == 0 {
+            let id = buffer.get_u8();
+
+            let Some(id_gamepads) = ActiveGamepads::from_id(id) else {
+                return;
+            };
+            let active_gamepads = {
+                let mut active_gamepads = connection.input.active_gamepads.write().await;
+                active_gamepads.insert(id_gamepads);
+                *active_gamepads
+            };
+
+            if let Some(stream) = connection.stream.read().await.as_ref() {
+                // TODO: find out ty, buttons, capabilities
+                let _ = stream.send_controller_arrival(
+                    id,
+                    active_gamepads,
+                    ControllerType::UNKNOWN,
+                    ControllerButtons::all(),
+                    ControllerCapabilities::empty(),
+                );
+            }
+        }
+    }
+    fn on_controller_input_message(
+        stream: &MoonlightStream,
+        message: DataChannelMessage,
+        connection: &StreamConnection,
+    ) {
         let mut buffer = ByteBuffer::new(message.data);
 
         let ty = buffer.get_u8();
@@ -203,20 +281,38 @@ impl StreamInput {
             // TODO: id?
 
             let id = buffer.get_u8();
+            // TODO: don't block and uncomment
+            // let active_gamepads = { *connection.input.active_gamepads.blocking_read() };
+            let active_gamepads = ActiveGamepads::from_id(id).unwrap();
+
             let Some(buttons) = ControllerButtons::from_bits(buffer.get_u32()) else {
                 warn!("[Stream Input]: received invalid controller buttons");
                 return;
             };
+            let left_trigger = buffer.get_u8();
+            let right_trigger = buffer.get_u8();
             let left_stick_x = buffer.get_i16();
             let left_stick_y = buffer.get_i16();
             let right_stick_x = buffer.get_i16();
             let right_stick_y = buffer.get_i16();
 
+            log::debug!("{id},{active_gamepads:?},{buttons:?}");
             // TODO: triggers?
+            // let _ = stream.send_multi_controller(
+            //     id as i16,
+            //     active_gamepads,
+            //     buttons,
+            //     0,
+            //     0,
+            //     left_stick_x,
+            //     left_stick_y,
+            //     right_stick_x,
+            //     right_stick_y,
+            // );
             let _ = stream.send_controller(
                 buttons,
-                0,
-                0,
+                left_trigger,
+                right_trigger,
                 left_stick_x,
                 left_stick_y,
                 right_stick_x,

@@ -285,6 +285,16 @@ bitflags! {
     }
 }
 
+impl ActiveGamepads {
+    pub fn from_id(id: u8) -> Option<Self> {
+        if id >= 16 {
+            return None;
+        }
+        Some(ActiveGamepads::from_bits_truncate(1 << id))
+    }
+}
+
+// TODO: should this be an enum?
 bitflags! {
     /// Represents the type of controller.
     ///
