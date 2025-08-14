@@ -1,20 +1,18 @@
 use std::str::FromStr;
 
-use aes::Aes128;
-use block_modes::{BlockMode, BlockModeError, Ecb, block_padding::NoPadding};
+use openssl::{
+    cipher::Cipher,
+    cipher_ctx::CipherCtx,
+    error::ErrorStack,
+    md::Md,
+    md_ctx::MdCtx,
+    pkey::{PKey, Private},
+    sha::{sha1, sha256},
+    x509::X509,
+};
 use pem::{Pem, PemError};
 use rcgen::{CertificateParams, KeyPair, PKCS_RSA_SHA256};
-use rsa::{
-    Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
-    pkcs8::{DecodePrivateKey, DecodePublicKey},
-};
-use sha2::Sha256;
 use thiserror::Error;
-use x509_parser::{
-    error::X509Error,
-    parse_x509_certificate,
-    prelude::{FromDer, X509Certificate},
-};
 
 use crate::{
     CHALLENGE_LENGTH, PairPin, PairStatus, SALT_LENGTH, ServerVersion,
@@ -33,15 +31,13 @@ use crate::{
 // TODO: maybe migrate this pairing process to openssl?
 
 fn hash(algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) {
-    use sha1::Digest;
-
     match algorithm {
         HashAlgorithm::Sha1 => {
-            let digest = sha1::Sha1::digest(data);
+            let digest = sha1(data);
             output.copy_from_slice(&digest);
         }
         HashAlgorithm::Sha256 => {
-            let digest = sha2::Sha256::digest(data);
+            let digest = sha256(data);
             output.copy_from_slice(&digest);
         }
     }
@@ -76,67 +72,63 @@ fn generate_aes_key(algorithm: HashAlgorithm, salt: [u8; SALT_LENGTH], pin: Pair
     hash
 }
 
-type Aes128Ecb = Ecb<Aes128, NoPadding>;
-
 pub fn encrypt_aes(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
-    let cipher = Aes128Ecb::new_from_slices(key, &[]).expect("valid iv key (the key is &[])");
+    let mut cipher_ctx = CipherCtx::new().unwrap();
 
-    // Clone plaintext into a mutable buffer
-    let mut buf = plaintext.to_vec();
-    // Encrypt in place, specifying the full plaintext length
-    cipher
-        .encrypt(&mut buf, plaintext.len())
-        .expect("no required padding for encryption");
+    cipher_ctx
+        .encrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)
+        .unwrap();
+    cipher_ctx.set_padding(false);
 
-    buf
+    let mut output = Vec::new();
+    cipher_ctx
+        .cipher_update_vec(plaintext, &mut output)
+        .unwrap();
+    output
 }
 
 pub fn decrypt_aes<C: RequestClient>(
     key: &[u8],
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, PairError<C::Error>> {
-    let cipher = Aes128Ecb::new_from_slices(key, &[]).expect("a valid iv key (the key is &[])");
+    let mut cipher_ctx = CipherCtx::new().unwrap();
 
-    let mut buf = ciphertext.to_vec();
-    cipher.decrypt(&mut buf)?;
+    cipher_ctx
+        .decrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)
+        .unwrap();
+    cipher_ctx.set_padding(false);
 
-    Ok(buf)
+    let mut decrypted = Vec::new();
+    cipher_ctx
+        .cipher_update_vec(ciphertext, &mut decrypted)
+        .unwrap();
+
+    Ok(decrypted)
 }
 
-fn verify_signature(
-    server_secret: &[u8],
-    server_signature: &[u8],
-    server_cert: &X509Certificate,
-) -> bool {
-    const HASH_ALGO: HashAlgorithm = HashAlgorithm::Sha256;
+fn verify_signature(server_secret: &[u8], server_signature: &[u8], server_cert: &X509) -> bool {
+    let public_key = server_cert.public_key().unwrap();
 
-    let public_key = RsaPublicKey::from_public_key_der(server_cert.public_key().raw)
-        .expect("a valid server certificate public key");
+    let mut md_ctx = MdCtx::new().unwrap();
 
-    let mut hashed = [0u8; HashAlgorithm::MAX_HASH_LEN];
-    hash(HASH_ALGO, server_secret, &mut hashed);
-
-    public_key
-        .verify(
-            Pkcs1v15Sign::new::<Sha256>(),
-            &hashed[0..HASH_ALGO.hash_len()],
-            server_signature,
-        )
-        .is_ok()
+    md_ctx
+        .digest_verify_init(Some(Md::sha256()), &public_key)
+        .unwrap();
+    md_ctx.digest_verify_update(server_secret).unwrap();
+    md_ctx.digest_verify_final(server_signature).unwrap()
 }
 
-fn sign_data(key_pair: &KeyPair, data: &[u8]) -> Vec<u8> {
-    const HASH_ALGO: HashAlgorithm = HashAlgorithm::Sha256;
+fn sign_data(private_key: &PKey<Private>, data: &[u8]) -> Vec<u8> {
+    let mut md_ctx = MdCtx::new().unwrap();
 
-    let private_key = RsaPrivateKey::from_pkcs8_der(key_pair.serialized_der())
-        .expect("a valid pkcs8 private key");
+    md_ctx
+        .digest_sign_init(Some(Md::sha256()), &private_key)
+        .unwrap();
+    md_ctx.digest_sign_update(data).unwrap();
 
-    let mut hashed = [0u8; HashAlgorithm::MAX_HASH_LEN];
-    hash(HASH_ALGO, data, &mut hashed);
-
-    private_key
-        .sign(Pkcs1v15Sign::new::<Sha256>(), &hashed)
-        .expect("sign the data")
+    let mut out = Vec::new();
+    md_ctx.digest_sign_final_to_vec(&mut out).unwrap();
+    out
 }
 
 // TOOD: maybe remove this struct?
@@ -167,17 +159,13 @@ pub enum PairError<RequestError> {
     // Client
     #[error("incorrect client certificate: {0}")]
     ClientPrivateKeyPem(rcgen::Error),
-    #[error("incorrect client certificate: {0}")]
-    ClientCertificateError(nom::Err<X509Error>),
     #[error("incorrect private key: make sure it's a PKCS_RSA_SHA256 key")]
     IncorrectPrivateKey,
     // Server
-    #[error("{0}")]
-    Decrypt(#[from] BlockModeError),
+    #[error("")]
+    OpenSSL(#[from] ErrorStack),
     #[error("incorrect server certificate pem: {0}")]
     ServerCertificatePem(PemError),
-    #[error("incorrect server certificate: {0}")]
-    ServerCertificateParse(nom::Err<X509Error>),
     // Pairing failures
     #[error("the pin was wrong")]
     IncorrectPin,
@@ -198,14 +186,13 @@ pub async fn host_pair<C: RequestClient>(
     server_version: ServerVersion,
     pin: PairPin,
 ) -> Result<PairSuccess, PairError<C::Error>> {
-    let (_, client_cert) = X509Certificate::from_der(client_certificate_pem.contents())
-        .map_err(PairError::ClientCertificateError)?;
-    let client_key_pair = KeyPair::from_pem(&client_private_key_pem.to_string())
-        .map_err(PairError::ClientPrivateKeyPem)?;
+    let client_cert = X509::from_der(client_certificate_pem.contents())?;
+    let client_private_key = PKey::private_key_from_der(client_private_key_pem.contents())?;
 
-    if client_key_pair.algorithm() != &PKCS_RSA_SHA256 {
-        return Err(PairError::IncorrectPrivateKey);
-    }
+    // TODO: check
+    // if client_private_key. != &PKCS_RSA_SHA256 {
+    //     return Err(PairError::IncorrectPrivateKey);
+    // }
 
     let client_cert_pem = client_certificate_pem.to_string();
 
@@ -235,8 +222,7 @@ pub async fn host_pair<C: RequestClient>(
 
     let server_cert_pem =
         Pem::from_str(&server_cert_str).map_err(PairError::ServerCertificatePem)?;
-    let (_, server_cert) = parse_x509_certificate(server_cert_pem.contents())
-        .map_err(PairError::ServerCertificateParse)?;
+    let server_cert = X509::from_der(server_cert_pem.contents())?;
 
     let mut challenge = [0u8; CHALLENGE_LENGTH];
     crypto.generate_random(&mut challenge);
@@ -271,7 +257,7 @@ pub async fn host_pair<C: RequestClient>(
 
     let mut challenge_response = Vec::new();
     challenge_response.extend_from_slice(server_challenge);
-    challenge_response.extend_from_slice(&client_cert.signature_value.data);
+    challenge_response.extend_from_slice(client_cert.signature().as_slice());
     challenge_response.extend_from_slice(&client_secret);
 
     let mut challenge_response_hash = [0u8; HashAlgorithm::MAX_HASH_LEN];
@@ -318,7 +304,7 @@ pub async fn host_pair<C: RequestClient>(
 
     let mut expected_response = Vec::new();
     expected_response.extend_from_slice(&challenge);
-    expected_response.extend_from_slice(&server_cert.signature_value.data);
+    expected_response.extend_from_slice(server_cert.signature().as_slice());
     expected_response.extend_from_slice(&server_secret);
 
     let mut expected_response_hash = [0u8; HashAlgorithm::MAX_HASH_LEN];
@@ -339,7 +325,7 @@ pub async fn host_pair<C: RequestClient>(
     // Send the server our signed secret
     let mut client_pairing_secret = Vec::new();
     client_pairing_secret.extend_from_slice(&client_secret);
-    client_pairing_secret.extend_from_slice(&sign_data(&client_key_pair, &client_secret));
+    client_pairing_secret.extend_from_slice(&sign_data(&client_private_key, &client_secret));
 
     let server_response4 = host_pair4(
         client,
