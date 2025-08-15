@@ -43,7 +43,7 @@ impl H264TrackSampleVideoDecoder {
         stages: Arc<StreamStages>,
         sample_send_queue_size: usize,
     ) -> Self {
-        let (sender, receiver) = channel(20);
+        let (sender, receiver) = channel(sample_send_queue_size);
 
         spawn({
             let video_track = video_track.clone();
