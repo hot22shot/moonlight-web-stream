@@ -11,6 +11,7 @@ export type StreamSettings = {
     },
     videoSampleQueueSize: number
     fps: number
+    playAudioLocal: boolean
     controllerConfig: ControllerConfig
 }
 
@@ -20,6 +21,7 @@ export function defaultStreamSettings(): StreamSettings {
         packetSize: 4096,
         fps: 60,
         videoSampleQueueSize: 2000,
+        playAudioLocal: false,
         controllerConfig: {
             invertAB: false,
             invertXY: false
@@ -65,6 +67,9 @@ export class StreamSettingsComponent implements Component {
     private videoSizeHeight: InputComponent
 
     private videoSampleQueueSize: InputComponent
+
+    private audioHeader: HTMLHeadingElement = document.createElement("h2")
+    private playAudioLocal: InputComponent
 
     private controllerHeader: HTMLHeadingElement = document.createElement("h2")
     private controllerInvertAB: InputComponent
@@ -135,6 +140,16 @@ export class StreamSettingsComponent implements Component {
         this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSampleQueueSize.mount(this.divElement)
 
+        // Audio local
+        this.audioHeader.innerText = "Audio"
+        this.divElement.appendChild(this.audioHeader)
+
+        this.playAudioLocal = new InputComponent("playAudioLocal", "checkbox", "Play Audio Local", {
+            checked: settings?.playAudioLocal
+        })
+        this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
+        this.playAudioLocal.mount(this.divElement)
+
         // Controller
         this.controllerHeader.innerText = "Controller"
         this.divElement.appendChild(this.controllerHeader)
@@ -186,6 +201,8 @@ export class StreamSettingsComponent implements Component {
             }
         }
         settings.videoSampleQueueSize = parseInt(this.videoSampleQueueSize.getValue())
+
+        settings.playAudioLocal = this.playAudioLocal.isChecked()
 
         settings.controllerConfig.invertAB = this.controllerInvertAB.isChecked()
         settings.controllerConfig.invertXY = this.controllerInvertXY.isChecked()

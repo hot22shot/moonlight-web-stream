@@ -63,7 +63,8 @@ export class Stream {
                 fps: this.settings.fps,
                 width: this.settings.videoSize?.width ?? viewerScreenSize[0],
                 height: this.settings.videoSize?.height ?? viewerScreenSize[1],
-                video_sample_queue_size: this.settings.videoSampleQueueSize
+                video_sample_queue_size: this.settings.videoSampleQueueSize,
+                play_audio_local: this.settings.playAudioLocal,
             }
         })
 

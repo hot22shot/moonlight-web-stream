@@ -73,6 +73,7 @@ struct StreamSettings {
     width: u32,
     height: u32,
     video_sample_queue_size: u32,
+    play_audio_local: bool,
 }
 
 /// The stream handler WILL authenticate the client because it is a websocket
@@ -121,6 +122,7 @@ pub async fn start_stream(
             width,
             height,
             video_sample_queue_size,
+            play_audio_local,
         } = message
         else {
             let _ = session.close(None).await;
@@ -143,6 +145,7 @@ pub async fn start_stream(
             width,
             height,
             video_sample_queue_size,
+            play_audio_local,
         };
 
         if let Err(err) = start(data, info, stream_settings, session.clone(), stream).await {
@@ -579,7 +582,7 @@ impl StreamConnection {
                 self.settings.fps,
                 false,
                 true,
-                false,
+                self.settings.play_audio_local,
                 ActiveGamepads::empty(),
                 false,
                 Colorspace::Rec709,
