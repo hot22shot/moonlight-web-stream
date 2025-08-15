@@ -197,7 +197,7 @@ impl<'a> fmt::Write for CounterWriter<'a> {
     }
 }
 
-fn i32_to_str<'a>(num: i32, buffer: &'a mut [u8; 11]) -> &'a str {
+fn i32_to_str(num: i32, buffer: &mut [u8; 11]) -> &str {
     let mut writer = CounterWriter {
         buf: buffer,
         pos: 0,
