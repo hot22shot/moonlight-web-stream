@@ -14,7 +14,7 @@ use moonlight_common::{
     high::HostError,
     moonlight::{
         debug::DebugHandler,
-        stream::{ColorRange, Colorspace, MoonlightStream},
+        stream::{ActiveGamepads, ColorRange, Colorspace, MoonlightStream},
         video::SupportedVideoFormats,
     },
 };
@@ -577,6 +577,11 @@ impl StreamConnection {
                 self.settings.width,
                 self.settings.height,
                 self.settings.fps,
+                false,
+                true,
+                false,
+                ActiveGamepads::empty(),
+                false,
                 Colorspace::Rec709,
                 ColorRange::Limited,
                 self.settings.bitrate,

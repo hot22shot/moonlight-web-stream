@@ -4,7 +4,6 @@
 
 use pem::Pem;
 use tokio::task::JoinError;
-use url::Host;
 use uuid::Uuid;
 
 use crate::{
