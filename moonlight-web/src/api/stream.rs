@@ -1,6 +1,10 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    io::BufReader,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 
 use actix_web::{
@@ -19,6 +23,7 @@ use moonlight_common::{
     },
 };
 use tokio::{
+    fs::File,
     runtime::Handle,
     spawn,
     sync::{Notify, RwLock},
@@ -38,6 +43,7 @@ use webrtc::{
         ice_connection_state::RTCIceConnectionState,
     },
     interceptor::registry::Registry,
+    media::{Sample, io::ogg_reader::OggReader},
     peer_connection::{
         RTCPeerConnection,
         configuration::RTCConfiguration,
@@ -231,6 +237,11 @@ impl StreamConnection {
     ) -> Result<Arc<Self>, anyhow::Error> {
         let peer = Arc::new(api.new_peer_connection(config).await?);
 
+        let stages = Arc::new(StreamStages {
+            connected: StreamStage::new("connected"),
+            stop: StreamStage::new("stop"),
+        });
+
         // -- Create and Add a video track
         // TODO: is it possible to make the video channel unreliable?
         let video_track = Arc::new(TrackLocalStaticSample::new(
@@ -254,17 +265,25 @@ impl StreamConnection {
         });
 
         // -- Create and Add a audio track
-        let audio_track = Arc::new(TrackLocalStaticSample::new(
+        let audio_track_test = Arc::new(TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
                 mime_type: MIME_TYPE_OPUS.to_string(),
-                clock_rate: 48000,
-                channels: 2,
                 ..Default::default()
             },
             "audio".to_owned(),
             "moonlight".to_owned(),
         ));
-        let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+        let audio_track = Arc::new(TrackLocalStaticSample::new(
+            RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_OPUS.to_string(),
+                ..Default::default()
+            },
+            "audio".to_owned(),
+            "moonlight".to_owned(),
+        ));
+        let audio_sender = peer
+            .add_track(Arc::clone(&audio_track_test) as Arc<_>)
+            .await?;
 
         // Read incoming RTCP packets
         // Before these packets are returned they are processed by interceptors. For things
@@ -272,6 +291,51 @@ impl StreamConnection {
         spawn(async move {
             let mut rtcp_buf = vec![0u8; 1500];
             while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
+        });
+
+        // TODO: remove, test audio
+        spawn({
+            let audio_track = audio_track_test.clone();
+            let stages = stages.clone();
+            async move {
+                // Open a IVF file and start reading using our IVFReader
+                let file = File::open("server/output.ogg").await.unwrap();
+                let reader = BufReader::new(file.into_std().await);
+                // Open on oggfile in non-checksum mode.
+                let (mut ogg, _) = OggReader::new(reader, true).unwrap();
+
+                // Wait for connection established
+                stages.connected.when_reached().await;
+
+                const OGG_PAGE_DURATION: Duration = Duration::from_millis(20);
+
+                println!("play audio from disk file output.ogg");
+
+                // It is important to use a time.Ticker instead of time.Sleep because
+                // * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
+                // * works around latency issues with Sleep
+                let mut ticker = tokio::time::interval(OGG_PAGE_DURATION);
+
+                // Keep track of last granule, the difference is the amount of samples in the buffer
+                let mut last_granule: u64 = 0;
+                while let Ok((page_data, page_header)) = ogg.parse_next_page() {
+                    // The amount of samples is the difference between the last and current timestamp
+                    let sample_count = page_header.granule_position - last_granule;
+                    last_granule = page_header.granule_position;
+                    let sample_duration = Duration::from_millis(sample_count * 1000 / 48000);
+
+                    audio_track
+                        .write_sample(&Sample {
+                            data: page_data.freeze(),
+                            duration: sample_duration,
+                            ..Default::default()
+                        })
+                        .await
+                        .unwrap();
+
+                    let _ = ticker.tick().await;
+                }
+            }
         });
 
         // -- Input
@@ -282,10 +346,7 @@ impl StreamConnection {
             settings,
             runtime: Handle::current(),
             data,
-            stages: Arc::new(StreamStages {
-                connected: StreamStage::new("connected"),
-                stop: StreamStage::new("stop"),
-            }),
+            stages,
             peer: peer.clone(),
             ws_sender,
             video_track,
