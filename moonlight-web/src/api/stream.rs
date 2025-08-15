@@ -264,15 +264,15 @@ impl StreamConnection {
             "audio".to_owned(),
             "moonlight".to_owned(),
         ));
-        // let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+        let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
 
-        // // Read incoming RTCP packets
-        // // Before these packets are returned they are processed by interceptors. For things
-        // // like NACK this needs to be called.
-        // spawn(async move {
-        //     let mut rtcp_buf = vec![0u8; 1500];
-        //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
-        // });
+        // Read incoming RTCP packets
+        // Before these packets are returned they are processed by interceptors. For things
+        // like NACK this needs to be called.
+        spawn(async move {
+            let mut rtcp_buf = vec![0u8; 1500];
+            while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
+        });
 
         // -- Input
         let input = StreamInput::new();
