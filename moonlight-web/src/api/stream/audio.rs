@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{io::Cursor, sync::Arc, time::Duration};
 
 use actix_web::web::Bytes;
 use log::warn;
@@ -8,7 +8,8 @@ use moonlight_common::moonlight::{
 };
 use tokio::runtime::Handle;
 use webrtc::{
-    media::Sample, track::track_local::track_local_static_sample::TrackLocalStaticSample,
+    media::{Sample, io::ogg_reader::OggReader},
+    track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
 use crate::api::stream::StreamStages;
@@ -60,20 +61,26 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
         let duration = Duration::from_millis(20);
 
         let data = Bytes::copy_from_slice(data);
-        let audio_track = self.audio_track.clone();
 
-        self.runtime.spawn(async move {
-            let sample = Sample {
-                data,
-                duration,
-                // Time should be set if you want fine-grained sync
-                ..Default::default()
-            };
+        let cursor = Cursor::new(data);
+        let (mut reader, header) = OggReader::new(cursor, false).unwrap();
 
-            if let Err(err) = audio_track.write_sample(&sample).await {
-                warn!("[Stream]: audio_track.write_sample failed: {err}");
-            }
-        });
+        while let Ok((data, header)) = reader.parse_next_page() {
+            let audio_track = self.audio_track.clone();
+
+            self.runtime.spawn(async move {
+                let sample = Sample {
+                    data: data.into(),
+                    duration,
+                    // Time should be set if you want fine-grained sync
+                    ..Default::default()
+                };
+
+                if let Err(err) = audio_track.write_sample(&sample).await {
+                    warn!("[Stream]: audio_track.write_sample failed: {err}");
+                }
+            });
+        }
     }
 
     fn config(&self) -> AudioConfig {
