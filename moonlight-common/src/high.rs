@@ -3,11 +3,15 @@
 //!
 
 use pem::Pem;
+use tokio::task::JoinError;
+use url::Host;
 use uuid::Uuid;
 
 use crate::{
     Error, MoonlightError, PairPin, PairStatus, ServerState, ServerVersion,
-    moonlight::crypto::MoonlightCrypto,
+    moonlight::{
+        crypto::MoonlightCrypto, stream::ServerCodeModeSupport, video::SupportedVideoFormats,
+    },
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, DEFAULT_UNIQUE_ID, HostInfo,
         ServerAppListResponse, host_app_box_art, host_app_list, host_info, pair::host_unpair,
@@ -20,12 +24,28 @@ use crate::{
 pub enum HostError<RequestError> {
     #[error("{0}")]
     Moonlight(#[from] MoonlightError),
+    #[error("{0}")]
+    BlockingJoin(#[from] JoinError),
     #[error("this action requires pairing")]
     NotPaired,
     #[error("{0}")]
     Api(#[from] ApiError<RequestError>),
     #[error("{0}")]
     Pair(#[from] PairError<RequestError>),
+    #[error("{0}")]
+    StreamConfig(#[from] StreamConfigError),
+}
+
+#[derive(Debug, Error)]
+pub enum StreamConfigError {
+    #[error("hdr not supported")]
+    NotSupportedHdr,
+    #[error("4k not supported")]
+    NotSupported4k,
+    #[error("4k not supported: Your device must support HEVC or AV1 to stream at 4k")]
+    NotSupported4kCodecMissing,
+    #[error("4k not supported: Update GeForce Experience")]
+    NotSupported4kUpdateGfe,
 }
 
 pub struct MoonlightHost<Client> {
@@ -179,6 +199,13 @@ where
         let info = self.host_info().await?;
         Ok((info.state_string.as_str(), info.state))
     }
+    pub async fn is_nvidia_software(&mut self) -> Result<bool, HostError<C::Error>> {
+        let (state_str, _) = self.state().await?;
+        // Real Nvidia host software (GeForce Experience and RTX Experience) both use the 'Mjolnir'
+        // codename in the state field and no version of Sunshine does. We can use this to bypass
+        // some assumptions about Nvidia hardware that don't apply to Sunshine hosts.
+        Ok(state_str.contains("Mjolnir"))
+    }
 
     pub async fn max_luma_pixels_hevc(&mut self) -> Result<u32, HostError<C::Error>> {
         let info = self.host_info().await?;
@@ -267,8 +294,6 @@ where
         device_name: String,
         pin: PairPin,
     ) -> Result<(), HostError<C::Error>> {
-        // TODO: pairing requires unlimited timeout
-
         let http_address = self.http_address();
         let server_version = self.version().await?;
 
@@ -373,25 +398,83 @@ where
 
         Ok(response)
     }
+
+    // Stream config correction
+    pub async fn is_hdr_supported(&mut self) -> Result<bool, HostError<C::Error>> {
+        let server_codec_mode_support = self.server_codec_mode_support().await?;
+
+        Ok(
+            server_codec_mode_support.contains(ServerCodeModeSupport::HEVC_MAIN10)
+                || server_codec_mode_support.contains(ServerCodeModeSupport::AV1_MAIN10),
+        )
+    }
+    pub async fn is_4k_supported(&mut self) -> Result<bool, HostError<C::Error>> {
+        let is_nvidia = self.is_nvidia_software().await?;
+        let server_codec_mode_support = self.server_codec_mode_support().await?;
+
+        Ok(server_codec_mode_support.contains(ServerCodeModeSupport::HEVC_MAIN10) || !is_nvidia)
+    }
+    pub async fn is_4k_supported_gfe(&mut self) -> Result<bool, HostError<C::Error>> {
+        let gfe = self.gfe_version().await?;
+
+        Ok(!gfe.starts_with("2."))
+    }
+
+    pub async fn is_resolution_supported(
+        &mut self,
+        width: usize,
+        height: usize,
+        supported_video_formats: SupportedVideoFormats,
+    ) -> Result<(), HostError<C::Error>> {
+        let resolution_above_4k = width > 4096 || height > 4096;
+
+        if resolution_above_4k && !self.is_4k_supported().await? {
+            return Err(StreamConfigError::NotSupported4k.into());
+        } else if resolution_above_4k
+            && supported_video_formats.contains(!SupportedVideoFormats::MASK_H264)
+        {
+            return Err(StreamConfigError::NotSupported4kCodecMissing.into());
+        } else if height > 2160 && self.is_4k_supported_gfe().await? {
+            return Err(StreamConfigError::NotSupported4kUpdateGfe.into());
+        }
+
+        Ok(())
+    }
+
+    pub async fn should_disable_sops(
+        &mut self,
+        width: usize,
+        height: usize,
+    ) -> Result<bool, HostError<C::Error>> {
+        // Using an unsupported resolution (not 720p, 1080p, or 4K) causes
+        // GFE to force SOPS to 720p60. This is fine for < 720p resolutions like
+        // 360p or 480p, but it is not ideal for 1440p and other resolutions.
+        // When we detect an unsupported resolution, disable SOPS unless it's under 720p.
+        // FIXME: Detect support resolutions using the serverinfo response, not a hardcoded list
+        const NVIDIA_SUPPORTED_RESOLUTIONS: &[(usize, usize)] =
+            &[(1280, 720), (1920, 1080), (3840, 2160)];
+
+        let is_nvidia = self.is_nvidia_software().await?;
+
+        Ok(!NVIDIA_SUPPORTED_RESOLUTIONS.contains(&(width, height)) && is_nvidia)
+    }
 }
 
 #[cfg(all(feature = "moonlight", feature = "crypto"))]
 mod moonlight_crypto {
-    // TODO: add a fn to create / correct streaming info: e.g. width, height, fps
-
     use tokio::task::spawn_blocking;
     use uuid::Uuid;
 
     use crate::{
-        high::{HostError, MoonlightHost},
+        high::{HostError, MoonlightHost, StreamConfigError},
         moonlight::{
             MoonlightInstance,
             audio::AudioDecoder,
             connection::ConnectionListener,
             crypto::MoonlightCrypto,
             stream::{
-                ColorRange, Colorspace, EncryptionFlags, MoonlightStream, ServerInfo,
-                StreamConfiguration, StreamingConfig,
+                ActiveGamepads, ColorRange, Colorspace, EncryptionFlags, MoonlightStream,
+                ServerInfo, StreamConfiguration, StreamingConfig,
             },
             video::VideoDecoder,
         },
@@ -414,7 +497,12 @@ mod moonlight_crypto {
             app_id: u32,
             width: u32,
             height: u32,
-            fps: u32,
+            mut fps: u32,
+            hdr: bool,
+            mut sops: bool,
+            local_audio_play_mode: bool,
+            gamepads_attached: ActiveGamepads,
+            gamepads_persist_after_disconnect: bool,
             color_space: Colorspace,
             color_range: ColorRange,
             bitrate: u32,
@@ -423,6 +511,36 @@ mod moonlight_crypto {
             video_decoder: impl VideoDecoder + Send + Sync + 'static,
             audio_decoder: impl AudioDecoder + Send + Sync + 'static,
         ) -> Result<MoonlightStream, HostError<C::Error>> {
+            // Change streaming options if required
+
+            if hdr && !self.is_hdr_supported().await? {
+                return Err(HostError::StreamConfig(StreamConfigError::NotSupportedHdr));
+            }
+
+            self.is_resolution_supported(
+                width as usize,
+                height as usize,
+                video_decoder.supported_formats(),
+            )
+            .await?;
+
+            if self.is_nvidia_software().await? {
+                // Using an FPS value over 60 causes SOPS to default to 720p60,
+                // so force it to 0 to ensure the correct resolution is set. We
+                // used to use 60 here but that locked the frame rate to 60 FPS
+                // on GFE 3.20.3. We don't need this hack for Sunshine.
+                if fps > 60 {
+                    fps = 0;
+                }
+
+                if self
+                    .should_disable_sops(width as usize, height as usize)
+                    .await?
+                {
+                    sops = false;
+                }
+            }
+
             // Clearing cache so we refresh and can see if there's a game -> launch or resume?
             self.clear_cache();
 
@@ -443,6 +561,12 @@ mod moonlight_crypto {
                 mode_width: width,
                 mode_height: height,
                 mode_fps: fps,
+                hdr,
+                sops,
+                local_audio_play_mode,
+                // TODO: controllers
+                gamepads_attached_mask: gamepads_attached.bits() as i32,
+                gamepads_persist_after_disconnect,
                 ri_key: aes_key,
                 ri_key_id: aes_iv,
             };
@@ -490,7 +614,6 @@ mod moonlight_crypto {
                     server_codec_mode_support,
                 };
 
-                // TODO: check if the width,height,fps,color_space,color_range are valid
                 let stream_config = StreamConfiguration {
                     width: width as i32,
                     height: height as i32,
@@ -516,9 +639,7 @@ mod moonlight_crypto {
                     audio_decoder,
                 )
             })
-            .await
-            // TODO: remove unwrap
-            .unwrap()?;
+            .await??;
 
             Ok(connection)
         }

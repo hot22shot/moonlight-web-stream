@@ -45,6 +45,7 @@ high = ["network", "pair", "crypto", "dep:log", "dep:tokio"]
 moonlight = ["dep:moonlight-common-sys", "dep:printf-compat"]
 
 # Crypto
+# TODO: maybe don't use crypto?
 crypto = ["moonlight", "moonlight-common-sys/crypto"]
 
 # Pairing

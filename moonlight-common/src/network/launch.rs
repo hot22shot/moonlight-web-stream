@@ -1,4 +1,5 @@
-use std::io::Write;
+use std::fmt::{self, Write as _};
+use std::io::Write as _;
 
 use roxmltree::Document;
 use uuid::fmt::Hyphenated;
@@ -20,6 +21,11 @@ pub struct ClientStreamRequest {
     pub mode_width: u32,
     pub mode_height: u32,
     pub mode_fps: u32,
+    pub sops: bool,
+    pub hdr: bool,
+    pub local_audio_play_mode: bool,
+    pub gamepads_attached_mask: i32,
+    pub gamepads_persist_after_disconnect: bool,
     pub ri_key: [u8; 16usize],
     pub ri_key_id: i32,
 }
@@ -86,7 +92,6 @@ async fn inner_launch_host<C: RequestClient>(
     info: ClientInfo<'_>,
     request: ClientStreamRequest,
 ) -> Result<C::Text, ApiError<C::Error>> {
-    // TODO: figure out negotiated width / height https://github.com/moonlight-stream/moonlight-android/blob/master/app/src/main/java/com/limelight/nvstream/http/NvHTTP.java#L765
     let mut query_params = DynamicQueryParams::default();
 
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
@@ -99,12 +104,6 @@ async fn inner_launch_host<C: RequestClient>(
 
     // TODO: don't alloc heap
     query_params.push(query_param_owned("appid", request.app_id.to_string()));
-    // TODO: implement this
-    // TODO: don't alloc heap
-    // Using an FPS value over 60 causes SOPS to default to 720p60,
-    // so force it to 0 to ensure the correct resolution is set. We
-    // used to use 60 here but that locked the frame rate to 60 FPS
-    // on GFE 3.20.3. We don't need this hack for Sunshine.
     query_params.push(query_param_owned(
         "mode",
         format!(
@@ -113,6 +112,21 @@ async fn inner_launch_host<C: RequestClient>(
         ),
     ));
     query_params.push(query_param("additionalStates", "1"));
+    query_params.push(query_param("sops", if request.sops { "1" } else { "0" }));
+
+    if request.hdr {
+        query_params.push(query_param("hdrMode", "1"));
+        query_params.push(query_param("clientHdrCapVersion", "0"));
+        query_params.push(query_param("clientHdrCapSupportedFlagsInUint32", "0"));
+        query_params.push(query_param(
+            "clientHdrCapMetaDataId",
+            "NV_STATIC_METADATA_TYPE_1",
+        ));
+        query_params.push(query_param(
+            "clientHdrCapDisplayData",
+            "0x0x0x0x0x0x0x0x0x0x0",
+        ));
+    }
 
     let mut ri_key_str_bytes = [0u8; 16 * 2];
     hex::encode_to_slice(request.ri_key, &mut ri_key_str_bytes).expect("encode ri key");
@@ -128,11 +142,35 @@ async fn inner_launch_host<C: RequestClient>(
         str::from_utf8(&ri_key_id_str_bytes).expect("valid ri key id str"),
     ));
 
-    query_params.push(query_param("localAudioPlayMode", "todo")); // TODO
-    query_params.push(query_param("surroundAudioInfo", "todo")); // TODO
-    query_params.push(query_param("remoteControllersBitmap", "todo")); // TODO
-    query_params.push(query_param("gcmap", "todo")); // TODO
-    query_params.push(query_param("gcpersist", "todo")); // TODO
+    query_params.push(query_param(
+        "localAudioPlayMode",
+        if request.local_audio_play_mode {
+            "1"
+        } else {
+            "0"
+        },
+    ));
+    // query_params.push(query_param("surroundAudioInfo", "todo"));
+
+    let mut gamepad_attached_mask_buffer = [0u8; 11];
+    let gamepad_attached_mask_value = i32_to_str(
+        request.gamepads_attached_mask,
+        &mut gamepad_attached_mask_buffer,
+    );
+    query_params.push(query_param(
+        "remoteControllersBitmap",
+        gamepad_attached_mask_value,
+    ));
+    query_params.push(query_param("gcmap", gamepad_attached_mask_value));
+
+    query_params.push(query_param(
+        "gcpersist",
+        if request.gamepads_persist_after_disconnect {
+            "1"
+        } else {
+            "0"
+        },
+    ));
 
     let response = client
         .send_https_request_text_response(https_hostport, verb, &query_params)
@@ -140,4 +178,32 @@ async fn inner_launch_host<C: RequestClient>(
         .map_err(ApiError::RequestClient)?;
 
     Ok(response)
+}
+
+struct CounterWriter<'a> {
+    buf: &'a mut [u8],
+    pos: usize, // tracks how many bytes have been written
+}
+
+impl<'a> fmt::Write for CounterWriter<'a> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let bytes = s.as_bytes();
+        if self.pos + bytes.len() > self.buf.len() {
+            return Err(fmt::Error); // buffer overflow
+        }
+        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
+        self.pos += bytes.len();
+        Ok(())
+    }
+}
+
+fn i32_to_str<'a>(num: i32, buffer: &'a mut [u8; 11]) -> &'a str {
+    let mut writer = CounterWriter {
+        buf: buffer,
+        pos: 0,
+    };
+    write!(&mut writer, "{num}").expect("format i32 into bytes");
+    let pos = writer.pos;
+
+    str::from_utf8(&buffer[0..pos]).expect("valid utf8 bytes")
 }
