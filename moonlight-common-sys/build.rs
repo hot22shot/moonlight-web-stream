@@ -40,14 +40,15 @@ fn compile_moonlight() -> (String, PathBuf) {
     let mut config = cmake::Config::new("moonlight-common-c");
     config.define("BUILD_SHARED_LIBS", "OFF");
 
+    if let Ok(ssl_root_dir) = std::env::var("DEP_OPENSSL_ROOT") {
+        config.define("OPENSSL_ROOT_DIR", ssl_root_dir);
+    }
+
     let profile = config.get_profile().to_string();
     (profile, config.build())
 }
 
 fn link(extra: Option<(String, PathBuf)>) {
-    // OpenSSL, crypto
-    println!("cargo:rustc-link-lib=static=libcrypto");
-
     // ENet
     #[cfg(feature = "link-enet")]
     {
