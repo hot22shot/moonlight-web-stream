@@ -564,7 +564,6 @@ mod moonlight_crypto {
                 hdr,
                 sops,
                 local_audio_play_mode,
-                // TODO: controllers
                 gamepads_attached_mask: gamepads_attached.bits() as i32,
                 gamepads_persist_after_disconnect,
                 ri_key: aes_key,
