@@ -39,6 +39,7 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
         stream_config: OpusMultistreamConfig,
         ar_flags: (),
     ) -> i32 {
+        self.config = Some(stream_config);
         0
     }
 
