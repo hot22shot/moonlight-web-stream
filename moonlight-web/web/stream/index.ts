@@ -69,7 +69,7 @@ export class Stream {
         } else if (this.settings.videoSize == "custom") {
             width = this.settings.videoSizeCustom.width
             height = this.settings.videoSizeCustom.height
-        } else { // custom
+        } else { // native
             width = viewerScreenSize[0]
             height = viewerScreenSize[1]
         }
