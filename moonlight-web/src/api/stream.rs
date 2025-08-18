@@ -276,22 +276,23 @@ impl StreamConnection {
         // ));
         let audio_track = Arc::new(TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
-                mime_type: "audio/pcm;rate=48000;encoding=signed-int;channels=2;bits=16"
-                    .to_string(),
+                mime_type: MIME_TYPE_OPUS.to_string(),
                 ..Default::default()
             },
             "audio".to_owned(),
             "moonlight".to_owned(),
         ));
-        let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
+        // let audio_sender = peer
+        //     .add_track(Arc::clone(&audio_track_test) as Arc<_>)
+        //     .await?;
 
         // Read incoming RTCP packets
         // Before these packets are returned they are processed by interceptors. For things
         // like NACK this needs to be called.
-        spawn(async move {
-            let mut rtcp_buf = vec![0u8; 1500];
-            while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
-        });
+        // spawn(async move {
+        //     let mut rtcp_buf = vec![0u8; 1500];
+        //     while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
+        // });
 
         // TODO: remove, test audio
         // spawn({
