@@ -1,15 +1,16 @@
 import { ControllerConfig } from "../stream/gamepad.js";
 import { Component, ComponentEvent } from "./index.js";
-import { InputComponent } from "./input.js";
+import { InputComponent, SelectComponent } from "./input.js";
 
 export type StreamSettings = {
     bitrate: number
     packetSize: number
-    videoSize?: {
+    videoSampleQueueSize: number
+    videoSize: "720p" | "1080p" | "1440p" | "4k" | "native" | "custom"
+    videoSizeCustom: {
         width: number
         height: number
     },
-    videoSampleQueueSize: number
     fps: number
     playAudioLocal: boolean
     controllerConfig: ControllerConfig
@@ -21,6 +22,11 @@ export function defaultStreamSettings(): StreamSettings {
         packetSize: 4096,
         fps: 60,
         videoSampleQueueSize: 2000,
+        videoSize: "1080p",
+        videoSizeCustom: {
+            width: 1920,
+            height: 1080,
+        },
         playAudioLocal: false,
         controllerConfig: {
             invertAB: false,
@@ -62,7 +68,7 @@ export class StreamSettingsComponent implements Component {
     private packetSize: InputComponent
     private fps: InputComponent
 
-    private videoSizeEnabled: InputComponent
+    private videoSize: SelectComponent
     private videoSizeWidth: InputComponent
     private videoSizeHeight: InputComponent
 
@@ -112,22 +118,33 @@ export class StreamSettingsComponent implements Component {
         this.fps.mount(this.divElement)
 
         // Video Size
-        this.videoSizeEnabled = new InputComponent("videoSizeEnabled", "checkbox", "Fixed Video Size", {
-            checked: settings?.videoSize != null
-        })
-        this.videoSizeEnabled.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSizeEnabled.mount(this.divElement)
+        this.videoSize = new SelectComponent("videoSize",
+            [
+                { value: "720p", name: "720p" },
+                { value: "1080p", name: "1080p" },
+                { value: "1440p", name: "1440p" },
+                { value: "4k", name: "4k" },
+                { value: "native", name: "native" },
+                { value: "custom", name: "custom" }
+            ],
+            {
+                displayName: "Video Size",
+                preSelectedOption: settings?.videoSize || defaultSettings.videoSize
+            }
+        )
+        this.videoSize.addChangeListener(this.onSettingsChange.bind(this))
+        this.videoSize.mount(this.divElement)
 
         this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", "Video Width", {
-            defaultValue: "1920",
-            value: settings?.videoSize?.width?.toString()
+            defaultValue: defaultSettings.videoSizeCustom.width.toString(),
+            value: settings?.videoSizeCustom.width.toString()
         })
         this.videoSizeWidth.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeWidth.mount(this.divElement)
 
         this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", "Video Height", {
-            defaultValue: "1080",
-            value: settings?.videoSize?.height?.toString()
+            defaultValue: defaultSettings.videoSizeCustom.height.toString(),
+            value: settings?.videoSizeCustom.height.toString()
         })
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeHeight.mount(this.divElement)
@@ -170,7 +187,7 @@ export class StreamSettingsComponent implements Component {
     }
 
     private onSettingsChange() {
-        if (this.videoSizeEnabled.isChecked()) {
+        if (this.videoSize.getValue() == "custom") {
             this.videoSizeWidth.setEnabled(true)
             this.videoSizeHeight.setEnabled(true)
         } else {
@@ -194,11 +211,10 @@ export class StreamSettingsComponent implements Component {
         settings.bitrate = parseInt(this.bitrate.getValue())
         settings.packetSize = parseInt(this.packetSize.getValue())
         settings.fps = parseInt(this.fps.getValue())
-        if (this.videoSizeEnabled.isChecked()) {
-            settings.videoSize = {
-                width: parseInt(this.videoSizeWidth.getValue()),
-                height: parseInt(this.videoSizeHeight.getValue())
-            }
+        settings.videoSize = this.videoSize.getValue() as any
+        settings.videoSizeCustom = {
+            width: parseInt(this.videoSizeWidth.getValue()),
+            height: parseInt(this.videoSizeHeight.getValue())
         }
         settings.videoSampleQueueSize = parseInt(this.videoSampleQueueSize.getValue())
 

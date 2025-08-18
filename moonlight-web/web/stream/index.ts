@@ -53,6 +53,27 @@ export class Stream {
         this.ws.onerror = this.onError.bind(this)
         this.ws.onmessage = this.onWsMessage.bind(this);
 
+        let width, height
+        if (this.settings.videoSize == "720p") {
+            width = 1280
+            height = 720
+        } else if (this.settings.videoSize == "1080p") {
+            width = 1920
+            height = 1080
+        } else if (this.settings.videoSize == "1440p") {
+            width = 2560
+            height = 1440
+        } else if (this.settings.videoSize == "4k") {
+            width = 3840
+            height = 2160
+        } else if (this.settings.videoSize == "custom") {
+            width = this.settings.videoSizeCustom.width
+            height = this.settings.videoSizeCustom.height
+        } else { // custom
+            width = viewerScreenSize[0]
+            height = viewerScreenSize[1]
+        }
+
         this.sendWsMessage({
             AuthenticateAndInit: {
                 credentials: this.api.credentials,
@@ -61,8 +82,8 @@ export class Stream {
                 bitrate: this.settings.bitrate,
                 packet_size: this.settings.packetSize,
                 fps: this.settings.fps,
-                width: this.settings.videoSize?.width ?? viewerScreenSize[0],
-                height: this.settings.videoSize?.height ?? viewerScreenSize[1],
+                width,
+                height,
                 video_sample_queue_size: this.settings.videoSampleQueueSize,
                 play_audio_local: this.settings.playAudioLocal,
             }

@@ -1,5 +1,25 @@
 import { Component, ComponentEvent } from "./index.js"
 
+export class ElementWithLabel implements Component {
+    protected div: HTMLDivElement = document.createElement("div")
+    private label: HTMLLabelElement = document.createElement("label")
+
+    constructor(internalName: string, displayName?: string) {
+        if (displayName) {
+            this.label.htmlFor = internalName
+            this.label.innerText = displayName
+            this.div.appendChild(this.label)
+        }
+    }
+
+    mount(parent: HTMLElement): void {
+        parent.appendChild(this.div)
+    }
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.div)
+    }
+}
+
 export type InputInit = {
     defaultValue?: string
     value?: string
@@ -10,18 +30,12 @@ export type InputInit = {
 
 export type InputChangeListener = (event: ComponentEvent<InputComponent>) => void
 
-export class InputComponent implements Component {
+export class InputComponent extends ElementWithLabel {
 
-    private div: HTMLDivElement = document.createElement("div")
-    private label: HTMLLabelElement = document.createElement("label")
     private input: HTMLInputElement = document.createElement("input")
 
     constructor(internalName: string, type: string, displayName?: string, init?: InputInit) {
-        if (displayName) {
-            this.label.htmlFor = internalName
-            this.label.innerText = displayName
-            this.div.appendChild(this.label)
-        }
+        super(internalName, displayName)
 
         this.input.id = internalName
         this.input.type = type
@@ -73,11 +87,48 @@ export class InputComponent implements Component {
     removeChangeListener(listener: InputChangeListener) {
         this.div.removeEventListener("ml-change", listener as any)
     }
+}
 
-    mount(parent: HTMLElement): void {
-        parent.appendChild(this.div)
+export type SelectInit = {
+    preSelectedOption?: string
+    displayName?: string,
+}
+
+// TODO: use this where it's useful
+export class SelectComponent extends ElementWithLabel {
+
+    private selectElement = document.createElement("select")
+
+    constructor(internalName: string, options: Array<{ value: string, name: string }>, init?: SelectInit) {
+        super(internalName, init?.displayName)
+
+        for (const option of options) {
+            const optionElement = document.createElement("option")
+            optionElement.innerText = option.name
+            optionElement.value = option.value
+
+            if (init && init.preSelectedOption == option.value) {
+                optionElement.selected = true
+            }
+
+            this.selectElement.appendChild(optionElement)
+        }
+
+        this.div.appendChild(this.selectElement)
+
+        this.selectElement.addEventListener("change", () => {
+            this.div.dispatchEvent(new ComponentEvent("ml-change", this))
+        })
     }
-    unmount(parent: HTMLElement): void {
-        parent.removeChild(this.div)
+
+    getValue() {
+        return this.selectElement.value
+    }
+
+    addChangeListener(listener: InputChangeListener, options?: AddEventListenerOptions) {
+        this.div.addEventListener("ml-change", listener as any, options)
+    }
+    removeChangeListener(listener: InputChangeListener) {
+        this.div.removeEventListener("ml-change", listener as any)
     }
 }
