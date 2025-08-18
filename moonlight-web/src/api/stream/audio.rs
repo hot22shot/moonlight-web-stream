@@ -54,34 +54,28 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
             return;
         }
 
-        let Some(_config) = self.config.as_ref() else {
+        let Some(config) = self.config.as_ref() else {
             return;
         };
 
-        // Assume Opus packet represents 20ms
-        let duration = Duration::from_millis(20);
+        let duration = Duration::from_millis((1000.0 / config.sample_rate as f32) as u64);
 
         let data = Bytes::copy_from_slice(data);
+        let audio_track = self.audio_track.clone();
 
-        let cursor = Cursor::new(data);
-        let (mut reader, header) = OggReader::new(cursor, false).unwrap();
+        self.runtime.spawn(async move {
+            let sample = Sample {
+                data,
+                duration,
+                // Time should be set if you want fine-grained sync
+                ..Default::default()
+            };
 
-        while let Ok((data, header)) = reader.parse_next_page() {
-            let audio_track = self.audio_track.clone();
-
-            self.runtime.spawn(async move {
-                let sample = Sample {
-                    data: data.into(),
-                    duration,
-                    // Time should be set if you want fine-grained sync
-                    ..Default::default()
-                };
-
-                if let Err(err) = audio_track.write_sample(&sample).await {
-                    warn!("[Stream]: audio_track.write_sample failed: {err}");
-                }
-            });
-        }
+            if let Err(err) = audio_track.write_sample(&sample).await {
+                warn!("[Stream]: audio_track.write_sample failed: {err}");
+            }
+            println!("sample written: {duration:?}");
+        });
     }
 
     fn config(&self) -> AudioConfig {
