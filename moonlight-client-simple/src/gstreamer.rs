@@ -4,7 +4,11 @@ use gstreamer::{
     Buffer, BufferFlags, Caps, ClockTime, DebugGraphDetails, Element, ElementFactory, Format,
     Pipeline, State,
     event::Eos,
-    glib::{self, object::ObjectExt},
+    glib::{
+        self, Value, ValueArray,
+        gobject_ffi::{GObject, GValue, GValueArray},
+        object::ObjectExt,
+    },
     prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManual},
 };
 use gstreamer_app::AppSrc;
@@ -38,9 +42,13 @@ pub fn gstreamer_pipeline()
     // Audio
     let (audio_decoder, audio_output) = GStreamerAudioHandler::new(pipeline.clone())?;
 
-    let audio_sink = ElementFactory::make_with_name("autoaudiosink", Some("play audio"))?;
-    audio_sink.set_property("sync", false);
-    audio_sink.set_property("async-handling", true);
+    let audio_sink = ElementFactory::make_with_name("wasapisink", Some("play audio"))?;
+    // audio_sink.set_property("sync", false);
+    // audio_sink.set_property("async-handling", true);
+    audio_sink.set_property(
+        "device",
+        "{0.0.0.00000000}.{e1f9c34a-388e-4b8f-a780-a2e2348fe6c3}",
+    );
 
     pipeline.add(&audio_sink)?;
 
@@ -59,7 +67,7 @@ pub struct GStreamerVideoHandler {
 
 impl GStreamerVideoHandler {
     pub fn new(pipeline: Pipeline) -> Result<(Self, Element), glib::BoolError> {
-        let app_src = AppSrc::builder().name("moonlight video packets").build();
+        let app_src = AppSrc::builder().name("video input").build();
         app_src.set_is_live(true);
         app_src.set_format(Format::Buffers);
         app_src.set_block(false);
@@ -154,36 +162,31 @@ pub struct GStreamerAudioHandler {
 
 impl GStreamerAudioHandler {
     pub fn new(pipeline: Pipeline) -> Result<(Self, Element), glib::BoolError> {
-        let app_src = AppSrc::builder().name("moonlight_pcm_input").build();
+        let app_src = AppSrc::builder().name("audio_input").build();
         app_src.set_is_live(true);
         app_src.set_format(Format::Time);
         app_src.set_block(false);
         app_src.set_do_timestamp(true);
 
-        // Create the queue with 20ms min-threshold-time
-        let queue = ElementFactory::make_with_name("queue", Some("audio_delay_queue")).unwrap();
-        queue.set_property("min-threshold-time", 40_000_000u64); // 20ms
-
-        let opusdec = ElementFactory::make_with_name("opusdec", Some("audio_decode")).unwrap();
+        let audioparse = ElementFactory::make_with_name("opusparse", Some("audio parse")).unwrap();
+        let audiodec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
         let audioconvert =
-            ElementFactory::make_with_name("audioconvert", Some("audio_convert")).unwrap();
+            ElementFactory::make_with_name("audioconvert", Some("audio convert")).unwrap();
         let audioresample =
-            ElementFactory::make_with_name("audioresample", Some("audio_resample")).unwrap();
+            ElementFactory::make_with_name("audioresample", Some("audio resample")).unwrap();
 
-        // Add elements to the pipeline
         pipeline.add_many([
             app_src.as_ref(),
-            &queue,
-            &opusdec,
+            &audioparse,
+            &audiodec,
             &audioconvert,
             &audioresample,
         ])?;
 
-        // Link elements in order: appsrc -> queue -> opusdec -> audioconvert -> audioresample
         Element::link_many([
             app_src.as_ref(),
-            &queue,
-            &opusdec,
+            &audioparse,
+            &audiodec,
             &audioconvert,
             &audioresample,
         ])?;
@@ -199,15 +202,7 @@ impl AudioDecoder for GStreamerAudioHandler {
         stream_config: OpusMultistreamConfig,
         ar_flags: (),
     ) -> i32 {
-        println!("{audio_config:?}, {stream_config:?}");
-        let caps_str = format!(
-            "audio/x-opus, rate={}, channels={}, channel-mapping-family=0",
-            stream_config.sample_rate, stream_config.channel_count
-        );
-
-        let caps = Caps::from_str(&caps_str).unwrap();
-        self.app_src.set_caps(Some(&caps));
-
+        println!("Stream Config: {:?}", stream_config);
         // self.audio_config = Some(audio_config);
 
         0
@@ -223,12 +218,11 @@ impl AudioDecoder for GStreamerAudioHandler {
     }
 
     fn decode_and_play_sample(&mut self, data: &[u8]) {
-        // TODO: fix this
-        // let mut buffer = Buffer::with_size(data.len()).unwrap();
-        // let buffer_mut = buffer.get_mut().unwrap();
+        let mut buffer = Buffer::with_size(data.len()).unwrap();
+        let buffer_mut = buffer.get_mut().unwrap();
 
-        // let _ = buffer_mut.copy_from_slice(0, data);
-        // let _ = self.app_src.push_buffer(buffer);
+        let _ = buffer_mut.copy_from_slice(0, data);
+        let _ = self.app_src.push_buffer(buffer);
     }
 
     fn config(&self) -> AudioConfig {

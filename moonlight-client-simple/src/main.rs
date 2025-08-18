@@ -134,7 +134,7 @@ async fn main() {
             60,
             false,
             false,
-            true,
+            false,
             ActiveGamepads::empty(),
             false,
             Colorspace::Rec2020,
