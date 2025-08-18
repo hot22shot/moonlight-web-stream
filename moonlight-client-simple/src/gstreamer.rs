@@ -1,8 +1,8 @@
-use std::str::FromStr;
+use std::{str::FromStr, thread::spawn, time::Duration};
 
 use gstreamer::{
     Buffer, BufferFlags, Caps, ClockTime, DebugGraphDetails, Element, ElementFactory, Format,
-    Pipeline, State,
+    Pipeline, State, Structure,
     event::Eos,
     glib::{
         self, Value, ValueArray,
@@ -170,6 +170,16 @@ impl GStreamerAudioHandler {
 
         let audioparse = ElementFactory::make_with_name("opusparse", Some("audio parse")).unwrap();
         let audiodec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
+        spawn({
+            let audiodec = audiodec.clone();
+            move || {
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    println!("{:?}", audiodec.property::<Structure>("stats"))
+                }
+            }
+        });
+
         let audioconvert =
             ElementFactory::make_with_name("audioconvert", Some("audio convert")).unwrap();
         let audioresample =
