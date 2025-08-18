@@ -21,7 +21,7 @@ export function defaultStreamSettings(): StreamSettings {
         bitrate: 10000,
         packetSize: 4096,
         fps: 60,
-        videoSampleQueueSize: 2000,
+        videoSampleQueueSize: 20,
         videoSize: "1080p",
         videoSizeCustom: {
             width: 1920,
