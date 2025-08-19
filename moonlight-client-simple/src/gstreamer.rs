@@ -1,12 +1,8 @@
 use std::{str::FromStr, thread::spawn, time::Duration};
 
-use audiopus_sys::{
-    OPUS_OK, OpusMSDecoder, opus_multistream_decode, opus_multistream_decoder_create,
-    opus_multistream_decoder_destroy,
-};
 use gstreamer::{
     Buffer, BufferFlags, Caps, ClockTime, DebugGraphDetails, Element, ElementFactory, Format,
-    Pipeline, State, StreamType, Structure,
+    Pipeline, State, Structure,
     event::Eos,
     glib::{
         self, Value, ValueArray,
@@ -15,7 +11,7 @@ use gstreamer::{
     },
     prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManual},
 };
-use gstreamer_app::{AppSrc, AppStreamType};
+use gstreamer_app::AppSrc;
 use moonlight_common::moonlight::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
     stream::Capabilities,
@@ -162,34 +158,27 @@ impl VideoDecoder for GStreamerVideoHandler {
 pub struct GStreamerAudioHandler {
     pipeline: Pipeline,
     app_src: AppSrc,
-    decoder: Option<OpusMultistreamDecoder>,
-    buffer: Vec<i16>,
-    frame_size: usize,
 }
 
 impl GStreamerAudioHandler {
     pub fn new(pipeline: Pipeline) -> Result<(Self, Element), glib::BoolError> {
         let app_src = AppSrc::builder().name("audio_input").build();
         app_src.set_is_live(true);
-        app_src.set_stream_type(AppStreamType::Stream);
         app_src.set_format(Format::Time);
-        app_src.set_block(true);
+        app_src.set_block(false);
         app_src.set_do_timestamp(true);
-        {
-            let caps = Caps::from_str("audio/x-raw,format=S16LE,rate=48000,channels=2").unwrap();
-            app_src.set_caps(Some(&caps));
-        }
 
-        let audioparse =
-            ElementFactory::make_with_name("rawaudioparse", Some("audio parse")).unwrap();
-        // let audiodec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
-        // spawn({
-        //     let audiodec = audiodec.clone();
-        //     move || loop {
-        //         std::thread::sleep(Duration::from_secs(1));
-        //         println!("{:?}", audiodec.property::<Structure>("stats"))
-        //     }
-        // });
+        let audioparse = ElementFactory::make_with_name("opusparse", Some("audio parse")).unwrap();
+        let audiodec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
+        spawn({
+            let audiodec = audiodec.clone();
+            move || {
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    println!("{:?}", audiodec.property::<Structure>("stats"))
+                }
+            }
+        });
 
         let audioconvert =
             ElementFactory::make_with_name("audioconvert", Some("audio convert")).unwrap();
@@ -199,7 +188,7 @@ impl GStreamerAudioHandler {
         pipeline.add_many([
             app_src.as_ref(),
             &audioparse,
-            // &audiodec,
+            &audiodec,
             &audioconvert,
             &audioresample,
         ])?;
@@ -207,26 +196,13 @@ impl GStreamerAudioHandler {
         Element::link_many([
             app_src.as_ref(),
             &audioparse,
-            // &audiodec,
+            &audiodec,
             &audioconvert,
             &audioresample,
         ])?;
 
-        Ok((
-            Self {
-                pipeline,
-                app_src,
-                decoder: None,
-                buffer: Vec::new(),
-                frame_size: 0,
-            },
-            audioresample,
-        ))
+        Ok((Self { pipeline, app_src }, audioresample))
     }
-}
-
-fn i16_slice_to_u8_slice(vec: &[i16]) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(vec.as_ptr() as *const u8, std::mem::size_of_val(vec)) }
 }
 
 impl AudioDecoder for GStreamerAudioHandler {
@@ -238,11 +214,6 @@ impl AudioDecoder for GStreamerAudioHandler {
     ) -> i32 {
         println!("Stream Config: {:?}", stream_config);
         // self.audio_config = Some(audio_config);
-
-        self.buffer =
-            vec![0; (stream_config.channel_count * stream_config.samples_per_frame) as usize];
-        self.frame_size = stream_config.samples_per_frame as usize;
-        self.decoder = Some(OpusMultistreamDecoder::new(stream_config));
 
         0
     }
@@ -257,33 +228,6 @@ impl AudioDecoder for GStreamerAudioHandler {
     }
 
     fn decode_and_play_sample(&mut self, data: &[u8]) {
-        let Some(decoder) = self.decoder.as_mut() else {
-            return;
-        };
-        // Check for empty or obviously invalid packets
-        if data.is_empty() {
-            eprintln!("Received empty packet, skipping");
-            return;
-        }
-
-        // Optional: sanity check for packet size (Opus packets have max 1275 bytes per frame per RFC)
-        if data.len() > 1500 {
-            eprintln!(
-                "Received suspiciously large packet ({} bytes), skipping",
-                data.len()
-            );
-            return;
-        }
-
-        // Decode
-        let decode_len = decoder.decode(data, &mut self.buffer, self.frame_size, false);
-
-        if decode_len == 0 {
-            return;
-        }
-
-        let data = i16_slice_to_u8_slice(&self.buffer);
-
         let mut buffer = Buffer::with_size(data.len()).unwrap();
         let buffer_mut = buffer.get_mut().unwrap();
 
@@ -297,75 +241,5 @@ impl AudioDecoder for GStreamerAudioHandler {
 
     fn capabilities(&self) -> Capabilities {
         Capabilities::empty()
-    }
-}
-
-struct OpusMultistreamDecoder {
-    channels: usize,
-    inner: *mut OpusMSDecoder,
-}
-
-unsafe impl Send for OpusMultistreamDecoder {}
-unsafe impl Sync for OpusMultistreamDecoder {}
-
-impl OpusMultistreamDecoder {
-    pub fn new(config: OpusMultistreamConfig) -> Self {
-        unsafe {
-            let mut error = OPUS_OK;
-
-            let inner = opus_multistream_decoder_create(
-                config.sample_rate as i32,
-                config.channel_count as i32,
-                config.streams as i32,
-                config.coupled_streams as i32,
-                config.mapping.as_ptr(),
-                &mut error,
-            );
-            if inner.is_null() || error != OPUS_OK {
-                panic!("Failed to create opus multistream decoder");
-            }
-
-            Self {
-                inner,
-                channels: config.channel_count as usize,
-            }
-        }
-    }
-
-    pub fn decode(
-        &self,
-        input: &[u8],
-        output: &mut [i16],
-        frame_size: usize,
-        decode_fen: bool,
-    ) -> usize {
-        if frame_size * self.channels > output.len() {
-            panic!("buffer too small");
-        }
-
-        unsafe {
-            let ret = opus_multistream_decode(
-                self.inner,
-                input.as_ptr(),
-                input.len() as i32,
-                output.as_mut_ptr(),
-                frame_size as i32,
-                if decode_fen { 1 } else { 0 },
-            );
-
-            if ret < 0 {
-                println!("invalid buffer: {}", ret);
-                return 0;
-            }
-
-            ret as usize
-        }
-    }
-}
-impl Drop for OpusMultistreamDecoder {
-    fn drop(&mut self) {
-        unsafe {
-            opus_multistream_decoder_destroy(self.inner);
-        }
     }
 }

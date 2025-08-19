@@ -624,7 +624,7 @@ mod moonlight_crypto {
                     client_refresh_rate_x100: (fps * 100) as i32,
                     color_space,
                     color_range,
-                    encryption_flags: EncryptionFlags::all(),
+                    encryption_flags: EncryptionFlags::empty(),
                     remote_input_aes_key: aes_key,
                     remote_input_aes_iv: aes_iv,
                 };
