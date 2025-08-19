@@ -2,13 +2,14 @@ import { Api, apiGetApps } from "../../api.js";
 import { App } from "../../api_bindings.js";
 import { showErrorPopup } from "../error.js";
 import { FetchListComponent } from "../fetch_list.js";
-import { Game } from "./index.js";
+import { Game, GameCache } from "./index.js";
 
 // TODO: move to fetch list
 export class GameList extends FetchListComponent<App, Game> {
     private api: Api
 
     private hostId: number
+    private activeApp: number | null = null
 
     constructor(api: Api, hostId: number, cache: App[] | null) {
         super({
@@ -24,8 +25,14 @@ export class GameList extends FetchListComponent<App, Game> {
         if (cache != null) {
             this.updateCache(cache)
         } else {
-            this.forceFetch(false)
+            this.forceFetch()
         }
+    }
+
+    setActiveGame(appId: number | null) {
+        this.activeApp = appId
+
+        this.forceFetch()
     }
 
     async forceFetch(forceServerRefresh?: boolean) {
@@ -40,9 +47,16 @@ export class GameList extends FetchListComponent<App, Game> {
             showErrorPopup(`failed to fetch apps for host ${this.getHostId()}`)
         }
     }
+    private createCache(data: App): GameCache {
+        const cache = data as GameCache
+        cache.activeApp = this.activeApp
+        return cache
+    }
 
     protected updateComponentData(component: Game, data: App): void {
-        component.updateCache(data)
+        const cache = this.createCache(data)
+
+        component.updateCache(cache)
     }
     protected getComponentDataId(component: Game): number {
         return component.getAppId()
@@ -51,7 +65,9 @@ export class GameList extends FetchListComponent<App, Game> {
         return data.app_id
     }
     protected insertList(dataId: number, data: App): void {
-        this.list.append(new Game(this.api, this.hostId, dataId, data))
+        const cache = this.createCache(data)
+
+        this.list.append(new Game(this.api, this.hostId, dataId, cache))
     }
 
     getHostId(): number {

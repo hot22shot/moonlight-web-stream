@@ -297,6 +297,17 @@ button:hover {
     transition: opacity 0.1s ease-in;
 }
 
+.app-active .app-image {
+    border-style: solid;
+    border-color: gold;
+    border-width: 4px;
+    border-radius: 4px;
+}
+
+.app-inactive {
+    filter: brightness(30%);
+}
+
 /** Stream */
 .video-stream {
     position: fixed;

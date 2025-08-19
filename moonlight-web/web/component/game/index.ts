@@ -5,6 +5,9 @@ import { setContextMenu } from "../context_menu.js";
 import { showMessage } from "../modal/index.js";
 import { APP_NO_IMAGE } from "../../resources/index.js";
 import { buildUrl } from "../../config_.js";
+import { showErrorPopup } from "../error.js";
+
+export type GameCache = App & { activeApp: number | null }
 
 export class Game implements Component {
     private api: Api
@@ -19,17 +22,15 @@ export class Game implements Component {
     private imageBlobUrl: string | null = null
     private imageElement: HTMLImageElement = document.createElement("img")
 
-    private imageOverlayElement: HTMLImageElement = document.createElement("img")
+    private cache: GameCache
 
-    private cache: App
-
-    constructor(api: Api, hostId: number, appId: number, game: App) {
+    constructor(api: Api, hostId: number, appId: number, cache: GameCache) {
         this.api = api
 
         this.hostId = hostId
         this.appId = appId
 
-        this.cache = game
+        this.cache = cache
 
         // Configure image
         this.imageElement.classList.add("app-image")
@@ -37,17 +38,13 @@ export class Game implements Component {
 
         this.forceLoadImage(false)
 
-        // Configure image overlay
-        this.imageOverlayElement.classList.add("app-image-overlay")
-
         // Append elements
         this.divElement.appendChild(this.imageElement)
-        this.divElement.appendChild(this.imageOverlayElement)
 
         this.divElement.addEventListener("click", this.onClick.bind(this))
         this.divElement.addEventListener("contextmenu", this.onContextMenu.bind(this))
 
-        this.updateCache(game)
+        this.updateCache(cache)
     }
 
     async forceLoadImage(forceServerRefresh: boolean) {
@@ -78,11 +75,43 @@ export class Game implements Component {
         }
     }
 
-    updateCache(cache: App) {
+    updateCache(cache: GameCache) {
         this.cache = cache
+
+        this.divElement.classList.remove("app-inactive")
+        this.divElement.classList.remove("app-active")
+
+        if (this.isActive()) {
+            this.divElement.classList.add("app-active")
+        } else if (this.cache.activeApp != null) {
+            this.divElement.classList.add("app-inactive")
+        }
     }
 
-    private async onClick() {
+    private async onClick(event: MouseEvent) {
+        if (this.cache.activeApp != null) {
+            const elements = []
+
+            if (this.isActive()) {
+                elements.push({
+                    name: "Resume Session",
+                    callback: this.startStream.bind(this)
+                })
+            }
+
+            elements.push({
+                name: "Stop Current Session",
+                callback: async () => await showErrorPopup("NOT IMPLEMENTED")
+            })
+
+            setContextMenu(event, {
+                elements
+            })
+        } else {
+            this.startStream()
+        }
+    }
+    private startStream() {
         let query = new URLSearchParams({
             hostId: this.getHostId(),
             appId: this.getAppId(),
@@ -112,6 +141,10 @@ export class Game implements Component {
             `Id: ${app.app_id}\n` +
             `HDR Supported: ${app.is_hdr_supported}\n`
         )
+    }
+
+    private isActive(): boolean {
+        return this.cache.activeApp == this.appId
     }
 
     getHostId(): number {

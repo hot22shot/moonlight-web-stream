@@ -65,6 +65,15 @@ export class Host implements Component {
 
         this.updateCache(newCache)
     }
+    async getCurrentGame(): Promise<number | null> {
+        await this.forceFetch()
+
+        if (this.cache && isDetailedHost(this.cache)) {
+            return this.cache.current_game
+        } else {
+            return null
+        }
+    }
 
     private async onClick() {
         if (this.cache?.paired == "Paired") {
