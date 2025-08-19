@@ -262,6 +262,7 @@ impl StreamConnection {
         spawn(async move {
             let mut rtcp_buf = vec![0u8; 1500];
             while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
+            // TODO: look for an idr request
         });
 
         // -- Create and Add a audio track

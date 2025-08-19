@@ -8,6 +8,7 @@ import { convertToButton } from "./mouse.js"
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
 const TOUCH_AS_CLICK_MAX_TIME_MS = 300
 
+// TODO: is this even used
 const CONTROLLER_SEND_INTERVAL_MS = 50
 
 function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
@@ -33,7 +34,7 @@ export type StreamInputConfig = {
 export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         keyboardOrdered: true,
-        mouseMode: "pointAndDrag",
+        mouseMode: "follow",
         touchMode: "pointAndDrag",
         controllerConfig: {
             invertAB: false,
