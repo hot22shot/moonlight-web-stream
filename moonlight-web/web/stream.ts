@@ -266,7 +266,12 @@ class ViewerSidebar implements Component, Sidebar {
         // Fullscreen
         this.fullscreenButton.innerText = "Fullscreen"
         this.fullscreenButton.addEventListener("click", () => {
-            this.app.getElement().requestFullscreen()
+            const root = document.getElementById("root")
+            if (root) {
+                root.requestFullscreen({
+                    navigationUI: "hide"
+                })
+            }
         })
 
         // Select Mouse Mode
