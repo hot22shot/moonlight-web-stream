@@ -29,6 +29,8 @@ pub struct ApiData {
 struct Host {
     address: String,
     http_port: u16,
+    #[serde(default)]
+    name_cache: Option<String>,
     paired: Option<PairedHost>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +41,7 @@ pub struct PairedHost {
 }
 
 pub struct RuntimeApiHost {
+    pub cache_name: Option<String>,
     pub moonlight: ReqwestMoonlightHost,
     pub app_images_cache: HashMap<u32, Bytes>,
 }
@@ -63,9 +66,12 @@ impl RuntimeApiData {
                         continue;
                     }
                 };
-            try_pair_state(&mut host, host_data.paired.as_ref()).await;
+            set_pair_state(&mut host, host_data.paired.as_ref()).await;
+
+            let name = host.host_name().await.map(str::to_string).ok();
 
             hosts.insert(Mutex::new(RuntimeApiHost {
+                cache_name: name,
                 moonlight: host,
                 app_images_cache: Default::default(),
             }));
@@ -102,13 +108,15 @@ impl RuntimeApiData {
         };
 
         for (_, host) in &*hosts {
-            let host = host.lock().await;
+            let mut host = host.lock().await;
 
             let paired = Self::extract_paired(&host.moonlight);
+            let name = host.moonlight.host_name().await.map(str::to_string).ok();
 
             output.hosts.push(Host {
                 address: host.moonlight.address().to_string(),
                 http_port: host.moonlight.http_port(),
+                name_cache: name,
                 paired,
             });
         }
@@ -128,7 +136,7 @@ impl RuntimeApiData {
     }
 }
 
-async fn try_pair_state(host: &mut ReqwestMoonlightHost, paired: Option<&PairedHost>) {
+async fn set_pair_state(host: &mut ReqwestMoonlightHost, paired: Option<&PairedHost>) {
     let Some(paired) = paired else {
         return;
     };
@@ -155,16 +163,13 @@ async fn try_pair_state(host: &mut ReqwestMoonlightHost, paired: Option<&PairedH
         return;
     };
 
-    let status = match host
-        .set_pairing_info(
-            &ClientAuth {
-                private_key: client_private_key,
-                certificate: client_certificate,
-            },
-            &server_certificate,
-        )
-        .await
-    {
+    match host.set_pairing_info(
+        &ClientAuth {
+            private_key: client_private_key,
+            certificate: client_certificate,
+        },
+        &server_certificate,
+    ) {
         Ok(value) => value,
         Err(err) => {
             warn!(
@@ -174,6 +179,11 @@ async fn try_pair_state(host: &mut ReqwestMoonlightHost, paired: Option<&PairedH
             );
             return;
         }
+    };
+
+    let Ok(status) = host.verify_paired().await else {
+        // Fails if the host is offline
+        return;
     };
 
     if status != PairStatus::Paired {

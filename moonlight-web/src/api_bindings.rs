@@ -46,7 +46,8 @@ pub struct UndetailedHost {
     pub host_id: u32,
     pub name: String,
     pub paired: PairStatus,
-    pub server_state: HostState,
+    /// None if offline else the state
+    pub server_state: Option<HostState>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

@@ -77,10 +77,12 @@ export class Host implements Component {
     private onContextMenu(event: MouseEvent) {
         const elements = []
 
-        elements.push({
-            name: "Show Details",
-            callback: this.showDetails.bind(this),
-        })
+        if (this.cache?.server_state != null) {
+            elements.push({
+                name: "Show Details",
+                callback: this.showDetails.bind(this),
+            })
+        }
         elements.push({
             name: "Reload",
             callback: async () => this.forceFetch(true)

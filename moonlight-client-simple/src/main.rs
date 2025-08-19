@@ -59,10 +59,7 @@ async fn main() {
         let server_certificate = pem::parse(server_crt_contents).unwrap();
 
         // Get the current pair state
-        let pair_status = host
-            .set_pairing_info(&auth, &server_certificate)
-            .await
-            .unwrap();
+        let pair_status = host.set_pairing_info(&auth, &server_certificate).unwrap();
 
         assert_eq!(pair_status, PairStatus::Paired);
     } else {

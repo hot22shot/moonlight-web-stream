@@ -41,31 +41,20 @@ async fn authenticate() -> impl Responder {
 async fn list_hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHostsResponse>, HttpResponse> {
     let hosts = data.hosts.read().await;
 
-    let host_results = join_all(hosts.iter().map(|(host_id, host)| async move {
+    let hosts = join_all(hosts.iter().map(|(host_id, host)| async move {
         let mut host = host.lock().await;
+        let mut name = host.cache_name.clone();
 
-        (
+        into_undetailed_host(
             host_id,
-            into_undetailed_host(host_id, &mut host.moonlight).await,
+            || name.take().unwrap_or_else(|| String::from("offline")),
+            &mut host.moonlight,
         )
+        .await
     }))
     .await;
 
-    let host_response = host_results
-        .into_iter()
-        .filter_map(|(host_id, result)| match result {
-            Err(err) => {
-                warn!("failed to get host data {host_id}: {err:?}");
-
-                None
-            }
-            Ok(value) => Some(value),
-        })
-        .collect::<Vec<_>>();
-
-    Either::Left(Json(GetHostsResponse {
-        hosts: host_response,
-    }))
+    Either::Left(Json(GetHostsResponse { hosts }))
 }
 
 #[get("/host")]
@@ -84,6 +73,12 @@ async fn get_host(
 
     if query.force_refresh {
         host.moonlight.clear_cache();
+    }
+
+    if (query.force_refresh || host.cache_name.is_none())
+        && let Ok(name) = host.moonlight.host_name().await
+    {
+        host.cache_name = Some(name.to_string());
     }
 
     let Ok(detailed_host) = into_detailed_host(host_id as usize, &mut host.moonlight).await else {
@@ -116,8 +111,8 @@ async fn put_host(
         }
     };
 
-    match host.host_name().await {
-        Ok(_) => {}
+    let name = match host.host_name().await {
+        Ok(value) => value,
         Err(HostError::Api(ApiError::RequestClient(ReqwestError::Reqwest(err))))
             if err.is_timeout() =>
         {
@@ -136,6 +131,7 @@ async fn put_host(
 
     let host_id = hosts.vacant_key();
     hosts.insert(Mutex::new(RuntimeApiHost {
+        cache_name: Some(name.to_string()),
         moonlight: host,
         app_images_cache: Default::default(),
     }));
@@ -314,7 +310,7 @@ async fn get_apps(
     };
 
     Either::Left(Json(GetAppsResponse {
-        apps: app_list.into_iter().map(|x| x.to_owned().into()).collect(),
+        apps: app_list.iter().map(|x| x.to_owned().into()).collect(),
     }))
 }
 
@@ -376,14 +372,29 @@ pub fn api_service(data: Data<RuntimeApiData>, credentials: String) -> impl Http
 
 async fn into_undetailed_host(
     id: usize,
+    name: impl FnOnce() -> String,
     host: &mut ReqwestMoonlightHost,
-) -> Result<UndetailedHost, HostError<ReqwestError>> {
-    Ok(UndetailedHost {
+) -> UndetailedHost {
+    let name = host
+        .host_name()
+        .await
+        .map(str::to_string)
+        .unwrap_or_else(|_| name());
+
+    let paired = host.is_paired();
+
+    let server_state = host
+        .state()
+        .await
+        .map(|(_, state)| Option::Some(state))
+        .unwrap_or(None);
+
+    UndetailedHost {
         host_id: id as u32,
-        name: host.host_name().await?.to_string(),
-        paired: host.is_paired().into(),
-        server_state: host.state().await?.1.into(),
-    })
+        name,
+        paired: paired.into(),
+        server_state: server_state.map(Into::into),
+    }
 }
 async fn into_detailed_host(
     id: usize,

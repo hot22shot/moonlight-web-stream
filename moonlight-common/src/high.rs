@@ -225,11 +225,11 @@ where
         Ok(ServerCodeModeSupport::from_bits(bits).expect("valid server code mode support"))
     }
 
-    pub async fn set_pairing_info(
+    pub fn set_pairing_info(
         &mut self,
         client_auth: &ClientAuth,
         server_certificate: &Pem,
-    ) -> Result<PairStatus, HostError<C::Error>> {
+    ) -> Result<(), HostError<C::Error>> {
         self.client = C::with_certificates(
             &client_auth.private_key,
             &client_auth.certificate,
@@ -244,6 +244,10 @@ where
             cache_app_list: None,
         });
 
+        Ok(())
+    }
+
+    pub async fn verify_paired(&mut self) -> Result<PairStatus, HostError<C::Error>> {
         let https_address = match self.https_address().await {
             Err(err) => return Err(err),
             Ok(value) => value,
@@ -261,6 +265,7 @@ where
 
         Ok(pair_status)
     }
+
     pub fn clear_pairing_info(&mut self) -> Result<(), HostError<C::Error>> {
         self.client = C::with_defaults().map_err(ApiError::RequestClient)?;
         self.paired = None;
