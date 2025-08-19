@@ -19,7 +19,6 @@ use moonlight_common::{
     },
 };
 use tokio::{
-    runtime::Handle,
     spawn,
     sync::{Notify, RwLock},
     task::spawn_blocking,
@@ -31,10 +30,13 @@ use webrtc::{
         media_engine::{
             MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MIME_TYPE_OPUS, MediaEngine,
         },
+        setting_engine::SettingEngine,
     },
     data_channel::RTCDataChannel,
+    ice::udp_network::{EphemeralUDP, UDPNetwork},
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
+        ice_candidate_type::RTCIceCandidateType,
         ice_connection_state::RTCIceConnectionState,
     },
     interceptor::registry::Registry,
@@ -49,7 +51,7 @@ use webrtc::{
 };
 
 use crate::{
-    Config,
+    Config, PortRange,
     api::stream::{
         audio::OpusTrackSampleAudioDecoder, input::StreamInput, video::H264TrackSampleVideoDecoder,
     },
@@ -151,7 +153,8 @@ pub async fn start_stream(
             play_audio_local,
         };
 
-        if let Err(err) = start(data, info, stream_settings, session.clone(), stream).await {
+        if let Err(err) = start(config, data, info, stream_settings, session.clone(), stream).await
+        {
             warn!("[Stream]: stream error: {err:?}");
 
             let _ = session.close(None).await;
@@ -207,7 +210,6 @@ struct StreamInfo {
 struct StreamConnection {
     pub info: StreamInfo,
     pub settings: StreamSettings,
-    pub runtime: Handle,
     pub stages: Arc<StreamStages>,
     pub data: Data<RuntimeApiData>,
     pub peer: Arc<RTCPeerConnection>,
@@ -340,7 +342,6 @@ impl StreamConnection {
         let this = Arc::new(Self {
             info,
             settings,
-            runtime: Handle::current(),
             data,
             stages,
             peer: peer.clone(),
@@ -512,7 +513,7 @@ impl StreamConnection {
                         local_description.sdp_type
                     );
 
-                    let _ = Self::send_ws_message(
+                    let _ = send_ws_message(
                         &mut self.ws_sender.clone(),
                         StreamServerMessage::Signaling(StreamSignalingMessage::Description(
                             RtcSessionDescription {
@@ -570,7 +571,7 @@ impl StreamConnection {
             },
         ));
 
-        let _ = Self::send_ws_message(&mut self.ws_sender.clone(), message).await;
+        let _ = send_ws_message(&mut self.ws_sender.clone(), message).await;
     }
 
     // -- Data Channels
@@ -582,7 +583,7 @@ impl StreamConnection {
     async fn start_stream(&self) -> Result<(), anyhow::Error> {
         let hosts = self.data.hosts.read().await;
         let Some(host) = hosts.get(self.info.host_id) else {
-            let _ = Self::send_ws_message(
+            let _ = send_ws_message(
                 &mut self.ws_sender.clone(),
                 StreamServerMessage::HostNotFound,
             )
@@ -598,7 +599,7 @@ impl StreamConnection {
             .iter()
             .find(|app| app.id as usize == self.info.app_id)
         else {
-            let _ = Self::send_ws_message(
+            let _ = send_ws_message(
                 &mut self.ws_sender.clone(),
                 StreamServerMessage::InternalServerError,
             )
@@ -612,7 +613,7 @@ impl StreamConnection {
         spawn({
             let mut sender = self.ws_sender.clone();
             async move {
-                let _ = Self::send_ws_message(
+                let _ = send_ws_message(
                     &mut sender,
                     StreamServerMessage::UpdateApp { app: app.into() },
                 )
@@ -664,7 +665,7 @@ impl StreamConnection {
                 #[allow(clippy::single_match)]
                 match err {
                     HostError::Moonlight(MoonlightError::ConnectionAlreadyExists) => {
-                        let _ = Self::send_ws_message(
+                        let _ = send_ws_message(
                             &mut self.ws_sender.clone(),
                             StreamServerMessage::AlreadyStreaming,
                         )
@@ -695,8 +696,7 @@ impl StreamConnection {
 
         let mut ws_sender = self.ws_sender.clone();
         spawn(async move {
-            let _ =
-                Self::send_ws_message(&mut ws_sender, StreamServerMessage::PeerDisconnect).await;
+            let _ = send_ws_message(&mut ws_sender, StreamServerMessage::PeerDisconnect).await;
             let _ = ws_sender.close(None).await;
         });
 
@@ -712,96 +712,76 @@ impl StreamConnection {
             warn!("[Stream]: failed to stop stream: {err}");
         };
     }
+}
 
-    async fn send_ws_message(
-        sender: &mut Session,
-        message: StreamServerMessage,
-    ) -> Result<(), Closed> {
-        let Ok(json) = serde_json::to_string(&message) else {
-            warn!("[Stream]: failed to serialize to json");
-            return Ok(());
-        };
+async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> Result<(), Closed> {
+    let Ok(json) = serde_json::to_string(&message) else {
+        warn!("[Stream]: failed to serialize to json");
+        return Ok(());
+    };
 
-        sender.text(json).await
-    }
+    sender.text(json).await
 }
 
 async fn start(
+    config: Data<Config>,
     data: Data<RuntimeApiData>,
     info: StreamInfo,
     settings: StreamSettings,
     ws_sender: Session,
     ws_receiver: MessageStream,
 ) -> Result<Arc<StreamConnection>, anyhow::Error> {
+    // TODO: send webrtc ice servers and other config values required for the rtc peer to the web client
+    // send_ws_message(sender, message)
+
     // -- Configure WebRTC
-    let config = RTCConfiguration {
-        // TODO: put this into config
-        // ice_servers: vec![
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun.l.google.com:5349".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun1.l.google.com:3478".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun1.l.google.com:5349".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun2.l.google.com:5349".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun3.l.google.com:3478".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun3.l.google.com:5349".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun4.l.google.com:19302".to_owned()],
-        //         ..Default::default()
-        //     },
-        //     RTCIceServer {
-        //         urls: vec!["stun:stun4.l.google.com:5349".to_owned()],
-        //         ..Default::default()
-        //     },
-        // ],
+    let rtc_config = RTCConfiguration {
+        ice_servers: config.webrtc_ice_servers.clone(),
         ..Default::default()
     };
 
-    let mut media = MediaEngine::default();
+    let mut api_media = MediaEngine::default();
     // TODO: only register supported codecs
-    media.register_default_codecs()?;
+    api_media.register_default_codecs()?;
 
-    let mut registry = Registry::new();
+    let mut api_registry = Registry::new();
 
     // Use the default set of Interceptors
-    registry = register_default_interceptors(registry, &mut media)?;
+    api_registry = register_default_interceptors(api_registry, &mut api_media)?;
+
+    let mut api_settings = SettingEngine::default();
+    if let Some(PortRange { min, max }) = config.webrtc_port_range {
+        match EphemeralUDP::new(min, max) {
+            Ok(udp) => {
+                api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
+            }
+            Err(err) => {
+                warn!("[Stream]: Invalid port range in config: {err:?}");
+            }
+        }
+    }
+    api_settings.set_nat_1to1_ips(
+        config.webrtc_nat_1to1_ips.clone(),
+        RTCIceCandidateType::Host,
+    );
 
     let api = APIBuilder::new()
-        .with_media_engine(media)
-        .with_interceptor_registry(registry)
+        .with_media_engine(api_media)
+        .with_interceptor_registry(api_registry)
+        .with_setting_engine(api_settings)
         .build();
 
     // -- Create and Configure Peer
-    let connection =
-        StreamConnection::new(info, settings, data, ws_sender, ws_receiver, &api, config).await?;
+    let connection = StreamConnection::new(
+        info,
+        settings,
+        data,
+        ws_sender,
+        ws_receiver,
+        &api,
+        rtc_config,
+    )
+    .await?;
 
     Ok(connection)
 }

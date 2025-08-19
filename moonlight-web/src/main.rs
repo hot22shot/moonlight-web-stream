@@ -5,6 +5,7 @@ use std::{
     path::Path,
 };
 use tokio::fs;
+use webrtc::ice_transport::ice_server::RTCIceServer;
 
 use actix_web::{App, HttpServer, web::Data};
 use log::{LevelFilter, info};
@@ -117,6 +118,12 @@ pub struct Config {
     moonlight_default_http_port: u16,
     #[serde(default = "default_pair_device_name")]
     pair_device_name: String,
+    #[serde(default = "default_ice_servers")]
+    webrtc_ice_servers: Vec<RTCIceServer>,
+    #[serde(default)]
+    webrtc_port_range: Option<PortRange>,
+    #[serde(default)]
+    webrtc_nat_1to1_ips: Vec<String>,
     certificate: Option<ConfigSsl>,
 }
 
@@ -126,6 +133,12 @@ pub struct ConfigSsl {
     certificate_pem: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortRange {
+    min: u16,
+    max: u16,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -133,6 +146,9 @@ impl Default for Config {
             data_path: data_path_default(),
             bind_address: default_bind_address(),
             moonlight_default_http_port: moonlight_default_http_port_default(),
+            webrtc_ice_servers: default_ice_servers(),
+            webrtc_port_range: Default::default(),
+            webrtc_nat_1to1_ips: Default::default(),
             pair_device_name: default_pair_device_name(),
             certificate: None,
         }
@@ -149,6 +165,55 @@ fn default_bind_address() -> SocketAddr {
 
 fn moonlight_default_http_port_default() -> u16 {
     47989
+}
+
+fn default_ice_servers() -> Vec<RTCIceServer> {
+    vec![
+        RTCIceServer {
+            urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun.l.google.com:19302".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun.l.google.com:5349".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun1.l.google.com:3478".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun1.l.google.com:5349".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun2.l.google.com:5349".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun3.l.google.com:3478".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun3.l.google.com:5349".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun4.l.google.com:19302".to_owned()],
+            ..Default::default()
+        },
+        RTCIceServer {
+            urls: vec!["stun:stun4.l.google.com:5349".to_owned()],
+            ..Default::default()
+        },
+    ]
 }
 
 fn default_pair_device_name() -> String {
