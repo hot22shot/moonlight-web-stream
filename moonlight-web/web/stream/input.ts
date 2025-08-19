@@ -25,7 +25,7 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 
 export type StreamInputConfig = {
     keyboardOrdered: boolean
-    mouseMode: "relative" | "pointAndDrag"
+    mouseMode: "relative" | "follow" | "pointAndDrag"
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
     controllerConfig: ControllerConfig
 }
@@ -144,7 +144,7 @@ export class StreamInput {
             return
         }
 
-        if (this.config.mouseMode == "relative") {
+        if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow") {
             this.sendMouseButton(true, button)
         } else if (this.config.mouseMode == "pointAndDrag") {
             this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, button)
@@ -158,9 +158,11 @@ export class StreamInput {
 
         this.sendMouseButton(false, button)
     }
-    onMouseMove(event: MouseEvent) {
+    onMouseMove(event: MouseEvent, rect: DOMRect) {
         if (this.config.mouseMode == "relative") {
             this.sendMouseMove(event.movementX, event.movementY)
+        } else if (this.config.mouseMode == "follow") {
+            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect)
         } else if (this.config.mouseMode == "pointAndDrag") {
             if (event.buttons) {
                 // some button pressed

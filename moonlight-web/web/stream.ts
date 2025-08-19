@@ -145,7 +145,7 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onMouseMove(event)
+        this.stream?.getInput().onMouseMove(event, this.videoElement.getBoundingClientRect())
     }
     onWheel(event: WheelEvent) {
         this.onUserInteraction()
@@ -277,6 +277,7 @@ class ViewerSidebar implements Component, Sidebar {
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [
             { value: "relative", name: "Relative" },
+            { value: "follow", name: "Follow" },
             { value: "pointAndDrag", name: "Point and Drag" }
         ], {
             displayName: "Mouse Mode",
@@ -337,13 +338,13 @@ class ViewerSidebar implements Component, Sidebar {
 
     // -- Mouse Mode
     private onMouseModeChange() {
-        this.config.mouseMode = this.mouseMode.getValue() as "relative" | "pointAndDrag"
+        this.config.mouseMode = this.mouseMode.getValue() as any
         this.app.getStream()?.getInput().setConfig(this.config)
     }
 
     // -- Touch Mode
     private onTouchModeChange() {
-        this.config.touchMode = this.touchMode.getValue() as "touch" | "mouseRelative" | "pointAndDrag"
+        this.config.touchMode = this.touchMode.getValue() as any
         this.app.getStream()?.getInput().setConfig(this.config)
     }
 
