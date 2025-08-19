@@ -6,6 +6,7 @@ import { showMessage } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
+import { SelectComponent } from "./component/input.js";
 
 async function startApp() {
     const api = await getApi()
@@ -192,13 +193,9 @@ class ViewerSidebar implements Component, Sidebar {
 
     private lockMouseButton = document.createElement("button")
 
-    private mouseModeDiv = document.createElement("div")
-    private mouseModeLabel = document.createElement("label")
-    private mouseModeSelect = document.createElement("select")
+    private mouseMode: SelectComponent
 
-    private touchModeDiv = document.createElement("div")
-    private touchModeLabel = document.createElement("label")
-    private touchModeSelect = document.createElement("select")
+    private touchMode: SelectComponent
 
     private config: StreamInputConfig = defaultStreamInputConfig()
 
@@ -240,70 +237,25 @@ class ViewerSidebar implements Component, Sidebar {
         })
 
         // Select Mouse Mode
-        this.mouseModeLabel.htmlFor = "mouseMode"
-        this.mouseModeLabel.innerText = "Mouse Mode"
-
-        this.mouseModeDiv.appendChild(this.mouseModeLabel)
-
-        this.mouseModeSelect.name = "mouseMode"
-        this.mouseModeSelect.addEventListener("change", this.onMouseModeChange.bind(this))
-
-        const mouseModeRelative = document.createElement("option")
-        mouseModeRelative.value = "relative"
-        mouseModeRelative.innerText = "Relative"
-        this.mouseModeSelect.appendChild(mouseModeRelative)
-
-        const mouseModePointAndDrag = document.createElement("option")
-        mouseModePointAndDrag.value = "pointAndDrag"
-        mouseModePointAndDrag.innerText = "Point and Drag"
-        this.mouseModeSelect.appendChild(mouseModePointAndDrag)
-
-        if (this.config.mouseMode == "relative") {
-            this.mouseModeSelect.selectedIndex = 0
-        } else if (this.config.mouseMode == "pointAndDrag") {
-            this.mouseModeSelect.selectedIndex = 1
-        } else {
-            throw ""
-        }
-
-        this.mouseModeDiv.appendChild(this.mouseModeSelect)
+        this.mouseMode = new SelectComponent("mouseMode", [
+            { value: "Relative", name: "relative" },
+            { value: "Point and Drag", name: "pointAndDrag" }
+        ], {
+            displayName: "Mouse Mode",
+            preSelectedOption: this.config.mouseMode
+        })
+        this.mouseMode.addChangeListener(this.onMouseModeChange.bind(this))
 
         // Select Touch Mode
-        this.touchModeLabel.htmlFor = "touchMode"
-        this.touchModeLabel.innerText = "Touch Mode"
-
-        this.touchModeDiv.appendChild(this.touchModeLabel)
-
-        this.touchModeSelect.name = "touchMode"
-        this.touchModeSelect.value = this.config.touchMode
-        this.touchModeSelect.addEventListener("change", this.onTouchModeChange.bind(this))
-
-        const touchModeTouch = document.createElement("option")
-        touchModeTouch.value = "touch"
-        touchModeTouch.innerText = "Touch"
-        this.touchModeSelect.appendChild(touchModeTouch)
-
-        const touchModeRelative = document.createElement("option")
-        touchModeRelative.value = "mouseRelative"
-        touchModeRelative.innerText = "Relative"
-        this.touchModeSelect.appendChild(touchModeRelative)
-
-        const touchModePointAndDrag = document.createElement("option")
-        touchModePointAndDrag.value = "pointAndDrag"
-        touchModePointAndDrag.innerText = "Point and Drag"
-        this.touchModeSelect.appendChild(touchModePointAndDrag)
-
-        if (this.config.touchMode == "touch") {
-            this.touchModeSelect.selectedIndex = 0
-        } else if (this.config.touchMode == "mouseRelative") {
-            this.touchModeSelect.selectedIndex = 1
-        } else if (this.config.touchMode == "pointAndDrag") {
-            this.touchModeSelect.selectedIndex = 2
-        } else {
-            throw ""
-        }
-
-        this.touchModeDiv.appendChild(this.touchModeSelect)
+        this.touchMode = new SelectComponent("mouseMode", [
+            { value: "Touch", name: "touch" },
+            { value: "Relative", name: "relative" },
+            { value: "Point and Drag", name: "pointAndDrag" }
+        ], {
+            displayName: "Touch Mode",
+            preSelectedOption: this.config.touchMode
+        })
+        this.touchMode.addChangeListener(this.onTouchModeChange.bind(this))
     }
 
     // -- Keyboard
@@ -347,13 +299,13 @@ class ViewerSidebar implements Component, Sidebar {
 
     // -- Mouse Mode
     private onMouseModeChange() {
-        this.config.mouseMode = this.mouseModeSelect.value as "relative" | "pointAndDrag"
+        this.config.mouseMode = this.mouseMode.getValue() as "relative" | "pointAndDrag"
         this.app.getStream()?.getInput().setConfig(this.config)
     }
 
     // -- Touch Mode
     private onTouchModeChange() {
-        this.config.touchMode = this.touchModeSelect.value as "touch" | "mouseRelative" | "pointAndDrag"
+        this.config.touchMode = this.touchMode.getValue() as "touch" | "mouseRelative" | "pointAndDrag"
         this.app.getStream()?.getInput().setConfig(this.config)
     }
 
@@ -368,14 +320,14 @@ class ViewerSidebar implements Component, Sidebar {
         parent.appendChild(this.keyboardButton)
         parent.appendChild(this.keyboardInput)
         parent.appendChild(this.lockMouseButton)
-        parent.appendChild(this.mouseModeDiv)
-        parent.appendChild(this.touchModeDiv)
+        this.mouseMode.mount(parent)
+        this.touchMode.mount(parent)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.keyboardButton)
         parent.removeChild(this.keyboardInput)
         parent.removeChild(this.lockMouseButton)
-        parent.removeChild(this.mouseModeDiv)
-        parent.removeChild(this.touchModeDiv)
+        this.mouseMode.unmount(parent)
+        this.touchMode.unmount(parent)
     }
 }
