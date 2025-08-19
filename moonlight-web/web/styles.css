@@ -299,6 +299,7 @@ button:hover {
 
 .app-active .app-image {
     border-style: solid;
+    /** TODO: gold doesn't fit this theme */
     border-color: gold;
     border-width: 4px;
     border-radius: 4px;
