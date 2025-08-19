@@ -1,10 +1,6 @@
-use std::{
-    io::BufReader,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use actix_web::{
@@ -18,12 +14,11 @@ use moonlight_common::{
     high::HostError,
     moonlight::{
         debug::DebugHandler,
-        stream::{ActiveGamepads, ColorRange, Colorspace, MoonlightStream},
+        stream::{ColorRange, Colorspace, MoonlightStream},
         video::SupportedVideoFormats,
     },
 };
 use tokio::{
-    fs::File,
     runtime::Handle,
     spawn,
     sync::{Notify, RwLock},
@@ -43,7 +38,6 @@ use webrtc::{
         ice_connection_state::RTCIceConnectionState,
     },
     interceptor::registry::Registry,
-    media::{Sample, io::ogg_reader::OggReader},
     peer_connection::{
         RTCPeerConnection,
         configuration::RTCConfiguration,
@@ -79,6 +73,7 @@ struct StreamSettings {
     width: u32,
     height: u32,
     video_sample_queue_size: u32,
+    audio_sample_queue_size: u32,
     play_audio_local: bool,
 }
 
@@ -129,6 +124,7 @@ pub async fn start_stream(
             height,
             video_sample_queue_size,
             play_audio_local,
+            audio_sample_queue_size,
         } = message
         else {
             let _ = session.close(None).await;
@@ -151,6 +147,7 @@ pub async fn start_stream(
             width,
             height,
             video_sample_queue_size,
+            audio_sample_queue_size,
             play_audio_local,
         };
 
@@ -630,8 +627,11 @@ impl StreamConnection {
             self.stages.clone(),
             self.settings.video_sample_queue_size as usize,
         );
-        let audio_decoder =
-            OpusTrackSampleAudioDecoder::new(self.audio_track.clone(), self.stages.clone());
+        let audio_decoder = OpusTrackSampleAudioDecoder::new(
+            self.audio_track.clone(),
+            self.stages.clone(),
+            self.settings.audio_sample_queue_size as usize,
+        );
 
         let stream = match host
             .moonlight

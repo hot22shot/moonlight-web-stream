@@ -62,6 +62,8 @@ class ViewerApp implements Component {
         this.videoElement.controls = false
         this.videoElement.autoplay = true
         this.videoElement.disablePictureInPicture = true
+        this.videoElement.playsInline = true
+        this.videoElement.muted = true
 
         // Configure input
         document.addEventListener("keydown", this.onKeyDown.bind(this))
@@ -108,44 +110,66 @@ class ViewerApp implements Component {
         document.title = `Stream: ${app.title}`
     }
 
+    onUserInteraction() {
+        this.videoElement.muted = false
+    }
+
     // Keyboard
     onKeyDown(event: KeyboardEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onKeyDown(event)
     }
     onKeyUp(event: KeyboardEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onKeyUp(event)
     }
 
     // Mouse
     onMouseButtonDown(event: MouseEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onMouseDown(event, this.videoElement.getBoundingClientRect());
     }
     onMouseButtonUp(event: MouseEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onMouseUp(event)
     }
     onMouseMove(event: MouseEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onMouseMove(event)
     }
     onWheel(event: WheelEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onWheel(event)
     }
 
     // Touch
     onTouchStart(event: TouchEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onTouchStart(event, this.videoElement.getBoundingClientRect())
     }
     onTouchEnd(event: TouchEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
     onTouchMove(event: TouchEvent) {
+        this.onUserInteraction()
+
         event.preventDefault()
         this.stream?.getInput().onTouchMove(event, this.videoElement.getBoundingClientRect())
     }

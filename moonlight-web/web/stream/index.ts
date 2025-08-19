@@ -86,6 +86,7 @@ export class Stream {
                 height,
                 video_sample_queue_size: this.settings.videoSampleQueueSize,
                 play_audio_local: this.settings.playAudioLocal,
+                audio_sample_queue_size: this.settings.audioSampleQueueSize,
             }
         })
 

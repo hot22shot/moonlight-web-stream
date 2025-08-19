@@ -243,6 +243,7 @@ pub enum StreamClientMessage {
         height: u32,
         video_sample_queue_size: u32,
         play_audio_local: bool,
+        audio_sample_queue_size: u32,
     },
     Signaling(StreamSignalingMessage),
 }

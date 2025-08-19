@@ -13,6 +13,7 @@ export type StreamSettings = {
     },
     fps: number
     playAudioLocal: boolean
+    audioSampleQueueSize: number
     controllerConfig: ControllerConfig
 }
 
@@ -28,6 +29,7 @@ export function defaultStreamSettings(): StreamSettings {
             height: 1080,
         },
         playAudioLocal: false,
+        audioSampleQueueSize: 500,
         controllerConfig: {
             invertAB: false,
             invertXY: false
@@ -76,6 +78,8 @@ export class StreamSettingsComponent implements Component {
 
     private audioHeader: HTMLHeadingElement = document.createElement("h2")
     private playAudioLocal: InputComponent
+
+    private audioSampleQueueSize: InputComponent
 
     private controllerHeader: HTMLHeadingElement = document.createElement("h2")
     private controllerInvertAB: InputComponent
@@ -167,6 +171,14 @@ export class StreamSettingsComponent implements Component {
         this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
         this.playAudioLocal.mount(this.divElement)
 
+        // Audio Sample Queue Size
+        this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", "Audio Sample Queue Size", {
+            defaultValue: defaultSettings.audioSampleQueueSize.toString(),
+            value: settings?.audioSampleQueueSize?.toString()
+        })
+        this.audioSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
+        this.audioSampleQueueSize.mount(this.divElement)
+
         // Controller
         this.controllerHeader.innerText = "Controller"
         this.divElement.appendChild(this.controllerHeader)
@@ -219,6 +231,7 @@ export class StreamSettingsComponent implements Component {
         settings.videoSampleQueueSize = parseInt(this.videoSampleQueueSize.getValue())
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()
+        settings.audioSampleQueueSize = parseInt(this.audioSampleQueueSize.getValue())
 
         settings.controllerConfig.invertAB = this.controllerInvertAB.isChecked()
         settings.controllerConfig.invertXY = this.controllerInvertXY.isChecked()
