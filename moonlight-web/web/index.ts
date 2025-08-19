@@ -245,7 +245,11 @@ class MainApp implements Component {
         }
 
         const currentGame = await host.getCurrentGame()
-        gameList?.setActiveGame(currentGame)
+        if (currentGame != 0) {
+            gameList?.setActiveGame(currentGame)
+        } else {
+            gameList?.setActiveGame(null)
+        }
     }
 
     mount(parent: HTMLElement): void {
