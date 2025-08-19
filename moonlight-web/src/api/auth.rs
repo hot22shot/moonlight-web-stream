@@ -4,16 +4,15 @@ use actix_web::{
     dev::{ServiceRequest, ServiceResponse},
     http::header,
     middleware::Next,
-    web::Data,
 };
 
-use crate::Config;
+pub struct ApiCredentials(pub String);
 
 pub async fn auth_middleware(
     req: ServiceRequest,
     next: Next<BoxBody>,
 ) -> Result<ServiceResponse<impl MessageBody>, Error> {
-    if req.uri().path().ends_with("stream") {
+    if req.uri().path() == "/api/stream" {
         // This will route the stream web socket through
         // because web socket cannot have the auth header
         // The Ws is authenticated in the start_stream handler
@@ -30,7 +29,7 @@ pub async fn auth_middleware(
 }
 
 fn authenticate(request: &ServiceRequest) -> bool {
-    let Some(config) = request.app_data::<Data<Config>>() else {
+    let Some(credentials) = request.app_data::<ApiCredentials>() else {
         return false;
     };
 
@@ -43,9 +42,9 @@ fn authenticate(request: &ServiceRequest) -> bool {
         return false;
     };
 
-    let Some((auth_type, credentials)) = value.split_once(" ") else {
+    let Some((auth_type, request_credentials)) = value.split_once(" ") else {
         todo!()
     };
 
-    auth_type == "Bearer" && credentials == config.credentials
+    auth_type == "Bearer" && request_credentials == credentials.0.as_str()
 }

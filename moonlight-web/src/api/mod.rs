@@ -1,8 +1,8 @@
 use actix_web::{
     Either, Error, HttpResponse, Responder, delete,
     dev::HttpServiceFactory,
-    get, post, put, services,
-    web::{Bytes, Data, Json, Query},
+    get, middleware, post, put, services,
+    web::{self, Bytes, Data, Json, Query},
 };
 use futures::future::join_all;
 use log::{info, warn};
@@ -20,6 +20,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     Config,
+    api::auth::{ApiCredentials, auth_middleware},
     api_bindings::{
         DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
         GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1,
@@ -28,6 +29,7 @@ use crate::{
     data::{RuntimeApiData, RuntimeApiHost},
 };
 
+mod auth;
 mod stream;
 
 #[get("/authenticate")]
@@ -341,20 +343,22 @@ async fn get_app_image(
     }
 }
 
-/// IMPORTANT: This won't authenticate clients -> everyone can use this api
-/// Put a guard or similar before this service
-pub fn api_service() -> impl HttpServiceFactory {
-    services![
-        authenticate,
-        list_hosts,
-        get_host,
-        put_host,
-        delete_host,
-        pair_host,
-        get_apps,
-        get_app_image,
-        stream::start_stream,
-    ]
+pub fn api_service(data: Data<RuntimeApiData>, credentials: String) -> impl HttpServiceFactory {
+    web::scope("/api")
+        .wrap(middleware::from_fn(auth_middleware))
+        .app_data(ApiCredentials(credentials))
+        .app_data(data)
+        .service(services![
+            authenticate,
+            list_hosts,
+            get_host,
+            put_host,
+            delete_host,
+            pair_host,
+            get_apps,
+            get_app_image,
+            stream::start_stream,
+        ])
 }
 
 async fn into_undetailed_host(

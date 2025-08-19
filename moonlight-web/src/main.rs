@@ -6,10 +6,7 @@ use std::{
 };
 use tokio::fs;
 
-use actix_web::{
-    App, HttpServer, middleware,
-    web::{Data, scope},
-};
+use actix_web::{App, HttpServer, web::Data};
 use log::{LevelFilter, info};
 use moonlight_common::moonlight::MoonlightInstance;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -17,7 +14,6 @@ use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 use crate::{
     api::api_service,
-    auth::auth_middleware,
     data::{ApiData, RuntimeApiData},
     web::web_service,
 };
@@ -25,7 +21,6 @@ use crate::{
 mod api;
 mod api_bindings;
 mod api_bindings_consts;
-mod auth;
 mod data;
 mod web;
 
@@ -62,12 +57,7 @@ async fn main() -> std::io::Result<()> {
         move || {
             App::new()
                 .app_data(config.clone())
-                .service(
-                    scope("/api")
-                        .app_data(data.clone())
-                        .wrap(middleware::from_fn(auth_middleware))
-                        .service(api_service()),
-                )
+                .service(api_service(data.clone(), config.credentials.to_string()))
                 .service(web_service())
         }
     });
