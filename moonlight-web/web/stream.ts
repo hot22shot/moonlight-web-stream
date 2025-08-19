@@ -282,7 +282,7 @@ class ViewerSidebar implements Component, Sidebar {
         // Select Touch Mode
         this.touchMode = new SelectComponent("mouseMode", [
             { value: "touch", name: "Touch" },
-            { value: "relative", name: "Relative" },
+            { value: "mouseRelative", name: "Relative" },
             { value: "pointAndDrag", name: "Point and Drag" }
         ], {
             displayName: "Touch Mode",
