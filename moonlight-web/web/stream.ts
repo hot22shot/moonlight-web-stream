@@ -61,6 +61,7 @@ class ViewerApp implements Component {
         this.videoElement.preload = "none"
         this.videoElement.controls = false
         this.videoElement.autoplay = true
+        this.videoElement.disablePictureInPicture = true
 
         // Configure input
         document.addEventListener("keydown", this.onKeyDown.bind(this))
@@ -193,6 +194,8 @@ class ViewerSidebar implements Component, Sidebar {
 
     private lockMouseButton = document.createElement("button")
 
+    private fullscreenButton = document.createElement("button")
+
     private mouseMode: SelectComponent
 
     private touchMode: SelectComponent
@@ -236,10 +239,16 @@ class ViewerSidebar implements Component, Sidebar {
             await app.getElement().requestPointerLock()
         })
 
+        // Fullscreen
+        this.fullscreenButton.innerText = "Fullscreen"
+        this.fullscreenButton.addEventListener("click", () => {
+            this.app.getElement().requestFullscreen()
+        })
+
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [
-            { value: "Relative", name: "relative" },
-            { value: "Point and Drag", name: "pointAndDrag" }
+            { value: "relative", name: "Relative" },
+            { value: "pointAndDrag", name: "Point and Drag" }
         ], {
             displayName: "Mouse Mode",
             preSelectedOption: this.config.mouseMode
@@ -248,9 +257,9 @@ class ViewerSidebar implements Component, Sidebar {
 
         // Select Touch Mode
         this.touchMode = new SelectComponent("mouseMode", [
-            { value: "Touch", name: "touch" },
-            { value: "Relative", name: "relative" },
-            { value: "Point and Drag", name: "pointAndDrag" }
+            { value: "touch", name: "Touch" },
+            { value: "relative", name: "Relative" },
+            { value: "pointAndDrag", name: "Point and Drag" }
         ], {
             displayName: "Touch Mode",
             preSelectedOption: this.config.touchMode
@@ -320,6 +329,7 @@ class ViewerSidebar implements Component, Sidebar {
         parent.appendChild(this.keyboardButton)
         parent.appendChild(this.keyboardInput)
         parent.appendChild(this.lockMouseButton)
+        parent.appendChild(this.fullscreenButton)
         this.mouseMode.mount(parent)
         this.touchMode.mount(parent)
     }
@@ -327,6 +337,7 @@ class ViewerSidebar implements Component, Sidebar {
         parent.removeChild(this.keyboardButton)
         parent.removeChild(this.keyboardInput)
         parent.removeChild(this.lockMouseButton)
+        parent.removeChild(this.fullscreenButton)
         this.mouseMode.unmount(parent)
         this.touchMode.unmount(parent)
     }

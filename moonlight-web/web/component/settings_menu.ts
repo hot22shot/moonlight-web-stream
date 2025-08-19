@@ -22,7 +22,7 @@ export function defaultStreamSettings(): StreamSettings {
         packetSize: 4096,
         fps: 60,
         videoSampleQueueSize: 2000,
-        videoSize: "1440p",
+        videoSize: "1080p",
         videoSizeCustom: {
             width: 1920,
             height: 1080,
@@ -87,7 +87,7 @@ export class StreamSettingsComponent implements Component {
         // Root div
         this.divElement.classList.add("settings")
 
-        this.streamHeader.innerText = "Streaming"
+        this.streamHeader.innerText = "Video"
         this.divElement.appendChild(this.streamHeader)
 
         // Bitrate
