@@ -15,3 +15,5 @@ pem = "3.0.5"
 
 gstreamer = "0.24.0"
 gstreamer-app = "0.24.0"
+
+audiopus_sys = "0.2.2"

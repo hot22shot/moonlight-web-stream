@@ -27,6 +27,7 @@ use crate::moonlight::stream::Capabilities;
 pub struct OpusMultistreamConfig {
     pub sample_rate: u32,
     pub channel_count: u32,
+    pub streams: u32,
     pub coupled_streams: u32,
     pub samples_per_frame: u32,
     pub mapping: [u8; AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT as usize],
@@ -113,6 +114,7 @@ unsafe extern "C" fn setup(
         let opus_config = OpusMultistreamConfig {
             sample_rate: raw_opus_config.sampleRate as u32,
             channel_count: raw_opus_config.channelCount as u32,
+            streams: raw_opus_config.streams as u32,
             coupled_streams: raw_opus_config.coupledStreams as u32,
             samples_per_frame: raw_opus_config.samplesPerFrame as u32,
             mapping: raw_opus_config.mapping,
