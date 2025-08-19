@@ -159,7 +159,11 @@ class ViewerApp implements Component {
         this.stream?.getInput().onGamepadDisconnect(event)
     }
     onGamepadUpdate() {
-        this.stream?.getInput().onGamepadUpdate()
+        try {
+            this.stream?.getInput().onGamepadUpdate()
+        } catch (e: any) {
+            alert(e.toString())
+        }
 
         window.requestAnimationFrame(this.onGamepadUpdate.bind(this))
     }

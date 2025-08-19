@@ -379,9 +379,13 @@ export class StreamInput {
     private gamepads: Array<number | null> = []
 
     onGamepadConnect(gamepad: Gamepad) {
+        if (this.gamepads.indexOf(gamepad.index) != -1) {
+            return
+        }
+
         let inserted = false
         for (let i = 0; i < this.gamepads.length; i++) {
-            if (!this.gamepads[i]) {
+            if (this.gamepads[i] == null) {
                 this.gamepads[i] = gamepad.index
                 inserted = true
                 break
@@ -398,7 +402,9 @@ export class StreamInput {
     }
     onGamepadDisconnect(event: GamepadEvent) {
         const index = this.gamepads.indexOf(event.gamepad.index)
-        this.gamepads[index] = null
+        if (index != -1) {
+            this.gamepads[index] = null
+        }
     }
     onGamepadUpdate() {
         for (let gamepadId = 0; gamepadId < this.gamepads.length; gamepadId++) {

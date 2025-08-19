@@ -625,6 +625,8 @@ impl StreamConnection {
             }
         });
 
+        let gamepads = self.input.active_gamepads.read().await;
+
         let video_decoder = H264TrackSampleVideoDecoder::new(
             self.video_track.clone(),
             self.stages.clone(),
@@ -645,7 +647,7 @@ impl StreamConnection {
                 false,
                 true,
                 self.settings.play_audio_local,
-                ActiveGamepads::empty(),
+                *gamepads,
                 false,
                 Colorspace::Rec709,
                 ColorRange::Limited,
@@ -678,6 +680,8 @@ impl StreamConnection {
         };
 
         self.input.on_stream_start(&stream).await;
+
+        drop(gamepads);
 
         let mut stream_guard = self.stream.write().await;
         stream_guard.replace(stream);
