@@ -19,17 +19,17 @@ export type StreamSettings = {
 
 export function defaultStreamSettings(): StreamSettings {
     return {
-        bitrate: 10000,
+        bitrate: 5000,
         packetSize: 4096,
         fps: 60,
-        videoSampleQueueSize: 2000,
+        videoSampleQueueSize: 20,
         videoSize: "1080p",
         videoSizeCustom: {
             width: 1920,
             height: 1080,
         },
         playAudioLocal: false,
-        audioSampleQueueSize: 500,
+        audioSampleQueueSize: 20,
         controllerConfig: {
             invertAB: false,
             invertXY: false
