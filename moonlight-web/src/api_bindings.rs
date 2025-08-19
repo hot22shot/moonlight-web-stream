@@ -98,6 +98,8 @@ pub struct GetHostsResponse {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetHostQuery {
     pub host_id: u32,
+    #[serde(default)]
+    pub force_refresh: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -150,6 +152,8 @@ pub enum PostPairResponse2 {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetAppsQuery {
     pub host_id: u32,
+    #[serde(default)]
+    pub force_refresh: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -160,16 +164,11 @@ pub struct GetAppsResponse {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct GetAppQuery {
-    pub host_id: u32,
-    pub app_id: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
 pub struct GetAppImageQuery {
     pub host_id: u32,
     pub app_id: u32,
+    #[serde(default)]
+    pub force_refresh: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]

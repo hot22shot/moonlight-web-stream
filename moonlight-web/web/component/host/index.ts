@@ -48,12 +48,16 @@ export class Host implements Component {
         if (host != null) {
             this.updateCache(host)
         } else {
-            this.forceFetch()
+            this.forceFetch(false)
         }
     }
 
-    async forceFetch() {
-        const newCache = await apiGetHost(this.api, this.hostId)
+    async forceFetch(forceServerRefresh?: boolean) {
+        const newCache = await apiGetHost(this.api, {
+            host_id: this.hostId,
+            force_refresh: forceServerRefresh || false
+        })
+
         if (newCache == null) {
             showErrorPopup(`failed to fetch host ${this.getHostId()}`)
             return;
@@ -79,7 +83,7 @@ export class Host implements Component {
         })
         elements.push({
             name: "Reload",
-            callback: this.forceFetch.bind(this)
+            callback: async () => this.forceFetch(true)
         })
 
         if (this.cache?.paired == "NotPaired") {
@@ -102,7 +106,10 @@ export class Host implements Component {
     private async showDetails() {
         let host = this.cache;
         if (!host || !isDetailedHost(host)) {
-            host = await apiGetHost(this.api, this.hostId)
+            host = await apiGetHost(this.api, {
+                host_id: this.hostId,
+                force_refresh: false
+            })
         }
         if (!host || !isDetailedHost(host)) {
             showErrorPopup(`failed to get details for host ${this.hostId}`)

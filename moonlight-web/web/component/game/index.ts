@@ -4,7 +4,6 @@ import { App } from "../../api_bindings.js";
 import { setContextMenu } from "../context_menu.js";
 import { showMessage } from "../modal/index.js";
 import { APP_NO_IMAGE } from "../../resources/index.js";
-import CONFIG from "../../config.js"
 import { buildUrl } from "../../config_.js";
 
 export class Game implements Component {
@@ -36,7 +35,7 @@ export class Game implements Component {
         this.imageElement.classList.add("app-image")
         this.imageElement.src = APP_NO_IMAGE
 
-        this.forceLoadImage()
+        this.forceLoadImage(false)
 
         // Configure image overlay
         this.imageOverlayElement.classList.add("app-image-overlay")
@@ -51,10 +50,11 @@ export class Game implements Component {
         this.updateCache(game)
     }
 
-    async forceLoadImage() {
+    async forceLoadImage(forceServerRefresh: boolean) {
         this.imageBlob = await apiGetAppImage(this.api, {
             host_id: this.hostId,
-            app_id: this.appId
+            app_id: this.appId,
+            force_refresh: forceServerRefresh
         })
 
         this.updateImage()

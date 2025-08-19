@@ -82,6 +82,10 @@ async fn get_host(
 
     let mut host = host.lock().await;
 
+    if query.force_refresh {
+        host.moonlight.clear_cache();
+    }
+
     let Ok(detailed_host) = into_detailed_host(host_id as usize, &mut host.moonlight).await else {
         return Either::Right(HttpResponse::InternalServerError().finish());
     };
@@ -296,6 +300,10 @@ async fn get_apps(
     };
     let mut host = host.lock().await;
 
+    if query.force_refresh {
+        host.moonlight.clear_cache();
+    }
+
     let app_list = match host.moonlight.app_list().await {
         Err(err) => {
             warn!("[Api]: failed to get app list for host {host_id}: {err:?}");
@@ -322,6 +330,11 @@ async fn get_app_image(
         return Either::Right(HttpResponse::NotFound().finish());
     };
     let mut host = host.lock().await;
+
+    if query.force_refresh {
+        host.app_images_cache.clear();
+        host.moonlight.clear_cache();
+    }
 
     let app_id = query.app_id;
     if let Some(cache) = host.app_images_cache.get(&app_id) {

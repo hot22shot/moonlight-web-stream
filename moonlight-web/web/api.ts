@@ -2,7 +2,7 @@ import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, Get
 import { showErrorPopup } from "./component/error.js";
 import { InputComponent } from "./component/input.js";
 import { FormModal } from "./component/modal/form.js";
-import { showMessage, showModal, showPrompt } from "./component/modal/index.js";
+import { showMessage, showModal } from "./component/modal/index.js";
 import { buildUrl } from "./config_.js";
 
 let currentApi: Api | null = null
@@ -178,11 +178,7 @@ export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {
 
     return (response as GetHostsResponse).hosts
 }
-export async function apiGetHost(api: Api, hostId: number): Promise<DetailedHost | null> {
-    let query: GetHostQuery = {
-        host_id: hostId
-    };
-
+export async function apiGetHost(api: Api, query: GetHostQuery): Promise<DetailedHost | null> {
     const response = await fetchApi(api, "/host", "get", { query })
 
     if (response == null) {

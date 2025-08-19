@@ -24,13 +24,14 @@ export class GameList extends FetchListComponent<App, Game> {
         if (cache != null) {
             this.updateCache(cache)
         } else {
-            this.forceFetch()
+            this.forceFetch(false)
         }
     }
 
-    async forceFetch() {
+    async forceFetch(forceServerRefresh?: boolean) {
         const apps = await apiGetApps(this.api, {
-            host_id: this.hostId
+            host_id: this.hostId,
+            force_refresh: forceServerRefresh || false
         })
 
         if (apps) {
