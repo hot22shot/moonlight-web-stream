@@ -180,7 +180,8 @@ impl GStreamerAudioHandler {
             app_src.set_caps(Some(&caps));
         }
 
-        // let audioparse = ElementFactory::make_with_name("opusparse", Some("audio parse")).unwrap();
+        let audioparse =
+            ElementFactory::make_with_name("rawaudioparse", Some("audio parse")).unwrap();
         // let audiodec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
         // spawn({
         //     let audiodec = audiodec.clone();
@@ -197,7 +198,7 @@ impl GStreamerAudioHandler {
 
         pipeline.add_many([
             app_src.as_ref(),
-            // &audioparse,
+            &audioparse,
             // &audiodec,
             &audioconvert,
             &audioresample,
@@ -205,7 +206,7 @@ impl GStreamerAudioHandler {
 
         Element::link_many([
             app_src.as_ref(),
-            // &audioparse,
+            &audioparse,
             // &audiodec,
             &audioconvert,
             &audioresample,
@@ -278,13 +279,6 @@ impl AudioDecoder for GStreamerAudioHandler {
         let decode_len = decoder.decode(data, &mut self.buffer, self.frame_size, false);
 
         if decode_len == 0 {
-            eprintln!(
-                "Opus decode failed: invalid packet or multistream config mismatch. \
-                packet_len={}, frame_size={}, channels={}",
-                data.len(),
-                self.frame_size,
-                decoder.channels
-            );
             return;
         }
 
