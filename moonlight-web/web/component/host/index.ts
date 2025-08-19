@@ -4,7 +4,7 @@ import { Component, ComponentEvent } from "../index.js"
 import { setContextMenu } from "../context_menu.js"
 import { showErrorPopup } from "../error.js"
 import { showMessage } from "../modal/index.js"
-import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE } from "../../resources/index.js"
+import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE, HOST_OVERLAY_OFFLINE } from "../../resources/index.js"
 
 export type HostEventListener = (event: ComponentEvent<Host>) => void
 
@@ -216,13 +216,21 @@ export class Host implements Component {
         if (this.cache == null) {
             this.cache = host
         } else {
-            Object.assign(this.cache, host)
+            // if server_state == null it means this host is offline
+            // -> updating cache means setting it to offline
+            if (this.cache.server_state != null) {
+                Object.assign(this.cache, host)
+            } else {
+                this.cache = host
+            }
         }
 
         // Update Elements
         this.nameElement.innerText = this.cache.name
 
-        if (this.cache.paired != "Paired") {
+        if (this.cache.server_state == null) {
+            this.imageOverlayElement.src = HOST_OVERLAY_OFFLINE
+        } else if (this.cache.paired != "Paired") {
             this.imageOverlayElement.src = HOST_OVERLAY_LOCK
         } else {
             this.imageOverlayElement.src = HOST_OVERLAY_NONE

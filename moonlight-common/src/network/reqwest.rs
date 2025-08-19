@@ -25,7 +25,7 @@ pub type ReqwestApiError = ApiError<ReqwestError>;
 
 fn timeout_builder() -> ClientBuilder {
     ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(5))
+        .connect_timeout(Duration::from_secs(2))
         .timeout(Duration::from_secs(20))
 }
 
