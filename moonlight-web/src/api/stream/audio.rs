@@ -58,7 +58,8 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
             return;
         };
 
-        let duration = Duration::from_millis((1000.0 / config.sample_rate as f32) as u64);
+        let duration =
+            Duration::from_secs_f64(config.samples_per_frame as f64 / config.sample_rate as f64);
 
         let data = Bytes::copy_from_slice(data);
         let audio_track = self.audio_track.clone();
@@ -75,7 +76,8 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
                 warn!("[Stream]: audio_track.write_sample failed: {err}");
             }
             // TODO: remove debug
-            // println!("sample written: {duration:?}");
+            println!("sample written: {duration:?}");
+            // println!("sample written");
         });
     }
 
