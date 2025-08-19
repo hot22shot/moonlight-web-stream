@@ -169,7 +169,7 @@ export class StreamInput {
         }
     }
     onWheel(event: WheelEvent) {
-        this.sendMouseWheel(event.deltaX, event.deltaY)
+        this.sendMouseWheel(event.deltaX, -event.deltaY)
     }
 
     sendMouseMove(movementX: number, movementY: number) {
