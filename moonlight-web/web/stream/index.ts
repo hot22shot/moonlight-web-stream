@@ -119,17 +119,7 @@ export class Stream {
         this.peer.ondatachannel = this.onDataChannel.bind(this)
         this.peer.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
 
-        // receive video
-        const videoTransceiver = this.peer.addTransceiver("video", {
-            direction: "recvonly",
-        })
-        videoTransceiver.receiver.jitterBufferTarget = 0
-
-        // receive audio
-        const audioTransceiver = this.peer.addTransceiver("audio", {
-            direction: "recvonly",
-        })
-        audioTransceiver.receiver.jitterBufferTarget = 0
+        // TODO: jitterbuffertarget = 0 for video and audio
 
         const streamInputConfig = defaultStreamInputConfig()
         Object.assign(streamInputConfig, {

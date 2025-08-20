@@ -1,49 +1,31 @@
 use std::{sync::Arc, time::Duration};
 
 use actix_web::web::Bytes;
-use log::warn;
+use log::{error, warn};
 use moonlight_common::moonlight::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
     stream::Capabilities,
 };
-use tokio::{
-    spawn,
-    sync::mpsc::{Receiver, Sender, channel},
-};
+use tokio::sync::mpsc::Receiver;
 use webrtc::{
+    api::media_engine::MIME_TYPE_OPUS,
     media::Sample,
     rtp::extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
+    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::api::stream::StreamStages;
+use crate::api::stream::{StreamConnection, decoder::TrackSampleDecoder};
 
 pub struct OpusTrackSampleAudioDecoder {
-    audio_track: Arc<TrackLocalStaticSample>,
-    sender: Sender<Sample>,
-    stages: Arc<StreamStages>,
+    decoder: TrackSampleDecoder,
     config: Option<OpusMultistreamConfig>,
 }
 
 impl OpusTrackSampleAudioDecoder {
-    pub fn new(
-        audio_track: Arc<TrackLocalStaticSample>,
-        stages: Arc<StreamStages>,
-        sample_send_queue_size: usize,
-    ) -> Self {
-        let (sender, receiver) = channel(sample_send_queue_size);
-
-        spawn({
-            let audio_track = audio_track.clone();
-            async move {
-                sample_sender(audio_track, receiver).await;
-            }
-        });
-
+    pub fn new(stream: Arc<StreamConnection>, channel_queue_size: usize) -> Self {
         Self {
-            sender,
-            audio_track,
-            stages,
+            decoder: TrackSampleDecoder::new(stream, channel_queue_size),
             config: None,
         }
     }
@@ -52,25 +34,35 @@ impl OpusTrackSampleAudioDecoder {
 impl AudioDecoder for OpusTrackSampleAudioDecoder {
     fn setup(
         &mut self,
-        audio_config: AudioConfig,
+        _audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
-        ar_flags: (),
+        _ar_flags: (),
     ) -> i32 {
+        if let Err(err) = self.decoder.blocking_create_track(
+            TrackLocalStaticSample::new(
+                RTCRtpCodecCapability {
+                    mime_type: MIME_TYPE_OPUS.to_string(),
+                    ..Default::default()
+                },
+                "audio".to_string(),
+                "moonlight".to_string(),
+            ),
+            |_| {},
+        ) {
+            error!("Failed to create opus track: {err:?}");
+            return -1;
+        };
+
         self.config = Some(stream_config);
+
         0
     }
 
     fn start(&mut self) {}
 
-    fn stop(&mut self) {
-        self.stages.stop.set_reached();
-    }
+    fn stop(&mut self) {}
 
     fn decode_and_play_sample(&mut self, data: &[u8]) {
-        if self.stages.stop.is_reached() || !self.stages.connected.is_reached() {
-            return;
-        }
-
         let Some(config) = self.config.as_ref() else {
             return;
         };
@@ -86,7 +78,8 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
             // Time should be set if you want fine-grained sync
             ..Default::default()
         };
-        let _ = self.sender.try_send(sample);
+
+        self.decoder.send_sample(sample);
     }
 
     fn config(&self) -> AudioConfig {
@@ -95,22 +88,5 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
 
     fn capabilities(&self) -> Capabilities {
         Capabilities::empty()
-    }
-}
-
-// TODO: this should be common between audio and video
-async fn sample_sender(track: Arc<TrackLocalStaticSample>, mut receiver: Receiver<Sample>) {
-    while let Some(sample) = receiver.recv().await {
-        if let Err(err) = track
-            .write_sample_with_extensions(
-                &sample,
-                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension::new(
-                    0, 0,
-                ))],
-            )
-            .await
-        {
-            warn!("[Stream]: video_track.write_sample failed: {err}");
-        }
     }
 }

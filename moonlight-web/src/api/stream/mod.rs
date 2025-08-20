@@ -14,7 +14,6 @@ use moonlight_common::{
     high::HostError,
     moonlight::{
         connection::{ConnectionListener, ConnectionStatus, Stage},
-        debug::DebugHandler,
         stream::{ColorRange, Colorspace, MoonlightStream},
         video::SupportedVideoFormats,
     },
@@ -29,9 +28,7 @@ use webrtc::{
     api::{
         API, APIBuilder,
         interceptor_registry::register_default_interceptors,
-        media_engine::{
-            MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MIME_TYPE_OPUS, MediaEngine,
-        },
+        media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
         setting_engine::SettingEngine,
     },
     data_channel::RTCDataChannel,
@@ -48,8 +45,10 @@ use webrtc::{
         peer_connection_state::RTCPeerConnectionState,
         sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
     },
-    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
-    track::track_local::track_local_static_sample::TrackLocalStaticSample,
+    rtp_transceiver::{
+        RTCRtpTransceiverInit, rtp_codec::RTPCodecType,
+        rtp_transceiver_direction::RTCRtpTransceiverDirection,
+    },
 };
 
 use crate::{
@@ -67,6 +66,7 @@ use crate::{
 mod audio;
 mod buffer;
 pub mod cancel;
+mod decoder;
 mod input;
 mod video;
 
@@ -274,6 +274,7 @@ struct StreamInfo {
 }
 
 struct StreamConnection {
+    pub runtime: Handle,
     pub info: StreamInfo,
     pub settings: StreamSettings,
     pub stages: Arc<StreamStages>,
@@ -281,10 +282,6 @@ struct StreamConnection {
     pub peer: Arc<RTCPeerConnection>,
     pub ws_sender: Session,
     pub general_channel: Arc<RTCDataChannel>,
-    // Video
-    pub video_track: Arc<TrackLocalStaticSample>,
-    // Audio
-    pub audio_track: Arc<TrackLocalStaticSample>,
     // Input
     pub input: StreamInput,
     // Stream
@@ -308,108 +305,13 @@ impl StreamConnection {
             stop: StreamStage::new("stop"),
         });
 
-        // TODO: create these tracks inside of the decoders
-        // -- Create and Add a video track
-        // TODO: is it possible to make the video channel unreliable?
-        let video_track = Arc::new(TrackLocalStaticSample::new(
-            RTCRtpCodecCapability {
-                mime_type: MIME_TYPE_H264.to_string(),
-                clock_rate: 90000,
-                sdp_fmtp_line: "packetization-mode=0;profile-level-id=42e01f".to_owned(), // important
-                ..Default::default()
-            },
-            "video".to_owned(),
-            "moonlight".to_owned(),
-        ));
-        let video_sender = peer.add_track(Arc::clone(&video_track) as Arc<_>).await?;
-
-        // Read incoming RTCP packets
-        // Before these packets are returned they are processed by interceptors. For things
-        // like NACK this needs to be called.
-        spawn(async move {
-            let mut rtcp_buf = vec![0u8; 1500];
-            while let Ok((_, _)) = video_sender.read(&mut rtcp_buf).await {}
-            // TODO: look for an idr request
-        });
-
-        // -- Create and Add a audio track
-        // let audio_track_test = Arc::new(TrackLocalStaticSample::new(
-        //     RTCRtpCodecCapability {
-        //         mime_type: MIME_TYPE_OPUS.to_string(),
-        //         ..Default::default()
-        //     },
-        //     "audio".to_owned(),
-        //     "moonlight".to_owned(),
-        // ));
-        let audio_track = Arc::new(TrackLocalStaticSample::new(
-            RTCRtpCodecCapability {
-                mime_type: MIME_TYPE_OPUS.to_string(),
-                ..Default::default()
-            },
-            "audio".to_owned(),
-            "moonlight".to_owned(),
-        ));
-        let audio_sender = peer.add_track(Arc::clone(&audio_track) as Arc<_>).await?;
-
-        // Read incoming RTCP packets
-        // Before these packets are returned they are processed by interceptors. For things
-        // like NACK this needs to be called.
-        spawn(async move {
-            let mut rtcp_buf = vec![0u8; 1500];
-            while let Ok((_, _)) = audio_sender.read(&mut rtcp_buf).await {}
-        });
-
-        // TODO: remove, test audio
-        // spawn({
-        //     let audio_track = audio_track_test.clone();
-        //     let stages = stages.clone();
-        //     async move {
-        //         // Open a IVF file and start reading using our IVFReader
-        //         let file = File::open("server/output.ogg").await.unwrap();
-        //         let reader = BufReader::new(file.into_std().await);
-        //         // Open on oggfile in non-checksum mode.
-        //         let (mut ogg, _) = OggReader::new(reader, true).unwrap();
-
-        //         // Wait for connection established
-        //         stages.connected.when_reached().await;
-
-        //         const OGG_PAGE_DURATION: Duration = Duration::from_millis(20);
-
-        //         println!("play audio from disk file output.ogg");
-
-        //         // It is important to use a time.Ticker instead of time.Sleep because
-        //         // * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
-        //         // * works around latency issues with Sleep
-        //         let mut ticker = tokio::time::interval(OGG_PAGE_DURATION);
-
-        //         // Keep track of last granule, the difference is the amount of samples in the buffer
-        //         let mut last_granule: u64 = 0;
-        //         while let Ok((page_data, page_header)) = ogg.parse_next_page() {
-        //             // The amount of samples is the difference between the last and current timestamp
-        //             let sample_count = page_header.granule_position - last_granule;
-        //             last_granule = page_header.granule_position;
-        //             let sample_duration = Duration::from_millis(sample_count * 1000 / 48000);
-
-        //             audio_track
-        //                 .write_sample(&Sample {
-        //                     data: page_data.freeze(),
-        //                     duration: sample_duration,
-        //                     ..Default::default()
-        //                 })
-        //                 .await
-        //                 .unwrap();
-
-        //             let _ = ticker.tick().await;
-        //         }
-        //     }
-        // });
-
         // -- Input
         let input = StreamInput::new();
 
         let general_channel = peer.create_data_channel("general", None).await?;
 
         let this = Arc::new(Self {
+            runtime: Handle::current(),
             info,
             settings,
             data,
@@ -417,8 +319,6 @@ impl StreamConnection {
             peer: peer.clone(),
             ws_sender,
             general_channel,
-            video_track,
-            audio_track,
             input,
             stream: Default::default(),
         });
@@ -534,6 +434,26 @@ impl StreamConnection {
 
     async fn on_negotiation_needed(&self) {
         // Empty
+    }
+    async fn renegotiate(&self) {
+        // TODO: remove unwraps
+        let local_description = self.peer.create_offer(None).await.unwrap();
+
+        self.peer
+            .set_local_description(local_description.clone())
+            .await
+            .unwrap();
+
+        let _ = send_ws_message(
+            &mut self.ws_sender.clone(),
+            StreamServerMessage::Signaling(StreamSignalingMessage::Description(
+                RtcSessionDescription {
+                    ty: local_description.sdp_type.into(),
+                    sdp: local_description.sdp,
+                },
+            )),
+        )
+        .await;
     }
 
     async fn on_ws_message(&self, text: &str) {
@@ -695,18 +615,16 @@ impl StreamConnection {
         let gamepads = self.input.active_gamepads.read().await;
 
         let video_decoder = H264TrackSampleVideoDecoder::new(
-            self.video_track.clone(),
-            self.stages.clone(),
+            self.clone(),
             self.settings.video_sample_queue_size as usize,
         );
+
         let audio_decoder = OpusTrackSampleAudioDecoder::new(
-            self.audio_track.clone(),
-            self.stages.clone(),
+            self.clone(),
             self.settings.audio_sample_queue_size as usize,
         );
 
         let connection_listener = StreamConnectionListener {
-            runtime: Handle::current(),
             stream: self.clone(),
         };
 
@@ -790,8 +708,8 @@ impl StreamConnection {
     }
 }
 
+// TODO: move this into connection.rs
 struct StreamConnectionListener {
-    runtime: Handle,
     stream: Arc<StreamConnection>,
 }
 
@@ -799,7 +717,7 @@ impl ConnectionListener for StreamConnectionListener {
     fn stage_starting(&mut self, stage: Stage) {
         let mut ws_sender = self.stream.ws_sender.clone();
 
-        self.runtime.spawn(async move {
+        self.stream.runtime.spawn(async move {
             let _ = send_ws_message(
                 &mut ws_sender,
                 StreamServerMessage::StageStarting {
@@ -813,7 +731,7 @@ impl ConnectionListener for StreamConnectionListener {
     fn stage_complete(&mut self, stage: Stage) {
         let mut ws_sender = self.stream.ws_sender.clone();
 
-        self.runtime.spawn(async move {
+        self.stream.runtime.spawn(async move {
             let _ = send_ws_message(
                 &mut ws_sender,
                 StreamServerMessage::StageComplete {
@@ -827,7 +745,7 @@ impl ConnectionListener for StreamConnectionListener {
     fn stage_failed(&mut self, stage: Stage, error_code: i32) {
         let mut ws_sender = self.stream.ws_sender.clone();
 
-        self.runtime.spawn(async move {
+        self.stream.runtime.spawn(async move {
             let _ = send_ws_message(
                 &mut ws_sender,
                 StreamServerMessage::StageFailed {
@@ -842,15 +760,21 @@ impl ConnectionListener for StreamConnectionListener {
     fn connection_started(&mut self) {
         let mut ws_sender = self.stream.ws_sender.clone();
 
-        self.runtime.spawn(async move {
+        self.stream.runtime.spawn(async move {
             let _ = send_ws_message(&mut ws_sender, StreamServerMessage::ConnectionComplete).await;
+        });
+
+        // Renegotate because we now have the audio and video streams
+        let stream = self.stream.clone();
+        self.stream.runtime.spawn(async move {
+            stream.renegotiate().await;
         });
     }
 
     fn connection_terminated(&mut self, error_code: i32) {
         let mut ws_sender = self.stream.ws_sender.clone();
 
-        self.runtime.spawn(async move {
+        self.stream.runtime.spawn(async move {
             let _ = send_ws_message(
                 &mut ws_sender,
                 StreamServerMessage::ConnectionTerminated { error_code },
