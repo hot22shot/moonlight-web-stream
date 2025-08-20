@@ -1,6 +1,9 @@
 use std::{
     io::Cursor,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, SystemTime},
 };
 
@@ -16,6 +19,9 @@ use moonlight_common::moonlight::{
 use webrtc::{
     api::media_engine::{MIME_TYPE_H264, MIME_TYPE_HEVC},
     media::{Sample, io::h264_reader::H264Reader},
+    rtcp::payload_feedbacks::{
+        full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
+    },
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
@@ -26,7 +32,7 @@ pub struct H264TrackSampleVideoDecoder {
     decoder: TrackSampleDecoder,
     clock_rate: u32,
     // Video important
-    needs_idr: bool,
+    needs_idr: Arc<AtomicBool>,
     frame_time: f32,
     last_frame_number: i32,
 }
@@ -37,7 +43,7 @@ impl H264TrackSampleVideoDecoder {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
             clock_rate: 90000,
-            needs_idr: false,
+            needs_idr: Default::default(),
             frame_time: 0.0,
             last_frame_number: 0,
         }
@@ -70,10 +76,12 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
             return -1;
         };
 
-        // TODO: is it possible to make the video channel unreliable?
+        let needs_idr = self.needs_idr.clone();
+
         if let Err(err) = self.decoder.blocking_create_track(
             TrackLocalStaticSample::new(
                 RTCRtpCodecCapability {
+                    // TODO: is it possible to make the video channel unreliable?
                     mime_type: mime_type.clone(),
                     clock_rate: self.clock_rate,
                     ..Default::default()
@@ -81,8 +89,12 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
                 "video".to_string(),
                 "moonlight".to_string(),
             ),
-            |_| {
-                // TODO: idr frames
+            move |packet| {
+                let packet = packet.as_any();
+
+                if packet.is::<PictureLossIndication>() || packet.is::<FullIntraRequest>() {
+                    needs_idr.store(true, Ordering::Release);
+                }
             },
         ) {
             error!(
@@ -154,8 +166,11 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
             }
         }
 
-        if self.needs_idr {
-            self.needs_idr = false;
+        if self
+            .needs_idr
+            .compare_exchange_weak(true, false, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
             return DecodeResult::NeedIdr;
         }
 
