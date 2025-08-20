@@ -1,7 +1,7 @@
-import { StreamControllerButton, StreamMouseButton } from "../api_bindings.js"
+import { StreamControllerButton, StreamControllerCapabilities, StreamMouseButton } from "../api_bindings.js"
 import { showMessage } from "../component/modal/index.js"
-import { ByteBuffer } from "./buffer.js"
-import { ControllerConfig, convertStandardButton as convertStandardControllerButton } from "./gamepad.js"
+import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
+import { ControllerConfig, convertStandardButton as convertStandardControllerButton, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
@@ -10,6 +10,7 @@ const TOUCH_AS_CLICK_MAX_TIME_MS = 300
 
 // TODO: is this even used
 const CONTROLLER_SEND_INTERVAL_MS = 50
+const CONTROLLER_RUMBLE_INTERVAL_MS = 60
 
 function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
     if (!channel || channel.readyState != "open") {
@@ -83,6 +84,7 @@ export class StreamInput {
         this.touch.onmessage = this.onTouchMessage.bind(this)
 
         this.controllers = this.peer.createDataChannel("controllers")
+        this.controllers.addEventListener("message", this.onControllerMessage)
     }
 
     setConfig(config: StreamInputConfig) {
@@ -376,24 +378,68 @@ export class StreamInput {
 
     // -- Controller
     private gamepads: Array<number | null> = []
+    private gamepadRumbleInterval: number | null = null
 
     onGamepadConnect(gamepad: Gamepad) {
         if (this.gamepads.indexOf(gamepad.index) != -1) {
             return
         }
 
-        let inserted = false
+        let id = -1
         for (let i = 0; i < this.gamepads.length; i++) {
             if (this.gamepads[i] == null) {
                 this.gamepads[i] = gamepad.index
-                inserted = true
+                id = i
                 break
             }
         }
-        if (!inserted) {
+        if (id == -1) {
+            id = this.gamepads.length
             this.gamepads.push(gamepad.index)
         }
-        this.sendControllerAdd(this.gamepads.length - 1)
+
+        // Start Rumble interval
+        if (this.gamepadRumbleInterval == null) {
+            this.gamepadRumbleInterval = window.setInterval(this.onGamepadRumbleInterval.bind(this), CONTROLLER_RUMBLE_INTERVAL_MS - 10)
+        }
+
+        // Reset rumble
+        this.gamepadRumbleCurrent[0] = { lowFrequencyMotor: 0, highFrequencyMotor: 0, leftTrigger: 0, rightTrigger: 0 }
+
+        let capabilities = 0
+
+        // Rumble capabilities
+        const actuators = []
+        if ("vibrationActuator" in gamepad) {
+            actuators.push(gamepad.vibrationActuator)
+        }
+        if ("hapticActuators" in gamepad) {
+            const hapticActuators = gamepad.hapticActuators as Array<GamepadHapticActuator>
+            actuators.push(...hapticActuators)
+        }
+
+        for (const actuator of actuators) {
+            if ("effects" in actuator) {
+                const supportedEffects = actuator.effects as Array<string>
+
+                for (const effect of supportedEffects) {
+                    if (effect == "dual-rumble") {
+                        capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE
+                    } else if (effect == "trigger-rumble") {
+                        capabilities = StreamControllerCapabilities.CAPABILITY_TRIGGER_RUMBLE
+                    }
+                }
+            } else if ("type" in actuator && (actuator.type == "vibration" || actuator.type == "dual-rumble")) {
+                capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE
+            } else if ("playEffect" in actuator && typeof actuator.playEffect == "function") {
+                // we're just hoping at this point
+                capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE | StreamControllerCapabilities.CAPABILITY_TRIGGER_RUMBLE
+            } else if ("pulse" in actuator && typeof actuator.pulse == "function") {
+                capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE
+            }
+        }
+
+        this.sendControllerAdd(this.gamepads.length - 1, SUPPORTED_BUTTONS, capabilities)
 
         if (gamepad.mapping != "standard") {
             console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${gamepad.mapping}`)
@@ -420,6 +466,7 @@ export class StreamInput {
                 continue
             }
 
+            // TODO: move the value code into the gamepad
             let buttonFlags = 0
             for (let buttonId = 0; buttonId < gamepad.buttons.length; buttonId++) {
                 const button = gamepad.buttons[buttonId]
@@ -442,11 +489,145 @@ export class StreamInput {
         }
     }
 
-    sendControllerAdd(id: number) {
+    private onControllerMessage(event: MessageEvent) {
+        if (!(event.data instanceof ArrayBuffer)) {
+            return
+        }
+        this.buffer.reset()
+
+        this.buffer.putU8Array(new Uint8Array(event.data))
+        this.buffer.flip()
+
+        const ty = this.buffer.getU8()
+        if (ty == 0) {
+            // Rumble
+            const id = this.buffer.getU8()
+            const lowFrequencyMotor = this.buffer.getU16() / U16_MAX
+            const highFrequencyMotor = this.buffer.getU16() / U16_MAX
+
+            const gamepadIndex = this.gamepads[id]
+            if (gamepadIndex == null) {
+                return
+            }
+
+            this.setGamepadEffect(gamepadIndex, "dual-rumble", { lowFrequencyMotor, highFrequencyMotor })
+        } else if (ty == 1) {
+            // Trigger Rumble
+            const id = this.buffer.getU8()
+            const leftTrigger = this.buffer.getU16() / U16_MAX
+            const rightTrigger = this.buffer.getU16() / U16_MAX
+
+            const gamepadIndex = this.gamepads[id]
+            if (gamepadIndex == null) {
+                return
+            }
+
+            this.setGamepadEffect(gamepadIndex, "trigger-rumble", { leftTrigger, rightTrigger })
+        }
+    }
+
+    // -- Controller rumble
+    private gamepadRumbleCurrent: Array<{
+        lowFrequencyMotor: number, highFrequencyMotor: number,
+        leftTrigger: number, rightTrigger: number
+    }> = []
+
+    private setGamepadEffect(id: number, ty: "dual-rumble", params: { lowFrequencyMotor: number, highFrequencyMotor: number }): void
+    private setGamepadEffect(id: number, ty: "trigger-rumble", params: { leftTrigger: number, rightTrigger: number }): void
+
+    private setGamepadEffect(id: number, _ty: "dual-rumble" | "trigger-rumble", params: { lowFrequencyMotor: number, highFrequencyMotor: number } | { leftTrigger: number, rightTrigger: number }) {
+        const rumble = this.gamepadRumbleCurrent[id]
+
+        Object.assign(rumble, params)
+    }
+
+    private onGamepadRumbleInterval() {
+        for (let id = 0; id < this.gamepads.length; id++) {
+            const gamepadIndex = this.gamepads[id]
+            if (gamepadIndex == null) {
+                continue
+            }
+
+            const rumble = this.gamepadRumbleCurrent[gamepadIndex]
+            const gamepad = navigator.getGamepads()[gamepadIndex]
+            if (gamepad && rumble) {
+                this.refreshGamepadRumble(rumble, gamepad)
+            }
+        }
+    }
+    private refreshGamepadRumble(
+        rumble: {
+            lowFrequencyMotor: number, highFrequencyMotor: number,
+            leftTrigger: number, rightTrigger: number
+        },
+        gamepad: Gamepad
+    ) {
+        // Browsers are making this more complicated than it is
+
+        const actuators = []
+        if ("vibrationActuator" in gamepad) {
+            actuators.push(gamepad.vibrationActuator)
+        }
+        if ("hapticActuators" in gamepad) {
+            const hapticActuators = gamepad.hapticActuators as Array<GamepadHapticActuator>
+            actuators.push(...hapticActuators)
+        }
+
+        for (const actuator of actuators) {
+            if ("effects" in actuator) {
+                const supportedEffects = actuator.effects as Array<string>
+
+                for (const effect of supportedEffects) {
+                    if (effect == "dual-rumble") {
+                        actuator.playEffect("dual-rumble", {
+                            duration: CONTROLLER_RUMBLE_INTERVAL_MS,
+                            weakMagnitude: rumble.lowFrequencyMotor,
+                            strongMagnitude: rumble.highFrequencyMotor
+                        })
+                    } else if (effect == "trigger-rumble") {
+                        actuator.playEffect("trigger-rumble", {
+                            duration: CONTROLLER_RUMBLE_INTERVAL_MS,
+                            leftTrigger: rumble.leftTrigger,
+                            rightTrigger: rumble.rightTrigger
+                        })
+                    }
+                }
+            } else if ("type" in actuator && (actuator.type == "vibration" || actuator.type == "dual-rumble")) {
+                actuator.playEffect(actuator.type as any, {
+                    duration: CONTROLLER_RUMBLE_INTERVAL_MS,
+                    weakMagnitude: rumble.lowFrequencyMotor,
+                    strongMagnitude: rumble.highFrequencyMotor
+                })
+            } else if ("playEffect" in actuator && typeof actuator.playEffect == "function") {
+                actuator.playEffect("dual-rumble", {
+                    duration: CONTROLLER_RUMBLE_INTERVAL_MS,
+                    weakMagnitude: rumble.lowFrequencyMotor,
+                    strongMagnitude: rumble.highFrequencyMotor
+                })
+                actuator.playEffect("trigger-rumble", {
+                    duration: CONTROLLER_RUMBLE_INTERVAL_MS,
+                    leftTrigger: rumble.leftTrigger,
+                    rightTrigger: rumble.rightTrigger
+                })
+            } else if ("pulse" in actuator && typeof actuator.pulse == "function") {
+                const weak = Math.min(Math.max(rumble.lowFrequencyMotor, 0), 1);
+                const strong = Math.min(Math.max(rumble.highFrequencyMotor, 0), 1);
+
+                const average = (weak + strong) / 2.0
+
+                actuator.pulse(average, CONTROLLER_RUMBLE_INTERVAL_MS)
+            }
+        }
+    }
+
+    // -- Controller Sending
+    sendControllerAdd(id: number, supportedButtons: number, capabilities: number) {
         this.buffer.reset()
 
         this.buffer.putU8(0)
         this.buffer.putU8(id)
+        this.buffer.putU32(supportedButtons)
+        this.buffer.putU16(capabilities)
 
         trySendChannel(this.controllers, this.buffer)
     }
@@ -466,12 +647,12 @@ export class StreamInput {
 
         this.buffer.putU8(0)
         this.buffer.putU32(buttonFlags)
-        this.buffer.putU8(Math.max(0.0, Math.min(1.0, leftTrigger)) * 255)
-        this.buffer.putU8(Math.max(0.0, Math.min(1.0, rightTrigger)) * 255)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, leftStickX)) * 32767)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -leftStickY)) * 32767)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, rightStickX)) * 32767)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -rightStickY)) * 32767)
+        this.buffer.putU8(Math.max(0.0, Math.min(1.0, leftTrigger)) * U8_MAX)
+        this.buffer.putU8(Math.max(0.0, Math.min(1.0, rightTrigger)) * U8_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, leftStickX)) * I16_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -leftStickY)) * I16_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, rightStickX)) * I16_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -rightStickY)) * I16_MAX)
 
         this.tryOpenControllerChannel(id)
         trySendChannel(this.controllerInputs[id], this.buffer)

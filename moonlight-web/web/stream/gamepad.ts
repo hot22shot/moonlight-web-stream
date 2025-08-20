@@ -27,6 +27,9 @@ const STANDARD_BUTTONS = [
     StreamControllerButton.BUTTON_SPECIAL,
 ]
 
+export const SUPPORTED_BUTTONS =
+    StreamControllerButton.BUTTON_A | StreamControllerButton.BUTTON_B | StreamControllerButton.BUTTON_X | StreamControllerButton.BUTTON_Y | StreamControllerButton.BUTTON_UP | StreamControllerButton.BUTTON_DOWN | StreamControllerButton.BUTTON_LEFT | StreamControllerButton.BUTTON_RIGHT | StreamControllerButton.BUTTON_LB | StreamControllerButton.BUTTON_RB | StreamControllerButton.BUTTON_PLAY | StreamControllerButton.BUTTON_BACK | StreamControllerButton.BUTTON_LS_CLK | StreamControllerButton.BUTTON_RS_CLK | StreamControllerButton.BUTTON_SPECIAL
+
 export function convertStandardButton(buttonIndex: number, config?: ControllerConfig): number | null {
     let button = STANDARD_BUTTONS[buttonIndex] ?? null
 

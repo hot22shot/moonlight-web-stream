@@ -817,7 +817,18 @@ impl ConnectionListener for StreamConnectionListener {
         low_frequency_motor: u16,
         high_frequency_motor: u16,
     ) {
-        todo!()
+        let stream = self.stream.clone();
+
+        self.stream.runtime.spawn(async move {
+            stream
+                .input
+                .send_controller_rumble(
+                    controller_number as u8,
+                    low_frequency_motor,
+                    high_frequency_motor,
+                )
+                .await;
+        });
     }
 
     fn controller_rumble_triggers(
@@ -826,7 +837,18 @@ impl ConnectionListener for StreamConnectionListener {
         left_trigger_motor: u16,
         right_trigger_motor: u16,
     ) {
-        todo!()
+        let stream = self.stream.clone();
+
+        self.stream.runtime.spawn(async move {
+            stream
+                .input
+                .send_controller_trigger_rumble(
+                    controller_number as u8,
+                    left_trigger_motor,
+                    right_trigger_motor,
+                )
+                .await;
+        });
     }
 
     fn controller_set_motion_event_state(

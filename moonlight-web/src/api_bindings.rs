@@ -805,3 +805,11 @@ ts_consts!(
     pub const BUTTON_TOUCHPAD: u32 = moonlight_common::moonlight::stream::ControllerButtons::TOUCHPAD.bits();
     pub const BUTTON_MISC: u32     = moonlight_common::moonlight::stream::ControllerButtons::MISC.bits();
 );
+
+// Controller Buttons
+ts_consts!(
+    pub StreamControllerCapabilities(export_bindings_controller_capabilities: EXPORT_PATH):
+
+    pub const CAPABILITY_RUMBLE: u16 = moonlight_common::moonlight::stream::ControllerCapabilities::RUMBLE.bits();
+    pub const CAPABILITY_TRIGGER_RUMBLE: u16 = moonlight_common::moonlight::stream::ControllerCapabilities::TRIGGER_RUMBLE.bits();
+);

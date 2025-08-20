@@ -1,4 +1,8 @@
 
+export const U8_MAX = 255
+
+export const U16_MAX = 65535
+export const I16_MAX = 32767
 
 export class ByteBuffer {
     private position: number = 0
@@ -81,6 +85,12 @@ export class ByteBuffer {
         const view = new DataView(this.buffer.buffer)
         const byte = view.getUint8(this.position)
         this.bytesUsed(1, true)
+        return byte
+    }
+    getU16(): number {
+        const view = new DataView(this.buffer.buffer)
+        const byte = view.getUint16(this.position)
+        this.bytesUsed(2, true)
         return byte
     }
     getBool(): boolean {

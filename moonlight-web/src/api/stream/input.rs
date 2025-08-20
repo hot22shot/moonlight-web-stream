@@ -1,11 +1,15 @@
 use std::{pin::Pin, sync::Arc};
 
+use actix_web::web::Bytes;
 use log::{debug, warn};
-use moonlight_common::moonlight::{
-    input::TouchEventType,
-    stream::{
-        ActiveGamepads, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction,
-        KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
+use moonlight_common::{
+    high,
+    moonlight::{
+        input::TouchEventType,
+        stream::{
+            ActiveGamepads, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction,
+            KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
+        },
     },
 };
 use num_traits::FromPrimitive;
@@ -13,6 +17,9 @@ use tokio::sync::RwLock;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 
 use crate::api::stream::{StreamConnection, buffer::ByteBuffer};
+
+const DEFAULT_CONTROLLER_BUTTONS: ControllerButtons = ControllerButtons::all();
+const DEFAULT_CONTROLLER_CAPABILITIES: ControllerCapabilities = ControllerCapabilities::empty();
 
 pub struct StreamInput {
     pub(crate) active_gamepads: RwLock<ActiveGamepads>,
@@ -247,12 +254,53 @@ impl StreamInput {
         }
     }
 
+    pub async fn send_controller_rumble(
+        &self,
+        controller_number: u8,
+        low_frequency_motor: u16,
+        high_frequency_motor: u16,
+    ) {
+        if let Some(controllers) = self.controllers.read().await.as_ref() {
+            let mut raw_buffer = [0u8; 6];
+            let mut buffer = ByteBuffer::new(&mut raw_buffer);
+
+            buffer.put_u8(0);
+            buffer.put_u8(controller_number);
+            buffer.put_u16(low_frequency_motor);
+            buffer.put_u16(high_frequency_motor);
+
+            let _ = controllers.send(&Bytes::copy_from_slice(&raw_buffer)).await;
+        }
+    }
+    pub async fn send_controller_trigger_rumble(
+        &self,
+        controller_number: u8,
+        left_trigger_motor: u16,
+        right_trigger_motor: u16,
+    ) {
+        if let Some(controllers) = self.controllers.read().await.as_ref() {
+            let mut raw_buffer = [0u8; 6];
+            let mut buffer = ByteBuffer::new(&mut raw_buffer);
+
+            buffer.put_u8(0);
+            buffer.put_u8(controller_number);
+            buffer.put_u16(left_trigger_motor);
+            buffer.put_u16(right_trigger_motor);
+
+            let _ = controllers.send(&Bytes::copy_from_slice(&raw_buffer)).await;
+        }
+    }
+
     async fn on_controller_message(message: DataChannelMessage, connection: &StreamConnection) {
         let mut buffer = ByteBuffer::new(message.data);
 
         let ty = buffer.get_u8();
         if ty == 0 {
             let id = buffer.get_u8();
+            let supported_buttons = ControllerButtons::from_bits(buffer.get_u32())
+                .unwrap_or(DEFAULT_CONTROLLER_BUTTONS);
+            let capabilities = ControllerCapabilities::from_bits(buffer.get_u16())
+                .unwrap_or(DEFAULT_CONTROLLER_CAPABILITIES);
 
             let Some(id_gamepads) = ActiveGamepads::from_id(id) else {
                 return;
@@ -264,13 +312,13 @@ impl StreamInput {
             };
 
             if let Some(stream) = connection.stream.read().await.as_ref() {
-                // TODO: find out ty, buttons, capabilities
+                // TODO: controller type?
                 let _ = stream.send_controller_arrival(
                     id,
                     active_gamepads,
                     ControllerType::UNKNOWN,
-                    ControllerButtons::all(),
-                    ControllerCapabilities::empty(),
+                    supported_buttons,
+                    capabilities,
                 );
             }
         } else if ty == 1 {

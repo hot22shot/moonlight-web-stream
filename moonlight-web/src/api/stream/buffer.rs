@@ -116,4 +116,13 @@ where
     pub fn put_u8(&mut self, data: u8) {
         self.put_u8_array(&[data]);
     }
+    pub fn put_u16(&mut self, data: u16) {
+        let bytes: [u8; 2] = if self.little_endian {
+            u16::to_le_bytes(data)
+        } else {
+            u16::to_be_bytes(data)
+        };
+
+        self.put_u8_array(&bytes);
+    }
 }
