@@ -7,6 +7,7 @@ pub struct ByteBuffer<T> {
     buffer: T,
 }
 
+#[allow(unused)]
 impl<T> ByteBuffer<T>
 where
     T: AsRef<[u8]>,
@@ -104,6 +105,7 @@ where
     }
 }
 
+#[allow(unused)]
 impl<T> ByteBuffer<T>
 where
     T: AsMut<[u8]>,

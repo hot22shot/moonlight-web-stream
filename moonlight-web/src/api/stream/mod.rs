@@ -18,6 +18,7 @@ use moonlight_common::{
         video::SupportedVideoFormats,
     },
 };
+use serde::Serialize;
 use tokio::{
     runtime::Handle,
     spawn,
@@ -58,7 +59,7 @@ use crate::{
     },
     api_bindings::{
         RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
-        StreamServerMessage, StreamSignalingMessage,
+        StreamServerGeneralMessage, StreamServerMessage, StreamSignalingMessage,
     },
     data::RuntimeApiData,
 };
@@ -782,7 +783,13 @@ impl ConnectionListener for StreamConnectionListener {
             .await;
         });
 
-        // TODO: send over general channel too
+        let stream = self.stream.clone();
+        self.stream.runtime.spawn(async move {
+            if let Some(message) = serialize_json(&StreamServerGeneralMessage::ConnectionTerminated)
+            {
+                let _ = stream.general_channel.send_text(message).await;
+            }
+        });
     }
 
     fn log_message(&mut self, message: &str) {
@@ -790,7 +797,16 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn connection_status_update(&mut self, status: ConnectionStatus) {
-        // TODO: send over general channel
+        let stream = self.stream.clone();
+        self.stream.runtime.spawn(async move {
+            if let Some(message) =
+                serialize_json(&StreamServerGeneralMessage::ConnectionStatusUpdate {
+                    status: status.into(),
+                })
+            {
+                let _ = stream.general_channel.send_text(message).await;
+            }
+        });
     }
 
     fn set_hdr_mode(&mut self, _hdr_enabled: bool) {}
@@ -839,9 +855,20 @@ impl ConnectionListener for StreamConnectionListener {
     }
 }
 
-async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> Result<(), Closed> {
+fn serialize_json<T>(message: &T) -> Option<String>
+where
+    T: Serialize,
+{
     let Ok(json) = serde_json::to_string(&message) else {
         warn!("[Stream]: failed to serialize to json");
+        return None;
+    };
+
+    Some(json)
+}
+
+async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> Result<(), Closed> {
+    let Some(json) = serialize_json(&message) else {
         return Ok(());
     };
 

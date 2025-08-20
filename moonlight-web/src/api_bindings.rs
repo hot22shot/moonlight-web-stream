@@ -277,6 +277,30 @@ pub enum StreamServerMessage {
     PeerDisconnect,
 }
 
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum ConnectionStatus {
+    Ok,
+    Poor,
+}
+
+impl From<moonlight_common::moonlight::connection::ConnectionStatus> for ConnectionStatus {
+    fn from(value: moonlight_common::moonlight::connection::ConnectionStatus) -> Self {
+        use moonlight_common::moonlight::connection::ConnectionStatus;
+        match value {
+            ConnectionStatus::Ok => Self::Ok,
+            ConnectionStatus::Poor => Self::Poor,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum StreamServerGeneralMessage {
+    ConnectionTerminated,
+    ConnectionStatusUpdate { status: ConnectionStatus },
+}
+
 // Virtual-Key Codes
 // https://github.com/awakecoding/Win32Keyboard/blob/master/vkcodes.h
 ts_consts!(

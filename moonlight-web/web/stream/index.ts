@@ -1,5 +1,5 @@
 import { Api } from "../api.js"
-import { App, RtcIceCandidate, StreamClientMessage, StreamServerMessage } from "../api_bindings.js"
+import { App, ConnectionStatus, RtcIceCandidate, StreamClientMessage, StreamServerGeneralMessage, StreamServerMessage } from "../api_bindings.js"
 import { showMessage } from "../component/modal/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
@@ -24,6 +24,7 @@ export type InfoEvent = CustomEvent<
     { type: "stageStarting" | "stageComplete", stage: string } |
     { type: "stageFailed", stage: string, errorCode: number } |
     { type: "connectionComplete" } |
+    { type: "connectionStatus", status: ConnectionStatus } |
     { type: "connectionTerminated", errorCode: number }
 >
 export type InfoEventListener = (event: InfoEvent) => void
@@ -55,6 +56,7 @@ export class Stream {
 
         this.settings = settings
 
+        // TODO: use addEventListener for all of these events because i like that more
         // Configure web socket
         this.ws = ws
         this.ws.onerror = this.onError.bind(this)
@@ -128,7 +130,7 @@ export class Stream {
         this.input = new StreamInput(this.peer, streamInputConfig)
     }
 
-    private async onMessage(message: StreamServerMessage) {
+    private async onMessage(message: StreamServerMessage | StreamServerGeneralMessage) {
         if (typeof message == "string") {
             if (message == "ConnectionComplete") {
                 const event: InfoEvent = new CustomEvent("stream-info", {
@@ -164,6 +166,12 @@ export class Stream {
         } else if ("ConnectionTerminated" in message) {
             const event: InfoEvent = new CustomEvent("stream-info", {
                 detail: { type: "connectionTerminated", errorCode: message.ConnectionTerminated.error_code }
+            })
+
+            this.eventTarget.dispatchEvent(event)
+        } else if ("ConnectionStatusUpdate" in message) {
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "connectionStatus", status: message.ConnectionStatusUpdate.status }
             })
 
             this.eventTarget.dispatchEvent(event)
@@ -253,6 +261,7 @@ export class Stream {
 
     // -- Track and Data Channels
     private onTrack(event: RTCTrackEvent) {
+        // TODO: remove debug
         console.log(event)
         const stream = event.streams[0]
         if (stream) {
@@ -260,14 +269,25 @@ export class Stream {
         }
         // this.mediaStream.addTrack(event.track)
     }
-    private onDataChannel(event: RTCDataChannelEvent) {
-        // TODO: remove
-        console.log(event)
-
-        event.channel.onmessage = msg => console.log(`Msg from ${event.channel.label}`, msg.data)
-    }
     private onConnectionStateChange(event: Event) {
+        // TODO: remove
         console.log(this.peer.connectionState)
+    }
+
+    private onDataChannel(event: RTCDataChannelEvent) {
+        if (event.channel.label == "general") {
+            event.channel.addEventListener("message", this.onGeneralDataChannelMessage.bind(this))
+        }
+    }
+    private async onGeneralDataChannelMessage(event: MessageEvent) {
+        const data = event.data
+
+        if (typeof data != "string") {
+            return
+        }
+
+        let message = JSON.parse(data)
+        await this.onMessage(message)
     }
 
     // -- Raw Web Socket stuff
