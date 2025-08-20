@@ -110,6 +110,8 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             return -1;
         }
 
+        self.current_video_format = Some(format);
+
         self.frame_time = 1.0 / redraw_rate as f32;
 
         0
@@ -191,6 +193,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             }
             _ => {
                 // this shouldn't happen
+                unreachable!()
             }
         }
 
