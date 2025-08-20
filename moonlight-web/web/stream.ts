@@ -1,8 +1,8 @@
 import { Api, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { AppInfoEvent, startStream, Stream } from "./stream/index.js"
-import { showMessage } from "./component/modal/index.js";
+import { InfoEvent, startStream, Stream } from "./stream/index.js"
+import { Modal, showMessage, showModal } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
@@ -95,7 +95,12 @@ class ViewerApp implements Component {
         this.stream = await startStream(this.api, hostId, appId, getLocalStreamSettings() ?? defaultStreamSettings(), [viewerWidth, viewerHeight])
 
         // Add app info listener
-        this.stream.addAppInfoListener(this.onAppInfo.bind(this))
+        this.stream.addInfoListener(this.onInfo.bind(this))
+
+        // Create connection info modal
+        const connectionInfo = new ConnectionInfoModal()
+        this.stream.addInfoListener(connectionInfo.onInfo.bind(connectionInfo))
+        showModal(connectionInfo)
 
         // Set video
         this.videoElement.srcObject = this.stream.getMediaStream()
@@ -104,10 +109,14 @@ class ViewerApp implements Component {
         this.onGamepadUpdate()
     }
 
-    private onAppInfo(event: AppInfoEvent) {
-        const app = event.app
+    private async onInfo(event: InfoEvent) {
+        const data = event.detail
 
-        document.title = `Stream: ${app.title}`
+        if (data.type == "app") {
+            const app = data.app
+
+            document.title = `Stream: ${app.title}`
+        }
     }
 
     onUserInteraction() {
@@ -142,14 +151,10 @@ class ViewerApp implements Component {
         this.stream?.getInput().onMouseUp(event)
     }
     onMouseMove(event: MouseEvent) {
-        this.onUserInteraction()
-
         event.preventDefault()
         this.stream?.getInput().onMouseMove(event, this.videoElement.getBoundingClientRect())
     }
     onWheel(event: WheelEvent) {
-        this.onUserInteraction()
-
         event.preventDefault()
         this.stream?.getInput().onWheel(event)
     }
@@ -168,8 +173,6 @@ class ViewerApp implements Component {
         this.stream?.getInput().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
     onTouchMove(event: TouchEvent) {
-        this.onUserInteraction()
-
         event.preventDefault()
         this.stream?.getInput().onTouchMove(event, this.videoElement.getBoundingClientRect())
     }
@@ -207,6 +210,51 @@ class ViewerApp implements Component {
     }
     getStream(): Stream | null {
         return this.stream
+    }
+}
+
+class ConnectionInfoModal implements Modal<void> {
+
+    private eventTarget = new EventTarget()
+    private text = document.createElement("p")
+
+    constructor() {
+        this.text.innerText = "Connecting"
+    }
+
+    onInfo(event: InfoEvent) {
+        const data = event.detail
+
+        if (data.type == "stageStarting") {
+            this.text.innerText = `Starting Stage: ${data.stage}`
+        } else if (data.type == "stageComplete") {
+            this.text.innerText = `Completed Stage: ${data.stage}`
+        } else if (data.type == "stageFailed") {
+            this.text.innerText = `Failed Stage: ${data.stage} with error ${data.errorCode}`
+        } else if (data.type == "connectionComplete") {
+            this.text.innerText = `Connection Complete`
+
+            this.eventTarget.dispatchEvent(new Event("ml-connected"))
+        } else if (data.type == "connectionTerminated") {
+            this.text.innerText = `Connection Terminated with code ${data.errorCode}`
+            // TODO: maybe reload button?
+        } else if (data.type == "error") {
+            this.text.innerText = `Error: ${data.message}`
+            // TODO: maybe reload button?
+        }
+    }
+
+    onFinish(abort: AbortSignal): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.eventTarget.addEventListener("ml-connected", () => resolve(), { once: true, signal: abort })
+        })
+    }
+
+    mount(parent: HTMLElement): void {
+        parent.appendChild(this.text)
+    }
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.text)
     }
 }
 

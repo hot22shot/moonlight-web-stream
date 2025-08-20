@@ -18,8 +18,15 @@ export function startStream(api: Api, hostId: number, appId: number, settings: S
     })
 }
 
-export type AppInfoEvent = { app: App } & Event
-export type AppInfoEventListener = (event: AppInfoEvent) => void
+export type InfoEvent = CustomEvent<
+    { type: "app", app: App } |
+    { type: "error", message: string } |
+    { type: "stageStarting" | "stageComplete", stage: string } |
+    { type: "stageFailed", stage: string, errorCode: number } |
+    { type: "connectionComplete" } |
+    { type: "connectionTerminated", errorCode: number }
+>
+export type InfoEventListener = (event: InfoEvent) => void
 
 export class Stream {
     private api: Api
@@ -133,22 +140,52 @@ export class Stream {
 
     private async onMessage(message: StreamServerMessage) {
         if (typeof message == "string") {
-            // TODO: make an error event for this
-            await showMessage(message)
+            if (message == "ConnectionComplete") {
+                const event: InfoEvent = new CustomEvent("stream-info", {
+                    detail: { type: "connectionComplete" }
+                })
 
-            if (message == "PeerDisconnect") {
-                location.reload()
+                this.eventTarget.dispatchEvent(event)
             } else {
-                window.close()
-            }
-        } else if ("UpdateApp" in message) {
-            // Dispatch app event
-            const app = message.UpdateApp.app
+                const event: InfoEvent = new CustomEvent("stream-info", {
+                    detail: { type: "error", message }
+                })
 
-            let event: any = new Event("stream-appinfo")
-            event["app"] = app
+                this.eventTarget.dispatchEvent(event)
+            }
+        } else if ("StageStarting" in message) {
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "stageStarting", stage: message.StageStarting.stage }
+            })
+
             this.eventTarget.dispatchEvent(event)
-        } else if ("Signaling" in message) {
+        } else if ("StageComplete" in message) {
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "stageComplete", stage: message.StageComplete.stage }
+            })
+
+            this.eventTarget.dispatchEvent(event)
+        } else if ("StageFailed" in message) {
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "stageFailed", stage: message.StageFailed.stage, errorCode: message.StageFailed.error_code }
+            })
+
+            this.eventTarget.dispatchEvent(event)
+        } else if ("ConnectionTerminated" in message) {
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "connectionTerminated", errorCode: message.ConnectionTerminated.error_code }
+            })
+
+            this.eventTarget.dispatchEvent(event)
+        } else if ("UpdateApp" in message) {
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "app", app: message.UpdateApp.app }
+            })
+
+            this.eventTarget.dispatchEvent(event)
+        }
+        // -- Signaling
+        else if ("Signaling" in message) {
             if ("Description" in message.Signaling) {
                 const descriptionRaw = message.Signaling.Description
                 const description = {
@@ -263,11 +300,11 @@ export class Stream {
     }
 
     // -- Class Api
-    addAppInfoListener(listener: AppInfoEventListener) {
-        this.eventTarget.addEventListener("stream-appinfo", listener as EventListenerOrEventListenerObject)
+    addInfoListener(listener: InfoEventListener) {
+        this.eventTarget.addEventListener("stream-info", listener as EventListenerOrEventListenerObject)
     }
-    removeAppInfoListener(listener: AppInfoEventListener) {
-        this.eventTarget.removeEventListener("stream-appinfo", listener as EventListenerOrEventListenerObject)
+    removeInfoListener(listener: InfoEventListener) {
+        this.eventTarget.removeEventListener("stream-info", listener as EventListenerOrEventListenerObject)
     }
 
     getMediaStream(): MediaStream {

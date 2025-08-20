@@ -1,6 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
-use log::{debug, info, warn};
+use log::{debug, warn};
 use moonlight_common::moonlight::{
     input::TouchEventType,
     stream::{
@@ -16,17 +16,19 @@ use crate::api::stream::{StreamConnection, buffer::ByteBuffer};
 
 pub struct StreamInput {
     pub(crate) active_gamepads: RwLock<ActiveGamepads>,
+    controllers: RwLock<Option<Arc<RTCDataChannel>>>,
 }
 
 impl StreamInput {
     pub fn new() -> Self {
         Self {
             active_gamepads: RwLock::new(ActiveGamepads::empty()),
+            controllers: Default::default(),
         }
     }
 
     /// Returns if this added events
-    pub fn on_data_channel(
+    pub async fn on_data_channel(
         &self,
         connection: &Arc<StreamConnection>,
         data_channel: Arc<RTCDataChannel>,
@@ -70,6 +72,10 @@ impl StreamInput {
                         Self::on_controller_message(message, &connection).await;
                     })
                 }));
+
+                let mut controllers = self.controllers.write().await;
+                controllers.replace(data_channel);
+
                 return true;
             }
             _ => {}

@@ -269,6 +269,11 @@ pub enum StreamServerMessage {
     AlreadyStreaming,
     UpdateApp { app: App },
     Signaling(StreamSignalingMessage),
+    StageStarting { stage: String },
+    StageComplete { stage: String },
+    StageFailed { stage: String, error_code: i32 },
+    ConnectionComplete,
+    ConnectionTerminated { error_code: i32 },
     PeerDisconnect,
 }
 

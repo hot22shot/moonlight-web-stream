@@ -13,12 +13,14 @@ use moonlight_common::{
     MoonlightError,
     high::HostError,
     moonlight::{
+        connection::{ConnectionListener, ConnectionStatus, Stage},
         debug::DebugHandler,
         stream::{ColorRange, Colorspace, MoonlightStream},
         video::SupportedVideoFormats,
     },
 };
 use tokio::{
+    runtime::Handle,
     spawn,
     sync::{Notify, RwLock},
     task::spawn_blocking,
@@ -65,7 +67,6 @@ use crate::{
 mod audio;
 mod buffer;
 pub mod cancel;
-mod connection;
 mod input;
 mod video;
 
@@ -166,6 +167,69 @@ pub async fn start_stream(
     Ok(response)
 }
 
+async fn start(
+    config: Data<Config>,
+    data: Data<RuntimeApiData>,
+    info: StreamInfo,
+    settings: StreamSettings,
+    ws_sender: Session,
+    ws_receiver: MessageStream,
+) -> Result<Arc<StreamConnection>, anyhow::Error> {
+    // TODO: send webrtc ice servers and other config values required for the rtc peer to the web client
+    // send_ws_message(sender, message)
+
+    // -- Configure WebRTC
+    let rtc_config = RTCConfiguration {
+        ice_servers: config.webrtc_ice_servers.clone(),
+        ..Default::default()
+    };
+
+    let mut api_media = MediaEngine::default();
+    // TODO: only register supported codecs
+    api_media.register_default_codecs()?;
+
+    let mut api_registry = Registry::new();
+
+    // Use the default set of Interceptors
+    api_registry = register_default_interceptors(api_registry, &mut api_media)?;
+
+    let mut api_settings = SettingEngine::default();
+    if let Some(PortRange { min, max }) = config.webrtc_port_range {
+        match EphemeralUDP::new(min, max) {
+            Ok(udp) => {
+                api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
+            }
+            Err(err) => {
+                warn!("[Stream]: Invalid port range in config: {err:?}");
+            }
+        }
+    }
+    api_settings.set_nat_1to1_ips(
+        config.webrtc_nat_1to1_ips.clone(),
+        RTCIceCandidateType::Host,
+    );
+
+    let api = APIBuilder::new()
+        .with_media_engine(api_media)
+        .with_interceptor_registry(api_registry)
+        .with_setting_engine(api_settings)
+        .build();
+
+    // -- Create and Configure Peer
+    let connection = StreamConnection::new(
+        info,
+        settings,
+        data,
+        ws_sender,
+        ws_receiver,
+        &api,
+        rtc_config,
+    )
+    .await?;
+
+    Ok(connection)
+}
+
 struct StreamStage {
     name: &'static str,
     notify: Notify,
@@ -216,6 +280,7 @@ struct StreamConnection {
     pub data: Data<RuntimeApiData>,
     pub peer: Arc<RTCPeerConnection>,
     pub ws_sender: Session,
+    pub general_channel: Arc<RTCDataChannel>,
     // Video
     pub video_track: Arc<TrackLocalStaticSample>,
     // Audio
@@ -342,6 +407,8 @@ impl StreamConnection {
         // -- Input
         let input = StreamInput::new();
 
+        let general_channel = peer.create_data_channel("general", None).await?;
+
         let this = Arc::new(Self {
             info,
             settings,
@@ -349,6 +416,7 @@ impl StreamConnection {
             stages,
             peer: peer.clone(),
             ws_sender,
+            general_channel,
             video_track,
             audio_track,
             input,
@@ -579,11 +647,11 @@ impl StreamConnection {
 
     // -- Data Channels
     async fn on_data_channel(self: &Arc<Self>, channel: Arc<RTCDataChannel>) {
-        self.input.on_data_channel(self, channel);
+        self.input.on_data_channel(self, channel).await;
     }
 
     // Start Moonlight Stream
-    async fn start_stream(&self) -> Result<(), anyhow::Error> {
+    async fn start_stream(self: &Arc<Self>) -> Result<(), anyhow::Error> {
         let hosts = self.data.hosts.read().await;
         let Some(host) = hosts.get(self.info.host_id) else {
             let _ = send_ws_message(
@@ -637,6 +705,11 @@ impl StreamConnection {
             self.settings.audio_sample_queue_size as usize,
         );
 
+        let connection_listener = StreamConnectionListener {
+            runtime: Handle::current(),
+            stream: self.clone(),
+        };
+
         let stream = match host
             .moonlight
             .start_stream(
@@ -655,7 +728,7 @@ impl StreamConnection {
                 ColorRange::Limited,
                 self.settings.bitrate,
                 self.settings.packet_size,
-                DebugHandler,
+                connection_listener,
                 video_decoder,
                 audio_decoder,
             )
@@ -717,6 +790,131 @@ impl StreamConnection {
     }
 }
 
+struct StreamConnectionListener {
+    runtime: Handle,
+    stream: Arc<StreamConnection>,
+}
+
+impl ConnectionListener for StreamConnectionListener {
+    fn stage_starting(&mut self, stage: Stage) {
+        let mut ws_sender = self.stream.ws_sender.clone();
+
+        self.runtime.spawn(async move {
+            let _ = send_ws_message(
+                &mut ws_sender,
+                StreamServerMessage::StageStarting {
+                    stage: stage.name().to_string(),
+                },
+            )
+            .await;
+        });
+    }
+
+    fn stage_complete(&mut self, stage: Stage) {
+        let mut ws_sender = self.stream.ws_sender.clone();
+
+        self.runtime.spawn(async move {
+            let _ = send_ws_message(
+                &mut ws_sender,
+                StreamServerMessage::StageComplete {
+                    stage: stage.name().to_string(),
+                },
+            )
+            .await;
+        });
+    }
+
+    fn stage_failed(&mut self, stage: Stage, error_code: i32) {
+        let mut ws_sender = self.stream.ws_sender.clone();
+
+        self.runtime.spawn(async move {
+            let _ = send_ws_message(
+                &mut ws_sender,
+                StreamServerMessage::StageFailed {
+                    stage: stage.name().to_string(),
+                    error_code,
+                },
+            )
+            .await;
+        });
+    }
+
+    fn connection_started(&mut self) {
+        let mut ws_sender = self.stream.ws_sender.clone();
+
+        self.runtime.spawn(async move {
+            let _ = send_ws_message(&mut ws_sender, StreamServerMessage::ConnectionComplete).await;
+        });
+    }
+
+    fn connection_terminated(&mut self, error_code: i32) {
+        let mut ws_sender = self.stream.ws_sender.clone();
+
+        self.runtime.spawn(async move {
+            let _ = send_ws_message(
+                &mut ws_sender,
+                StreamServerMessage::ConnectionTerminated { error_code },
+            )
+            .await;
+        });
+
+        // TODO: send over general channel too
+    }
+
+    fn log_message(&mut self, message: &str) {
+        info!("[Moonlight Stream]: {message}");
+    }
+
+    fn connection_status_update(&mut self, status: ConnectionStatus) {
+        // TODO: send over general channel
+    }
+
+    fn set_hdr_mode(&mut self, _hdr_enabled: bool) {}
+
+    fn controller_rumble(
+        &mut self,
+        controller_number: u16,
+        low_frequency_motor: u16,
+        high_frequency_motor: u16,
+    ) {
+        todo!()
+    }
+
+    fn controller_rumble_triggers(
+        &mut self,
+        controller_number: u16,
+        left_trigger_motor: u16,
+        right_trigger_motor: u16,
+    ) {
+        todo!()
+    }
+
+    fn controller_set_motion_event_state(
+        &mut self,
+        _controller_number: u16,
+        _motion_type: u8,
+        _report_rate_hz: u16,
+    ) {
+        // unsupported: https://github.com/w3c/gamepad/issues/211
+    }
+
+    fn controller_set_adaptive_triggers(
+        &mut self,
+        _controller_number: u16,
+        _event_flags: u8,
+        _type_left: u8,
+        _type_right: u8,
+        _left: &mut u8,
+        _right: &mut u8,
+    ) {
+        // unsupported
+    }
+
+    fn controller_set_led(&mut self, _controller_number: u16, _r: u8, _g: u8, _b: u8) {
+        // unsupported
+    }
+}
+
 async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> Result<(), Closed> {
     let Ok(json) = serde_json::to_string(&message) else {
         warn!("[Stream]: failed to serialize to json");
@@ -724,69 +922,6 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
     };
 
     sender.text(json).await
-}
-
-async fn start(
-    config: Data<Config>,
-    data: Data<RuntimeApiData>,
-    info: StreamInfo,
-    settings: StreamSettings,
-    ws_sender: Session,
-    ws_receiver: MessageStream,
-) -> Result<Arc<StreamConnection>, anyhow::Error> {
-    // TODO: send webrtc ice servers and other config values required for the rtc peer to the web client
-    // send_ws_message(sender, message)
-
-    // -- Configure WebRTC
-    let rtc_config = RTCConfiguration {
-        ice_servers: config.webrtc_ice_servers.clone(),
-        ..Default::default()
-    };
-
-    let mut api_media = MediaEngine::default();
-    // TODO: only register supported codecs
-    api_media.register_default_codecs()?;
-
-    let mut api_registry = Registry::new();
-
-    // Use the default set of Interceptors
-    api_registry = register_default_interceptors(api_registry, &mut api_media)?;
-
-    let mut api_settings = SettingEngine::default();
-    if let Some(PortRange { min, max }) = config.webrtc_port_range {
-        match EphemeralUDP::new(min, max) {
-            Ok(udp) => {
-                api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
-            }
-            Err(err) => {
-                warn!("[Stream]: Invalid port range in config: {err:?}");
-            }
-        }
-    }
-    api_settings.set_nat_1to1_ips(
-        config.webrtc_nat_1to1_ips.clone(),
-        RTCIceCandidateType::Host,
-    );
-
-    let api = APIBuilder::new()
-        .with_media_engine(api_media)
-        .with_interceptor_registry(api_registry)
-        .with_setting_engine(api_settings)
-        .build();
-
-    // -- Create and Configure Peer
-    let connection = StreamConnection::new(
-        info,
-        settings,
-        data,
-        ws_sender,
-        ws_receiver,
-        &api,
-        rtc_config,
-    )
-    .await?;
-
-    Ok(connection)
 }
 
 fn supported_formats_from_mime(mime_type: &str) -> SupportedVideoFormats {
