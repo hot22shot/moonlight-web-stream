@@ -2,14 +2,11 @@ use std::{pin::Pin, sync::Arc};
 
 use actix_web::web::Bytes;
 use log::{debug, warn};
-use moonlight_common::{
-    high,
-    moonlight::{
-        input::TouchEventType,
-        stream::{
-            ActiveGamepads, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction,
-            KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
-        },
+use moonlight_common::moonlight::{
+    input::TouchEventType,
+    stream::{
+        ActiveGamepads, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction,
+        KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
     },
 };
 use num_traits::FromPrimitive;

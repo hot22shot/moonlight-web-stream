@@ -46,10 +46,6 @@ use webrtc::{
         peer_connection_state::RTCPeerConnectionState,
         sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
     },
-    rtp_transceiver::{
-        RTCRtpTransceiverInit, rtp_codec::RTPCodecType,
-        rtp_transceiver_direction::RTCRtpTransceiverDirection,
-    },
 };
 
 use crate::{
