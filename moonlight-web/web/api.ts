@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { InputComponent } from "./component/input.js";
 import { FormModal } from "./component/modal/form.js";
@@ -258,4 +258,16 @@ export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise
     const data = await response.blob()
 
     return data
+}
+
+export async function apiHostCancel(api: Api, request: PostCancelRequest): Promise<PostCancelResponse | null> {
+    const response = await fetchApi(api, "/host/cancel", "POST", {
+        json: request
+    })
+
+    if (!response) {
+        return null
+    }
+
+    return response as PostCancelResponse
 }

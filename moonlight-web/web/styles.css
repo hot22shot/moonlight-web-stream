@@ -288,6 +288,7 @@ button:hover {
     width: 200px;
     height: 266px;
     /** animation */
+    transition: all 0.4s linear;
     opacity: 0;
 }
 
@@ -297,16 +298,24 @@ button:hover {
     transition: opacity 0.1s ease-in;
 }
 
+.app {
+    transition: all 0.4s linear;
+}
+
 .app-active .app-image {
     border-style: solid;
     /** TODO: gold doesn't fit this theme */
     border-color: gold;
     border-width: 4px;
     border-radius: 4px;
+
+    transition: all 0.4s ease-in;
 }
 
 .app-inactive {
     filter: brightness(30%);
+
+    transition: all 0.2s ease-in;
 }
 
 /** Stream */

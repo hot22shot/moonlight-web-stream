@@ -9,6 +9,8 @@ A web client for [Moonlight](https://moonlight-stream.org/) using a hosted web s
 ## Installation
 TODO
 
+If you're already running a service like [Apache 2](https://httpd.apache.org/) you can [proxy the request to your Moonlight server](#proxying-via-apache-2)
+
 ## Building
 A valid [Rust](https://www.rust-lang.org/tools/install) installation
 
@@ -23,6 +25,35 @@ Requires:
 Go into moonlight-web directory `cd moonlight-web`
 - Make sure [moonlight-common-sys](#moonlight-common-sys) compiled correctly
 - Build the frontend with `npm run build-web`
+
+## Proxying via Apache 2
+If you want to host this on a path on your apache 2 server you'll need to do these steps:
+
+1) Enable the modules `mod_proxy`, `mod_proxy_wstunnel`
+
+`sudo a2enmod mod_proxy mod_proxy_wstunnel`
+
+2) Create a new file under `/etc/apache2/conf-available/moonlight-web.conf` with the content:
+```
+# Example subpath "/moonlight" -> To connect you'd go to "http://yourip.com/moonlight/"
+Define MOONLIGHT_SUBPATH /moonlight
+# The address and port of your Moonlight Web server
+Define MOONLIGHT_DEV YOUR_LOCAL_IP:YOUR_PORT
+
+ProxyPreserveHost on
+        
+<Location ${MOONLIGHT_SUBPATH}/api/host/stream>
+        ProxyPass ws://${MOONLIGHT_DEV}/api/host/stream
+        ProxyPassReverse ws://${MOONLIGHT_DEV}/api/host/stream
+</Location>
+
+ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_DEV}/
+ProxyPassReverse ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_DEV}/
+```
+Enable it with `sudo a2enconf moonlight-web`.
+
+3) Change config to include the prefixed path
+TODO: LINK TO CONFIG
 
 ## Interesting
 - WebRTC Signaling: https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling

@@ -172,6 +172,18 @@ pub struct GetAppImageQuery {
     pub force_refresh: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostCancelRequest {
+    pub host_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostCancelResponse {
+    pub success: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
 #[ts(export, export_to = EXPORT_PATH)]
 #[serde(rename_all = "lowercase")]

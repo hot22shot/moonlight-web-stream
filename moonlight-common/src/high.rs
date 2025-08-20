@@ -13,8 +13,8 @@ use crate::{
     },
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, DEFAULT_UNIQUE_ID, HostInfo,
-        ServerAppListResponse, host_app_box_art, host_app_list, host_info, pair::host_unpair,
-        request_client::RequestClient,
+        ServerAppListResponse, host_app_box_art, host_app_list, host_info, launch::host_cancel,
+        pair::host_unpair, request_client::RequestClient,
     },
     pair::{ClientAuth, PairError, PairSuccess, host_pair},
 };
@@ -342,7 +342,17 @@ where
         Ok(())
     }
 
+    fn check_paired(&self) -> Result<(), HostError<C::Error>> {
+        if self.is_paired() == PairStatus::Paired {
+            Ok(())
+        } else {
+            Err(HostError::NotPaired)
+        }
+    }
+
     pub async fn unpair(&mut self) -> Result<(), HostError<C::Error>> {
+        self.check_paired()?;
+
         let http_address = self.http_address();
         let client_info = ClientInfo {
             unique_id: &self.client_unique_id,
@@ -357,6 +367,8 @@ where
     }
 
     pub async fn app_list(&mut self) -> Result<&[App], HostError<C::Error>> {
+        self.check_paired()?;
+
         let https_address = self.https_address().await?;
         let client_info = ClientInfo {
             unique_id: &self.client_unique_id,
@@ -385,6 +397,8 @@ where
         &mut self,
         app_id: u32,
     ) -> Result<C::Bytes, HostError<C::Error>> {
+        self.check_paired()?;
+
         let https_address = self.https_address().await?;
 
         let client_info = ClientInfo {
@@ -461,6 +475,29 @@ where
         let is_nvidia = self.is_nvidia_software().await?;
 
         Ok(!NVIDIA_SUPPORTED_RESOLUTIONS.contains(&(width, height)) && is_nvidia)
+    }
+
+    pub async fn cancel(&mut self) -> Result<bool, HostError<C::Error>> {
+        self.check_paired()?;
+
+        let https_hostport = self.https_address().await?;
+
+        let client_info = ClientInfo {
+            unique_id: &self.client_unique_id,
+            uuid: Uuid::new_v4(),
+        };
+
+        let response = host_cancel(&mut self.client, &https_hostport, client_info).await?;
+
+        self.clear_cache();
+
+        let current_game = self.current_game().await?;
+        if current_game != 0 {
+            // We're not the device that opened this session
+            return Ok(false);
+        }
+
+        Ok(response)
     }
 }
 
@@ -643,6 +680,9 @@ mod moonlight_crypto {
                 )
             })
             .await??;
+
+            // Clear cache because now there's an active app
+            self.clear_cache();
 
             Ok(connection)
         }

@@ -64,6 +64,7 @@ use crate::{
 
 mod audio;
 mod buffer;
+pub mod cancel;
 mod connection;
 mod input;
 mod video;
@@ -80,7 +81,8 @@ struct StreamSettings {
 }
 
 /// The stream handler WILL authenticate the client because it is a websocket
-#[get("/stream")]
+/// The Authenticator will let this route through
+#[get("/host/stream")]
 pub async fn start_stream(
     data: Data<RuntimeApiData>,
     config: Data<Config>,

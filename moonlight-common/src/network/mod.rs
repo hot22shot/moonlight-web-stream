@@ -68,6 +68,7 @@ impl Default for ClientInfo<'static> {
 }
 
 impl<'a> ClientInfo<'a> {
+    // Requires 2 query params
     fn add_query_params(
         &self,
         uuid_bytes: &'a mut [u8; Hyphenated::LENGTH],

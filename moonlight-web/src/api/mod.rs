@@ -359,6 +359,8 @@ pub fn api_service(data: Data<RuntimeApiData>, credentials: String) -> impl Http
         .app_data(data)
         .service(services![
             authenticate,
+            stream::start_stream,
+            stream::cancel::host_cancel,
             list_hosts,
             get_host,
             put_host,
@@ -366,7 +368,6 @@ pub fn api_service(data: Data<RuntimeApiData>, credentials: String) -> impl Http
             pair_host,
             get_apps,
             get_app_image,
-            stream::start_stream,
         ])
 }
 

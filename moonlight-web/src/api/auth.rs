@@ -12,7 +12,7 @@ pub async fn auth_middleware(
     req: ServiceRequest,
     next: Next<BoxBody>,
 ) -> Result<ServiceResponse<impl MessageBody>, Error> {
-    if req.uri().path() == "/api/stream" {
+    if req.uri().path() == "/api/host/stream" {
         // This will route the stream web socket through
         // because web socket cannot have the auth header
         // The Ws is authenticated in the start_stream handler

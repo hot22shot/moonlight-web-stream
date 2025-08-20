@@ -2,11 +2,13 @@ import { Api, apiGetApps } from "../../api.js";
 import { App } from "../../api_bindings.js";
 import { showErrorPopup } from "../error.js";
 import { FetchListComponent } from "../fetch_list.js";
-import { Game, GameCache } from "./index.js";
+import { ComponentEvent } from "../index.js";
+import { Game, GameCache, GameEventListener } from "./index.js";
 
-// TODO: move to fetch list
 export class GameList extends FetchListComponent<App, Game> {
     private api: Api
+
+    private eventTarget = new EventTarget()
 
     private hostId: number
     private activeApp: number | null = null
@@ -67,7 +69,21 @@ export class GameList extends FetchListComponent<App, Game> {
     protected insertList(dataId: number, data: App): void {
         const cache = this.createCache(data)
 
-        this.list.append(new Game(this.api, this.hostId, dataId, cache))
+        const game = new Game(this.api, this.hostId, dataId, cache)
+        game.addForceReloadListener(this.onForceReload.bind(this))
+
+        this.list.append(game)
+    }
+
+    private onForceReload(event: ComponentEvent<Game>) {
+        this.eventTarget.dispatchEvent(new ComponentEvent("ml-gamereload", event.component))
+    }
+
+    addForceReloadListener(listener: GameEventListener) {
+        this.eventTarget.addEventListener("ml-gamereload", listener as any)
+    }
+    removeForceReloadListener(listener: GameEventListener) {
+        this.eventTarget.removeEventListener("ml-gamereload", listener as any)
     }
 
     getHostId(): number {

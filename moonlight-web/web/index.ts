@@ -198,6 +198,7 @@ class MainApp implements Component {
 
             if (this.gameList?.getHostId() != hostId) {
                 this.gameList = new GameList(this.api, hostId, hostCache ?? null)
+                this.gameList.addForceReloadListener(this.forceFetch.bind(this))
             }
 
             this.gameList.mount(this.divElement)
@@ -228,11 +229,10 @@ class MainApp implements Component {
             // The newly fetched list doesn't contain the hosts game view we're in -> go to hosts
             this.setCurrentDisplay("hosts")
         }
-        if (this.currentDisplay == "games") {
-            await this.refreshGameListActiveGame()
-        }
+
+        await this.refreshGameListActiveGame()
     }
-    async refreshGameListActiveGame() {
+    private async refreshGameListActiveGame() {
         const gameList = this.gameList
         const hostId = gameList?.getHostId()
         if (hostId == null) {

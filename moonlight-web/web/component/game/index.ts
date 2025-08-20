@@ -1,13 +1,14 @@
-import { Component } from "../index.js";
-import { Api, apiGetAppImage } from "../../api.js";
+import { Component, ComponentEvent } from "../index.js";
+import { Api, apiGetAppImage, apiHostCancel } from "../../api.js";
 import { App } from "../../api_bindings.js";
 import { setContextMenu } from "../context_menu.js";
 import { showMessage } from "../modal/index.js";
 import { APP_NO_IMAGE } from "../../resources/index.js";
 import { buildUrl } from "../../config_.js";
-import { showErrorPopup } from "../error.js";
 
 export type GameCache = App & { activeApp: number | null }
+
+export type GameEventListener = (event: ComponentEvent<Game>) => void
 
 export class Game implements Component {
     private api: Api
@@ -38,7 +39,9 @@ export class Game implements Component {
 
         this.forceLoadImage(false)
 
-        // Append elements
+        // Configure div
+        this.divElement.classList.add("app")
+
         this.divElement.appendChild(this.imageElement)
 
         this.divElement.addEventListener("click", this.onClick.bind(this))
@@ -95,13 +98,27 @@ export class Game implements Component {
             if (this.isActive()) {
                 elements.push({
                     name: "Resume Session",
-                    callback: this.startStream.bind(this)
+                    callback: async () => {
+                        this.startStream()
+
+                        const event = new ComponentEvent("ml-gamereload", this)
+                        this.divElement.dispatchEvent(event)
+                    }
                 })
             }
 
             elements.push({
                 name: "Stop Current Session",
-                callback: async () => await showErrorPopup("NOT IMPLEMENTED")
+                callback: async () => {
+                    const response = await apiHostCancel(this.api, { host_id: this.hostId })
+
+                    if (!response?.success) {
+                        await showMessage("failed to quit session")
+                    }
+
+                    const event = new ComponentEvent("ml-gamereload", this)
+                    this.divElement.dispatchEvent(event)
+                }
             })
 
             setContextMenu(event, {
@@ -109,6 +126,11 @@ export class Game implements Component {
             })
         } else {
             this.startStream()
+
+            await new Promise(r => window.setTimeout(r, 6000))
+
+            const event = new ComponentEvent("ml-gamereload", this)
+            this.divElement.dispatchEvent(event)
         }
     }
     private startStream() {
@@ -145,6 +167,13 @@ export class Game implements Component {
 
     private isActive(): boolean {
         return this.cache.activeApp == this.appId
+    }
+
+    addForceReloadListener(listener: GameEventListener) {
+        this.divElement.addEventListener("ml-gamereload", listener as any)
+    }
+    removeForceReloadListener(listener: GameEventListener) {
+        this.divElement.removeEventListener("ml-gamereload", listener as any)
     }
 
     getHostId(): number {
