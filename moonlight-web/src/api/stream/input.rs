@@ -1,6 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
-use log::{info, warn};
+use log::{debug, info, warn};
 use moonlight_common::moonlight::{
     input::TouchEventType,
     stream::{
@@ -31,17 +31,19 @@ impl StreamInput {
         connection: &Arc<StreamConnection>,
         data_channel: Arc<RTCDataChannel>,
     ) -> bool {
-        info!(
+        debug!(
             "[Stream Input]: adding data channel: \"{}\"",
             data_channel.label()
         );
+        let label = data_channel.label();
 
-        match data_channel.label() {
+        match label {
             "mouse" => {
                 data_channel.on_message(Self::create_simple_handler(
                     connection.clone(),
                     Self::on_mouse_message,
                 ));
+                return true;
             }
             "touch" => {
                 data_channel.on_message(Self::create_simple_handler(
@@ -50,12 +52,14 @@ impl StreamInput {
                 ));
 
                 // TODO: send supported on open
+                return true;
             }
             "keyboard" => {
                 data_channel.on_message(Self::create_simple_handler(
                     connection.clone(),
                     Self::on_keyboard_message,
                 ));
+                return true;
             }
             "controllers" => {
                 let connection = connection.clone();
@@ -66,21 +70,25 @@ impl StreamInput {
                         Self::on_controller_message(message, &connection).await;
                     })
                 }));
+                return true;
             }
-            "controller_input" => {
-                let connection = connection.clone();
-                data_channel.on_message(Box::new(move |message| {
-                    let connection = connection.clone();
-
-                    Box::pin(async move {
-                        Self::on_controller_input_message(message, &connection).await;
-                    })
-                }));
-            }
-            _ => return false,
+            _ => {}
         };
 
-        true
+        if let Some(number) = label.strip_prefix("controller")
+            && let Ok(id) = number.parse()
+        {
+            let connection = connection.clone();
+            data_channel.on_message(Box::new(move |message| {
+                let connection = connection.clone();
+
+                Box::pin(async move {
+                    Self::on_controller_input_message(id, message, &connection).await;
+                })
+            }));
+        }
+
+        false
     }
 
     #[allow(clippy::type_complexity)]
@@ -274,6 +282,7 @@ impl StreamInput {
         }
     }
     async fn on_controller_input_message(
+        controller_id: u8,
         message: DataChannelMessage,
         connection: &StreamConnection,
     ) {
@@ -286,15 +295,14 @@ impl StreamInput {
 
         let ty = buffer.get_u8();
         if ty == 0 {
-            let id = buffer.get_u8();
-            let Some(gamepad) = ActiveGamepads::from_id(id) else {
-                warn!("[Stream Input]: Gamepad {id} is not valid");
+            let Some(gamepad) = ActiveGamepads::from_id(controller_id) else {
+                warn!("[Stream Input]: Gamepad {controller_id} is not valid");
                 return;
             };
 
             let active_gamepads = { *connection.input.active_gamepads.read().await };
             if !active_gamepads.contains(gamepad) {
-                warn!("[Stream Input]: Gamepad {id} not in active gamepad mask");
+                warn!("[Stream Input]: Gamepad {controller_id} not in active gamepad mask");
                 return;
             }
 
@@ -310,7 +318,7 @@ impl StreamInput {
             let right_stick_y = buffer.get_i16();
 
             let _ = stream.send_multi_controller(
-                id as i16,
+                controller_id as i16,
                 active_gamepads,
                 buttons,
                 left_trigger,

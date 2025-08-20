@@ -55,7 +55,7 @@ export class StreamInput {
     private mouse: RTCDataChannel | null = null
     private touch: RTCDataChannel | null = null
     private controllers: RTCDataChannel | null = null
-    private controllerInput: RTCDataChannel | null = null
+    private controllerInputs: Array<RTCDataChannel | null> = []
 
     private touchSupported: boolean | null = null
 
@@ -83,10 +83,6 @@ export class StreamInput {
         this.touch.onmessage = this.onTouchMessage.bind(this)
 
         this.controllers = this.peer.createDataChannel("controllers")
-        this.controllerInput = this.peer.createDataChannel("controller_input", {
-            maxRetransmits: 0,
-            ordered: true
-        })
     }
 
     setConfig(config: StreamInputConfig) {
@@ -469,7 +465,6 @@ export class StreamInput {
         this.buffer.reset()
 
         this.buffer.putU8(0)
-        this.buffer.putU8(id)
         this.buffer.putU32(buttonFlags)
         this.buffer.putU8(Math.max(0.0, Math.min(1.0, leftTrigger)) * 255)
         this.buffer.putU8(Math.max(0.0, Math.min(1.0, rightTrigger)) * 255)
@@ -478,7 +473,16 @@ export class StreamInput {
         this.buffer.putI16(Math.max(-1.0, Math.min(1.0, rightStickX)) * 32767)
         this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -rightStickY)) * 32767)
 
-        trySendChannel(this.controllerInput, this.buffer)
+        this.tryOpenControllerChannel(id)
+        trySendChannel(this.controllerInputs[id], this.buffer)
+    }
+    private tryOpenControllerChannel(id: number) {
+        if (!this.controllerInputs[id]) {
+            this.controllerInputs[id] = this.peer.createDataChannel(`controller${id}`, {
+                maxRetransmits: 0,
+                ordered: true,
+            })
+        }
     }
 
 }
