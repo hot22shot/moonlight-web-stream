@@ -128,8 +128,6 @@ export class Stream {
         this.peer.ondatachannel = this.onDataChannel.bind(this)
         this.peer.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
 
-        // TODO: jitterbuffertarget = 0 for video and audio
-
         const streamInputConfig = defaultStreamInputConfig()
         Object.assign(streamInputConfig, {
             controllerConfig: settings.controllerConfig
@@ -268,6 +266,8 @@ export class Stream {
 
     // -- Track and Data Channels
     private onTrack(event: RTCTrackEvent) {
+        event.receiver.jitterBufferTarget = 0
+
         // TODO: remove debug
         console.log(event)
         const stream = event.streams[0]
