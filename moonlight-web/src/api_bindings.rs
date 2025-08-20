@@ -257,6 +257,7 @@ pub enum StreamClientMessage {
         play_audio_local: bool,
         audio_sample_queue_size: u32,
         video_supported_formats: u32,
+        video_colorspace: StreamColorspace,
         video_color_range_full: bool,
     },
     Signaling(StreamSignalingMessage),
@@ -824,14 +825,14 @@ pub enum StreamColorspace {
     Rec2020,
 }
 
-impl From<moonlight_common::moonlight::stream::Colorspace> for StreamColorspace {
-    fn from(value: moonlight_common::moonlight::stream::Colorspace) -> Self {
+impl From<StreamColorspace> for moonlight_common::moonlight::stream::Colorspace {
+    fn from(value: StreamColorspace) -> Self {
         use moonlight_common::moonlight::stream::Colorspace;
 
         match value {
-            Colorspace::Rec601 => Self::Rec601,
-            Colorspace::Rec709 => Self::Rec709,
-            Colorspace::Rec2020 => Self::Rec2020,
+            StreamColorspace::Rec601 => Colorspace::Rec601,
+            StreamColorspace::Rec709 => Colorspace::Rec709,
+            StreamColorspace::Rec2020 => Colorspace::Rec2020,
         }
     }
 }

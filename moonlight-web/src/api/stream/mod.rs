@@ -77,6 +77,7 @@ struct StreamSettings {
     audio_sample_queue_size: u32,
     play_audio_local: bool,
     video_supported_formats: SupportedVideoFormats,
+    video_colorspace: Colorspace,
     video_color_range_full: bool,
 }
 
@@ -130,6 +131,7 @@ pub async fn start_stream(
             play_audio_local,
             audio_sample_queue_size,
             video_supported_formats,
+            video_colorspace,
             video_color_range_full,
         } = message
         else {
@@ -160,6 +162,7 @@ pub async fn start_stream(
                     warn!("[Stream]: Received invalid supported video formats");
                     SupportedVideoFormats::H264
                 }),
+            video_colorspace: video_colorspace.into(),
             video_color_range_full,
         };
 
@@ -650,7 +653,7 @@ impl StreamConnection {
                 self.settings.play_audio_local,
                 *gamepads,
                 false,
-                Colorspace::Rec709,
+                self.settings.video_colorspace,
                 if self.settings.video_color_range_full {
                     ColorRange::Full
                 } else {

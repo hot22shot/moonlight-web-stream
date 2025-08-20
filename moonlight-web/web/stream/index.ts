@@ -100,8 +100,9 @@ export class Stream {
                 video_sample_queue_size: this.settings.videoSampleQueueSize,
                 play_audio_local: this.settings.playAudioLocal,
                 audio_sample_queue_size: this.settings.audioSampleQueueSize,
+                video_supported_formats: createSupportedVideoFormatsBits(supported_video_formats),
+                video_colorspace: "Rec709", // TODO <---
                 video_color_range_full: true, // TODO <---
-                video_supported_formats: createSupportedVideoFormatsBits(supported_video_formats)
             }
         })
 
