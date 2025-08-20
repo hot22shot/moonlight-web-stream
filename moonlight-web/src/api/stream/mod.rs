@@ -789,7 +789,7 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn log_message(&mut self, message: &str) {
-        info!("[Moonlight Stream]: {message}");
+        info!("[Moonlight Stream]: {}", message.trim());
     }
 
     fn connection_status_update(&mut self, status: ConnectionStatus) {
