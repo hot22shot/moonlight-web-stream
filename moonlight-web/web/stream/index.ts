@@ -3,19 +3,23 @@ import { App, ConnectionStatus, RtcIceCandidate, StreamClientMessage, StreamServ
 import { showMessage } from "../component/modal/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
+import { createSupportedVideoFormatsBits, getSupportedVideoFormats, VideoCodecSupport } from "./video.js"
 
-export function startStream(api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]): Promise<Stream> {
-    return new Promise((resolve, reject) => {
+export async function startStream(api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]): Promise<Stream> {
+    const supportedVideoFormats = await getSupportedVideoFormats()
+    console.info("Supported Video Formats", supportedVideoFormats)
+
+    return (await new Promise((resolve, reject) => {
         const ws = new WebSocket(`${api.host_url}/host/stream`)
         ws.onopen = () => {
-            const stream = new Stream(ws, api, hostId, appId, settings, viewerScreenSize)
+            const stream = new Stream(ws, api, hostId, appId, settings, supportedVideoFormats, viewerScreenSize)
 
             resolve(stream)
         };
         ws.onerror = (error) => {
             reject(error);
         };
-    })
+    }))
 }
 
 export type InfoEvent = CustomEvent<
@@ -45,7 +49,7 @@ export class Stream {
 
     private peer: RTCPeerConnection
 
-    constructor(ws: WebSocket, api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]) {
+    constructor(ws: WebSocket, api: Api, hostId: number, appId: number, settings: StreamSettings, supported_video_formats: VideoCodecSupport, viewerScreenSize: [number, number]) {
         if (ws.readyState != WebSocket.OPEN) {
             throw "WebSocket is not open whilst starting stream"
         }
@@ -96,6 +100,8 @@ export class Stream {
                 video_sample_queue_size: this.settings.videoSampleQueueSize,
                 play_audio_local: this.settings.playAudioLocal,
                 audio_sample_queue_size: this.settings.audioSampleQueueSize,
+                video_color_range_full: true, // TODO <---
+                video_supported_formats: createSupportedVideoFormatsBits(supported_video_formats)
             }
         })
 

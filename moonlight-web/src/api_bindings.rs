@@ -256,6 +256,8 @@ pub enum StreamClientMessage {
         video_sample_queue_size: u32,
         play_audio_local: bool,
         audio_sample_queue_size: u32,
+        video_supported_formats: u32,
+        video_color_range_full: bool,
     },
     Signaling(StreamSignalingMessage),
 }
@@ -812,4 +814,40 @@ ts_consts!(
 
     pub const CAPABILITY_RUMBLE: u16 = moonlight_common::moonlight::stream::ControllerCapabilities::RUMBLE.bits();
     pub const CAPABILITY_TRIGGER_RUMBLE: u16 = moonlight_common::moonlight::stream::ControllerCapabilities::TRIGGER_RUMBLE.bits();
+);
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum StreamColorspace {
+    Rec601,
+    Rec709,
+    Rec2020,
+}
+
+impl From<moonlight_common::moonlight::stream::Colorspace> for StreamColorspace {
+    fn from(value: moonlight_common::moonlight::stream::Colorspace) -> Self {
+        use moonlight_common::moonlight::stream::Colorspace;
+
+        match value {
+            Colorspace::Rec601 => Self::Rec601,
+            Colorspace::Rec709 => Self::Rec709,
+            Colorspace::Rec2020 => Self::Rec2020,
+        }
+    }
+}
+
+// Video Supported Formats
+ts_consts!(
+    pub StreamSupportedVideoFormats(export_bindings_supported_video_formats: EXPORT_PATH):
+
+    pub const H264: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::H264.bits();
+    pub const H264_HIGH8_444: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::H264_HIGH8_444.bits();
+    pub const H265: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::H265.bits();
+    pub const H265_MAIN10: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::H265_MAIN10.bits();
+    pub const H265_REXT8_444: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::H265_REXT8_444.bits();
+    pub const H265_REXT10_444: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::H265_REXT10_444.bits();
+    pub const AV1_MAIN8: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::AV1_MAIN8.bits();
+    pub const AV1_MAIN10: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::AV1_MAIN10.bits();
+    pub const AV1_HIGH8_444: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::AV1_HIGH8_444.bits();
+    pub const AV1_HIGH10_444: u32 = moonlight_common::moonlight::video::SupportedVideoFormats::AV1_HIGH10_444.bits();
 );

@@ -51,7 +51,7 @@ use webrtc::{
 use crate::{
     Config, PortRange,
     api::stream::{
-        audio::OpusTrackSampleAudioDecoder, input::StreamInput, video::H264TrackSampleVideoDecoder,
+        audio::OpusTrackSampleAudioDecoder, input::StreamInput, video::TrackSampleVideoDecoder,
     },
     api_bindings::{
         RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
@@ -76,6 +76,8 @@ struct StreamSettings {
     video_sample_queue_size: u32,
     audio_sample_queue_size: u32,
     play_audio_local: bool,
+    video_supported_formats: SupportedVideoFormats,
+    video_color_range_full: bool,
 }
 
 /// The stream handler WILL authenticate the client because it is a websocket
@@ -127,6 +129,8 @@ pub async fn start_stream(
             video_sample_queue_size,
             play_audio_local,
             audio_sample_queue_size,
+            video_supported_formats,
+            video_color_range_full,
         } = message
         else {
             let _ = session.close(None).await;
@@ -151,6 +155,12 @@ pub async fn start_stream(
             video_sample_queue_size,
             audio_sample_queue_size,
             play_audio_local,
+            video_supported_formats: SupportedVideoFormats::from_bits(video_supported_formats)
+                .unwrap_or_else(|| {
+                    warn!("[Stream]: Received invalid supported video formats");
+                    SupportedVideoFormats::H264
+                }),
+            video_color_range_full,
         };
 
         if let Err(err) = start(config, data, info, stream_settings, session.clone(), stream).await
@@ -611,8 +621,9 @@ impl StreamConnection {
 
         let gamepads = self.input.active_gamepads.read().await;
 
-        let video_decoder = H264TrackSampleVideoDecoder::new(
+        let video_decoder = TrackSampleVideoDecoder::new(
             self.clone(),
+            self.settings.video_supported_formats,
             self.settings.video_sample_queue_size as usize,
         );
 
@@ -640,7 +651,11 @@ impl StreamConnection {
                 *gamepads,
                 false,
                 Colorspace::Rec709,
-                ColorRange::Limited,
+                if self.settings.video_color_range_full {
+                    ColorRange::Full
+                } else {
+                    ColorRange::Limited
+                },
                 self.settings.bitrate,
                 self.settings.packet_size,
                 connection_listener,

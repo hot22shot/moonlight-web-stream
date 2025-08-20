@@ -28,8 +28,9 @@ use webrtc::{
 
 use crate::api::stream::{StreamConnection, decoder::TrackSampleDecoder};
 
-pub struct H264TrackSampleVideoDecoder {
+pub struct TrackSampleVideoDecoder {
     decoder: TrackSampleDecoder,
+    supported_formats: SupportedVideoFormats,
     clock_rate: u32,
     // Video important
     needs_idr: Arc<AtomicBool>,
@@ -37,11 +38,15 @@ pub struct H264TrackSampleVideoDecoder {
     last_frame_number: i32,
 }
 
-impl H264TrackSampleVideoDecoder {
-    // TODO: maybe allow the Moonlight crate to decide the video format?
-    pub fn new(stream: Arc<StreamConnection>, channel_queue_size: usize) -> Self {
+impl TrackSampleVideoDecoder {
+    pub fn new(
+        stream: Arc<StreamConnection>,
+        supported_formats: SupportedVideoFormats,
+        channel_queue_size: usize,
+    ) -> Self {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
+            supported_formats,
             clock_rate: 90000,
             needs_idr: Default::default(),
             frame_time: 0.0,
@@ -50,12 +55,12 @@ impl H264TrackSampleVideoDecoder {
     }
 }
 
-impl VideoDecoder for H264TrackSampleVideoDecoder {
+impl VideoDecoder for TrackSampleVideoDecoder {
     fn setup(
         &mut self,
         format: VideoFormat,
-        width: u32,
-        height: u32,
+        _width: u32,
+        _height: u32,
         redraw_rate: u32,
         _flags: (),
     ) -> i32 {
@@ -178,8 +183,7 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
     }
 
     fn supported_formats(&self) -> SupportedVideoFormats {
-        // TODO: mask or just h264 and what about other formats?
-        SupportedVideoFormats::H264
+        self.supported_formats
     }
     fn capabilities(&self) -> Capabilities {
         Capabilities::empty()
@@ -188,9 +192,15 @@ impl VideoDecoder for H264TrackSampleVideoDecoder {
 
 fn video_format_to_mime_type(format: VideoFormat) -> Option<String> {
     match format {
-        VideoFormat::H264 => Some(MIME_TYPE_H264.to_string()),
-        VideoFormat::H265 => Some(MIME_TYPE_HEVC.to_string()),
-        // TODO: more formats
-        _ => None,
+        VideoFormat::H264 => Some("video/H264".to_string()),
+        VideoFormat::H264High8_444 => Some("video/H264".to_string()),
+        VideoFormat::H265 => Some("video/H265".to_string()),
+        VideoFormat::H265Main10 => Some("video/H265".to_string()),
+        VideoFormat::H265Rext8_444 => Some("video/H265".to_string()),
+        VideoFormat::H265Rext10_444 => Some("video/H265".to_string()),
+        VideoFormat::Av1Main8 => Some("video/AV1".to_string()),
+        VideoFormat::Av1Main10 => Some("video/AV1".to_string()),
+        VideoFormat::Av1High8_444 => Some("video/AV1".to_string()),
+        VideoFormat::Av1High10_444 => Some("video/AV1".to_string()),
     }
 }

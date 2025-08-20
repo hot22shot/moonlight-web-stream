@@ -8,7 +8,7 @@ import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
 import { App } from "./api_bindings.js";
-import { getLocalStreamSettings, setLocalStreamSettings, StreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
+import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
 
 async function startApp() {
     const api = await getApi()
