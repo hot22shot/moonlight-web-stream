@@ -59,9 +59,9 @@ async fn main() {
         let server_certificate = pem::parse(server_crt_contents).unwrap();
 
         // Get the current pair state
-        let pair_status = host.set_pairing_info(&auth, &server_certificate).unwrap();
+        host.set_pairing_info(&auth, &server_certificate).unwrap();
 
-        assert_eq!(pair_status, PairStatus::Paired);
+        assert_eq!(host.verify_paired().await.unwrap(), PairStatus::Paired);
     } else {
         // Generate new client
         let auth = generate_new_client().unwrap();
