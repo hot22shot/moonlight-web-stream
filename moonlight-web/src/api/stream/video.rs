@@ -17,7 +17,6 @@ use moonlight_common::moonlight::{
     },
 };
 use webrtc::{
-    api::media_engine::{MIME_TYPE_H264, MIME_TYPE_HEVC},
     media::{Sample, io::h264_reader::H264Reader},
     rtcp::payload_feedbacks::{
         full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
@@ -33,6 +32,7 @@ pub struct TrackSampleVideoDecoder {
     supported_formats: SupportedVideoFormats,
     clock_rate: u32,
     // Video important
+    current_video_format: Option<VideoFormat>,
     needs_idr: Arc<AtomicBool>,
     frame_time: f32,
     last_frame_number: i32,
@@ -46,8 +46,10 @@ impl TrackSampleVideoDecoder {
     ) -> Self {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
-            supported_formats,
+            // TODO: implement other formats?
+            supported_formats: supported_formats & SupportedVideoFormats::MASK_H264,
             clock_rate: 90000,
+            current_video_format: None,
             needs_idr: Default::default(),
             frame_time: 0.0,
             last_frame_number: 0,
@@ -116,8 +118,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn stop(&mut self) {}
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let mut full_frame = Vec::new();
-
         let frame_time = self.frame_time;
         let timestamp =
             SystemTime::UNIX_EPOCH + Duration::from_millis(unit.presentation_time_ms as u64);
@@ -126,48 +126,71 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
         self.last_frame_number = unit.frame_number;
 
-        match unit.frame_type {
-            FrameType::Idr => {
-                for buffer in unit.buffers {
-                    match buffer.ty {
-                        BufferType::Sps
-                        | BufferType::Pps
-                        | BufferType::Vps
-                        | BufferType::PicData => {
+        match self.current_video_format {
+            // -- H264
+            Some(VideoFormat::H264) | Some(VideoFormat::H264High8_444) => {
+                let mut full_frame = Vec::new();
+                match unit.frame_type {
+                    FrameType::Idr => {
+                        for buffer in unit.buffers {
+                            match buffer.ty {
+                                BufferType::Sps
+                                | BufferType::Pps
+                                | BufferType::Vps
+                                | BufferType::PicData => {
+                                    full_frame.extend_from_slice(buffer.data);
+                                }
+                            }
+                        }
+
+                        let data = Bytes::from(full_frame);
+
+                        self.decoder.send_sample(Sample {
+                            data,
+                            timestamp,
+                            duration: Duration::from_secs_f32(frame_time),
+                            packet_timestamp,
+                            prev_dropped_packets,
+                            prev_padding_packets: 0,
+                        });
+                    }
+                    FrameType::PFrame => {
+                        for buffer in unit.buffers {
                             full_frame.extend_from_slice(buffer.data);
                         }
+
+                        let len = full_frame.len();
+                        let reader = Cursor::new(full_frame);
+                        let mut nal_reader = H264Reader::new(reader, len);
+
+                        while let Ok(nal) = nal_reader.next_nal() {
+                            self.decoder.send_sample(Sample {
+                                data: nal.data.into(),
+                                timestamp,
+                                duration: Duration::from_secs_f32(frame_time),
+                                packet_timestamp,
+                                ..Default::default()
+                            });
+                        }
                     }
-                }
-
-                let data = Bytes::from(full_frame);
-
-                self.decoder.send_sample(Sample {
-                    data,
-                    timestamp,
-                    duration: Duration::from_secs_f32(frame_time),
-                    packet_timestamp,
-                    prev_dropped_packets,
-                    prev_padding_packets: 0,
-                });
+                };
             }
-            FrameType::PFrame => {
-                for buffer in unit.buffers {
-                    full_frame.extend_from_slice(buffer.data);
-                }
-
-                let len = full_frame.len();
-                let reader = Cursor::new(full_frame);
-                let mut nal_reader = H264Reader::new(reader, len);
-
-                while let Ok(nal) = nal_reader.next_nal() {
-                    self.decoder.send_sample(Sample {
-                        data: nal.data.into(),
-                        timestamp,
-                        duration: Duration::from_secs_f32(frame_time),
-                        packet_timestamp,
-                        ..Default::default()
-                    });
-                }
+            // -- H265
+            Some(VideoFormat::H265)
+            | Some(VideoFormat::H265Main10)
+            | Some(VideoFormat::H265Rext8_444)
+            | Some(VideoFormat::H265Rext10_444) => {
+                todo!()
+            }
+            // -- AV1
+            Some(VideoFormat::Av1Main8)
+            | Some(VideoFormat::Av1Main10)
+            | Some(VideoFormat::Av1High8_444)
+            | Some(VideoFormat::Av1High10_444) => {
+                todo!()
+            }
+            _ => {
+                // this shouldn't happen
             }
         }
 
