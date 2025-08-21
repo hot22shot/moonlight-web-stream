@@ -11,6 +11,9 @@ TODO
 
 If you're already running a service like [Apache 2](https://httpd.apache.org/) you can [proxy the request to your Moonlight server](#proxying-via-apache-2)
 
+## Setup
+TODO: how to configure for public ip
+
 ## Building
 A valid [Rust](https://www.rust-lang.org/tools/install) installation
 

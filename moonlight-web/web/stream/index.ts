@@ -1,26 +1,8 @@
 import { Api } from "../api.js"
 import { App, ConnectionStatus, RtcIceCandidate, StreamClientMessage, StreamServerGeneralMessage, StreamServerMessage } from "../api_bindings.js"
-import { showMessage } from "../component/modal/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
-import { createSupportedVideoFormatsBits, getSupportedVideoFormats, VideoCodecSupport } from "./video.js"
-
-export async function startStream(api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]): Promise<Stream> {
-    const supportedVideoFormats = await getSupportedVideoFormats()
-    console.info("Supported Video Formats", supportedVideoFormats)
-
-    return (await new Promise((resolve, reject) => {
-        const ws = new WebSocket(`${api.host_url}/host/stream`)
-        ws.onopen = () => {
-            const stream = new Stream(ws, api, hostId, appId, settings, supportedVideoFormats, viewerScreenSize)
-
-            resolve(stream)
-        };
-        ws.onerror = (error) => {
-            reject(error);
-        };
-    }))
-}
+import { createSupportedVideoFormatsBits, VideoCodecSupport } from "./video.js"
 
 export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
@@ -49,11 +31,7 @@ export class Stream {
 
     private peer: RTCPeerConnection
 
-    constructor(ws: WebSocket, api: Api, hostId: number, appId: number, settings: StreamSettings, supported_video_formats: VideoCodecSupport, viewerScreenSize: [number, number]) {
-        if (ws.readyState != WebSocket.OPEN) {
-            throw "WebSocket is not open whilst starting stream"
-        }
-
+    constructor(api: Api, hostId: number, appId: number, settings: StreamSettings, supported_video_formats: VideoCodecSupport, viewerScreenSize: [number, number]) {
         this.api = api
         this.hostId = hostId
         this.appId = appId
@@ -62,9 +40,10 @@ export class Stream {
 
         // TODO: use addEventListener for all of these events because i like that more
         // Configure web socket
-        this.ws = ws
-        this.ws.onerror = this.onError.bind(this)
-        this.ws.onmessage = this.onWsMessage.bind(this);
+        this.ws = new WebSocket(`${api.host_url}/host/stream`)
+        this.ws.addEventListener("error", this.onError.bind(this))
+        this.ws.addEventListener("open", this.onWsOpen.bind(this))
+        this.ws.addEventListener("message", this.onRawWsMessage.bind(this))
 
         let width, height
         if (this.settings.videoSize == "720p") {
@@ -107,26 +86,15 @@ export class Stream {
         })
 
         // Configure web rtc
-        this.peer = new RTCPeerConnection({
-            // iceServers: [
-            //     { urls: "stun:stun.l.google.com:19302" },
-            //     { urls: "stun:stun.l.google.com:5349" },
-            //     { urls: "stun:stun1.l.google.com:3478" },
-            //     { urls: "stun:stun1.l.google.com:5349" },
-            //     { urls: "stun:stun2.l.google.com:19302" },
-            //     { urls: "stun:stun2.l.google.com:5349" },
-            //     { urls: "stun:stun3.l.google.com:3478" },
-            //     { urls: "stun:stun3.l.google.com:5349" },
-            //     { urls: "stun:stun4.l.google.com:19302" },
-            //     { urls: "stun:stun4.l.google.com:5349" }
-            // ],
-        })
-        this.peer.onnegotiationneeded = this.onNegotiationNeeded.bind(this)
-        this.peer.onicecandidate = this.onIceCandidate.bind(this)
+        this.peer = new RTCPeerConnection()
+        this.peer.addEventListener("error", this.onError.bind(this))
 
-        this.peer.ontrack = this.onTrack.bind(this)
-        this.peer.ondatachannel = this.onDataChannel.bind(this)
-        this.peer.oniceconnectionstatechange = this.onConnectionStateChange.bind(this)
+        this.peer.addEventListener("negotiationneeded", this.onNegotiationNeeded.bind(this))
+        this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
+
+        this.peer.addEventListener("track", this.onTrack.bind(this))
+        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
+        this.peer.addEventListener("iceconnectionstatechange", this.onConnectionStateChange.bind(this))
 
         const streamInputConfig = defaultStreamInputConfig()
         Object.assign(streamInputConfig, {
@@ -186,6 +154,14 @@ export class Stream {
             })
 
             this.eventTarget.dispatchEvent(event)
+        }
+        // -- WebRTC Config
+        else if ("WebRtcConfig" in message) {
+            const iceServers = message.WebRtcConfig.ice_servers
+
+            this.peer.setConfiguration({
+                iceServers,
+            })
         }
         // -- Signaling
         else if ("Signaling" in message) {
@@ -298,11 +274,24 @@ export class Stream {
     }
 
     // -- Raw Web Socket stuff
-    private sendWsMessage(message: StreamClientMessage) {
-        this.ws.send(JSON.stringify(message))
+    private wsSendBuffer: Array<string> = []
+
+    private onWsOpen() {
+        for (const raw of this.wsSendBuffer.splice(0, this.wsSendBuffer.length)) {
+            this.ws.send(raw)
+        }
     }
 
-    private async onWsMessage(event: MessageEvent) {
+    private sendWsMessage(message: StreamClientMessage) {
+        const raw = JSON.stringify(message)
+        if (this.ws.readyState == WebSocket.OPEN) {
+            this.ws.send(raw)
+        } else {
+            this.wsSendBuffer.push(raw)
+        }
+    }
+
+    private async onRawWsMessage(event: MessageEvent) {
         const data = event.data
         if (typeof data != "string") {
             return

@@ -1,7 +1,7 @@
 use moonlight_common::ServerState;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
+use webrtc::{ice_transport::ice_server::RTCIceServer, peer_connection::sdp::sdp_type::RTCSdpType};
 
 use crate::ts_consts;
 
@@ -265,13 +265,33 @@ pub enum StreamClientMessage {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub struct WebRtcIceServer {
+    pub urls: Vec<String>,
+    pub username: String,
+    pub credential: String,
+}
+
+impl From<RTCIceServer> for WebRtcIceServer {
+    fn from(value: RTCIceServer) -> Self {
+        Self {
+            urls: value.urls,
+            username: value.username,
+            credential: value.credential,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
+    WebRtcConfig { ice_servers: Vec<WebRtcIceServer> },
+    Signaling(StreamSignalingMessage),
+    // Optional Info
+    UpdateApp { app: App },
     InternalServerError,
     HostNotFound,
     AppNotFound,
     AlreadyStreaming,
-    UpdateApp { app: App },
-    Signaling(StreamSignalingMessage),
     StageStarting { stage: String },
     StageComplete { stage: String },
     StageFailed { stage: String, error_code: i32 },

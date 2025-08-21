@@ -182,11 +182,23 @@ async fn start(
     data: Data<RuntimeApiData>,
     info: StreamInfo,
     settings: StreamSettings,
-    ws_sender: Session,
+    mut ws_sender: Session,
     ws_receiver: MessageStream,
 ) -> Result<Arc<StreamConnection>, anyhow::Error> {
-    // TODO: send webrtc ice servers and other config values required for the rtc peer to the web client
-    // send_ws_message(sender, message)
+    // At this point we're authenticated
+
+    send_ws_message(
+        &mut ws_sender,
+        StreamServerMessage::WebRtcConfig {
+            ice_servers: config
+                .webrtc_ice_servers
+                .iter()
+                .cloned()
+                .map(Into::into)
+                .collect(),
+        },
+    )
+    .await?;
 
     // -- Configure WebRTC
     let rtc_config = RTCConfiguration {

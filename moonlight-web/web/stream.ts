@@ -1,12 +1,13 @@
 import { Api, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { InfoEvent, startStream, Stream } from "./stream/index.js"
+import { InfoEvent, Stream } from "./stream/index.js"
 import { Modal, showMessage, showModal } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
+import { getSupportedVideoFormats } from "./stream/video.js";
 
 async function startApp() {
     const api = await getApi()
@@ -92,7 +93,8 @@ class ViewerApp implements Component {
         let viewerWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
         let viewerHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
 
-        this.stream = await startStream(this.api, hostId, appId, getLocalStreamSettings() ?? defaultStreamSettings(), [viewerWidth, viewerHeight])
+        const supportedVideoFormats = await getSupportedVideoFormats()
+        this.stream = new Stream(this.api, hostId, appId, getLocalStreamSettings() ?? defaultStreamSettings(), supportedVideoFormats, [viewerWidth, viewerHeight])
 
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))
