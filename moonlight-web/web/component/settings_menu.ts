@@ -180,7 +180,11 @@ export class StreamSettingsComponent implements Component {
         this.audioSampleQueueSize.mount(this.divElement)
 
         // Controller
-        this.controllerHeader.innerText = "Controller"
+        if (window.isSecureContext) {
+            this.controllerHeader.innerText = "Controller"
+        } else {
+            this.controllerHeader.innerText = "Controller (Disabled: Secure Context Required)"
+        }
         this.divElement.appendChild(this.controllerHeader)
 
         this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", "Invert A and B", {
@@ -194,6 +198,11 @@ export class StreamSettingsComponent implements Component {
         })
         this.controllerInvertXY.addChangeListener(this.onSettingsChange.bind(this))
         this.controllerInvertXY.mount(this.divElement)
+
+        if (!window.isSecureContext) {
+            this.controllerInvertAB.setEnabled(false)
+            this.controllerInvertXY.setEnabled(false)
+        }
 
         this.onSettingsChange()
     }
