@@ -41,7 +41,30 @@ fn compile_moonlight() -> (String, PathBuf) {
     config.define("BUILD_SHARED_LIBS", "OFF");
 
     if let Ok(ssl_root_dir) = std::env::var("DEP_OPENSSL_ROOT") {
-        config.define("OPENSSL_ROOT_DIR", ssl_root_dir);
+        config.define("OPENSSL_INCLUDE_DIR", format!("{ssl_root_dir}/include"));
+
+        // TODO: file extension .a or .lib
+        config.define(
+            "OPENSSL_CRYPTO_LIBRARY",
+            format!("{ssl_root_dir}/lib/libcrypto.a"),
+        );
+
+        // -- For Cross:
+        // config.define("CMAKE_CROSSCOMPILING", "TRUE");
+        // config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
+
+        // IMPORTANT: Skip the compile-and-run checks that fail in cross-compilation
+        // config.define("OPENSSL_NO_VERIFY", "TRUE");
+
+        // Cross-compilation flags
+        // config.define("CMAKE_FIND_ROOT_PATH_MODE_PROGRAM", "NEVER");
+        // config.define("CMAKE_FIND_ROOT_PATH_MODE_PACKAGE", "BOTH");
+        // config.define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "ONLY");
+        // config.define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH");
+        // config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
+
+        // Prevent CMake try_compile
+        // config.define("OPENSSL_FOUND", "TRUE");
     }
 
     let profile = config.get_profile().to_string();

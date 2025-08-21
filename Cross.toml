@@ -1,0 +1,3 @@
+
+[target.x86_64-pc-windows-gnu]
+pre-build = "./Cross/windows.sh"
