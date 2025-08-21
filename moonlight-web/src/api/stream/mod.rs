@@ -458,13 +458,22 @@ impl StreamConnection {
         // Empty
     }
     async fn renegotiate(&self) {
-        // TODO: remove unwraps
-        let local_description = self.peer.create_offer(None).await.unwrap();
+        let local_description = match self.peer.create_offer(None).await {
+            Err(err) => {
+                warn!("[Signaling]: failed to create offer: {err:?}");
+                return;
+            }
+            Ok(value) => value,
+        };
 
-        self.peer
+        if let Err(err) = self
+            .peer
             .set_local_description(local_description.clone())
             .await
-            .unwrap();
+        {
+            warn!("[Signaling]: failed to set local description: {err:?}");
+            return;
+        }
 
         let _ = send_ws_message(
             &mut self.ws_sender.clone(),
