@@ -12,9 +12,7 @@ license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 moonlight-common = { path = "./moonlight-common" }
-moonlight-common-sys = { path = "./moonlight-common-sys", features = [
-    "vendored",
-] }
+moonlight-common-sys = { path = "./moonlight-common-sys" }
 
 openssl = "0.10.73"
 openssl-sys = "0.9.109"

@@ -1,16 +1,19 @@
+use std::env::var;
 use std::path::PathBuf;
 
 fn main() {
     #[cfg(feature = "generate-bindings")]
     generate_bindings();
 
+    let allow_vendored = var("MOONLIGHT_COMMON_NO_VENDOR").is_err();
+
     #[allow(unused)]
     let moonlight_output: Option<(String, PathBuf)> = None;
 
-    #[cfg(feature = "build-moonlight_common_c")]
-    let moonlight_output = Some(compile_moonlight());
+    #[cfg(feature = "vendored")]
+    let moonlight_output = compile_moonlight(allow_vendored);
 
-    link(moonlight_output);
+    link(moonlight_output, allow_vendored);
 }
 
 #[cfg(feature = "generate-bindings")]
@@ -34,18 +37,22 @@ fn generate_bindings_with_name(header_name: &str, rust_name: &str) {
         .expect("Couldn't write bindings!");
 }
 
-#[cfg(feature = "build-moonlight_common_c")]
-fn compile_moonlight() -> (String, PathBuf) {
+#[cfg(feature = "vendored")]
+fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
+    if !allow_vendored {
+        return None;
+    }
+
     // builds into $OUT_DIR
     let mut config = cmake::Config::new("moonlight-common-c");
     config.define("BUILD_SHARED_LIBS", "OFF");
 
-    if let Ok(ssl_root_dir) = std::env::var("DEP_OPENSSL_ROOT") {
-        config.define("OPENSSL_INCLUDE_DIR", format!("{ssl_root_dir}/include"));
-
+    // Exported from openssl-sys for all dependents
+    if let Ok(ssl_include) = var("DEP_OPENSSL_INCLUDE") {
+        config.define("OPENSSL_INCLUDE_DIR", format!("{ssl_include}/include"));
+    }
+    if let Ok(sll_lib) = var("DEP_OPENSSL_LIB") {
         let lib_ext = {
-            use std::env::var;
-
             let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
             let target_env = var("CARGO_CFG_TARGET_ENV").unwrap();
 
@@ -59,58 +66,51 @@ fn compile_moonlight() -> (String, PathBuf) {
 
         config.define(
             "OPENSSL_CRYPTO_LIBRARY",
-            format!("{ssl_root_dir}/lib/libcrypto.{lib_ext}"),
+            format!("{sll_lib}/libcrypto.{lib_ext}"),
         );
-
-        // -- For Cross:
-        // config.define("CMAKE_CROSSCOMPILING", "TRUE");
-        // config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
-
-        // IMPORTANT: Skip the compile-and-run checks that fail in cross-compilation
-        // config.define("OPENSSL_NO_VERIFY", "TRUE");
-
-        // Cross-compilation flags
-        // config.define("CMAKE_FIND_ROOT_PATH_MODE_PROGRAM", "NEVER");
-        // config.define("CMAKE_FIND_ROOT_PATH_MODE_PACKAGE", "BOTH");
-        // config.define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "ONLY");
-        // config.define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH");
-        // config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
-
-        // Prevent CMake try_compile
-        // config.define("OPENSSL_FOUND", "TRUE");
     }
 
     let profile = config.get_profile().to_string();
-    (profile, config.build())
+    Some((profile, config.build()))
 }
 
-fn link(extra: Option<(String, PathBuf)>) {
-    // ENet
-    #[cfg(feature = "link-enet")]
+fn link(compile_info: Option<(String, PathBuf)>, allow_vendored: bool) {
+    let lib_path = var("MOONLIGHT_COMMON_LIB").ok();
+
+    // Enet
+    if let Some((profile, path)) = &compile_info
+        && allow_vendored
     {
-        if let Some((profile, path)) = &extra {
-            println!(
-                "cargo:rustc-link-search=native={}/build/enet/{profile}",
-                path.display()
-            );
-        }
-        println!("cargo:rustc-link-lib=static=enet");
+        println!(
+            "cargo:rustc-link-search=native={}/build/enet/{profile}",
+            path.display()
+        );
+    } else if let Some(lib_path) = lib_path.as_ref() {
+        println!("cargo:rustc-link-search=native={}/enet", lib_path);
     }
+    println!("cargo:rustc-link-lib=static=enet");
 
     // Moonlight
-    #[cfg(feature = "link-moonlight_common_c")]
+    if let Some((profile, path)) = &compile_info
+        && allow_vendored
     {
-        let (profile, path) = extra.expect("moonlight build output path");
         println!(
             "cargo:rustc-link-search=native={}/build/{profile}",
             path.display(),
         );
-        println!("cargo:rustc-link-lib=static=moonlight-common-c");
+    } else if let Some(lib_path) = lib_path.as_ref() {
+        println!("cargo:rustc-link-search=native={}", lib_path,);
     }
+    println!("cargo:rustc-link-lib=static=moonlight-common-c");
 
     // Windows Debug: msvcrtd.lib
-    #[cfg(all(target_os = "windows", debug_assertions))]
-    if cfg!(debug_assertions) {
+    let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
+    let is_debug = compile_info
+        .as_ref()
+        .map(|(profile, _)| profile)
+        .is_some_and(|profile| profile == "Debug");
+
+    if target_os == "windows" && is_debug {
         println!("cargo:rustc-link-lib=dylib=msvcrtd");
     }
 }
