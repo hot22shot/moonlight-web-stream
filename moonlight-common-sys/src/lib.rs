@@ -2,8 +2,6 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-// TODO: remove mingw definitions in limelight and crypto
-
 #[cfg(feature = "generate-bindings")]
 pub mod limelight {
     include!(concat!(env!("OUT_DIR"), "/limelight.rs"));
