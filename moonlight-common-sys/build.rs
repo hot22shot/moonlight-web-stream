@@ -49,7 +49,7 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
 
     // Exported from openssl-sys for all dependents
     if let Ok(ssl_include) = var("DEP_OPENSSL_INCLUDE") {
-        config.define("OPENSSL_INCLUDE_DIR", format!("{ssl_include}/include"));
+        config.define("OPENSSL_INCLUDE_DIR", ssl_include);
     }
     if let Ok(sll_lib) = var("DEP_OPENSSL_LIB") {
         let lib_ext = {
