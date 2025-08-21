@@ -61,7 +61,7 @@ pub struct DetailedHost {
     pub http_port: u16,
     pub https_port: u16,
     pub external_port: u16,
-    pub version: String, // TODO: server version struct?
+    pub version: String,
     pub gfe_version: String,
     pub unique_id: String,
     pub mac: String,

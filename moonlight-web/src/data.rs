@@ -1,6 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use actix_web::web::{Bytes, Data};
+use futures::future::join_all;
 use log::warn;
 use moonlight_common::{
     PairStatus,
@@ -55,26 +56,30 @@ pub struct RuntimeApiData {
 
 impl RuntimeApiData {
     pub async fn load(config: &Config, data: ApiData, instance: MoonlightInstance) -> Data<Self> {
-        // TODO: do this concurrently
         let mut hosts = Slab::new();
-        for host_data in data.hosts {
+        let loaded_hosts = join_all(data.hosts.into_iter().map(|host_data| async move {
             let mut host =
                 match ReqwestMoonlightHost::new(host_data.address, host_data.http_port, None) {
                     Ok(value) => value,
                     Err(err) => {
                         warn!("[Load]: failed to load host: {err:?}");
-                        continue;
+                        return None;
                     }
                 };
             set_pair_state(&mut host, host_data.paired.as_ref()).await;
 
             let name = host.host_name().await.map(str::to_string).ok();
 
-            hosts.insert(Mutex::new(RuntimeApiHost {
+            Some(RuntimeApiHost {
                 cache_name: name,
                 moonlight: host,
                 app_images_cache: Default::default(),
-            }));
+            })
+        }))
+        .await;
+
+        for loaded_host in loaded_hosts.into_iter().flatten() {
+            hosts.insert(Mutex::new(loaded_host));
         }
 
         // This channel only requires a capacity of 1:
