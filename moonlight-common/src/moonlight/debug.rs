@@ -16,7 +16,7 @@ impl VideoDecoder for NullHandler {
         width: u32,
         height: u32,
         redraw_rate: u32,
-        flags: (),
+        flags: i32,
     ) -> i32 {
         let _ = (format, width, height, redraw_rate, flags);
 
@@ -47,7 +47,7 @@ impl AudioDecoder for NullHandler {
         &mut self,
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
-        ar_flags: (),
+        ar_flags: i32,
     ) -> i32 {
         let _ = (audio_config, stream_config, ar_flags);
 
@@ -143,7 +143,6 @@ impl ConnectionListener for NullHandler {
     }
 }
 
-// TODO: use log crate
 pub struct DebugHandler;
 
 impl ConnectionListener for DebugHandler {

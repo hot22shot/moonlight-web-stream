@@ -33,7 +33,7 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
         &mut self,
         _audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
-        _ar_flags: (),
+        _ar_flags: i32,
     ) -> i32 {
         if let Err(err) = self.decoder.blocking_create_track(
             TrackLocalStaticSample::new(

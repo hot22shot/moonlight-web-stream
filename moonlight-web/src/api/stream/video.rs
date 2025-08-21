@@ -64,7 +64,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         _width: u32,
         _height: u32,
         redraw_rate: u32,
-        _flags: (),
+        _flags: i32,
     ) -> i32 {
         info!("[Stream] Streaming with format: {format:?}");
 
@@ -121,8 +121,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
         let frame_time = self.frame_time;
-        let timestamp =
-            SystemTime::UNIX_EPOCH + Duration::from_millis(unit.presentation_time_ms as u64);
+        let timestamp = SystemTime::UNIX_EPOCH + unit.presentation_time;
         let packet_timestamp =
             (unit.frame_number as f32 * self.frame_time * self.clock_rate as f32) as u32;
         let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;

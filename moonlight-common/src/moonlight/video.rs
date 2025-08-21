@@ -1,4 +1,4 @@
-use std::{ffi::c_void, slice, sync::Mutex};
+use std::{ffi::c_void, slice, sync::Mutex, time::Duration};
 
 use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
@@ -11,8 +11,6 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 
 use crate::moonlight::stream::{Capabilities, Colorspace};
-
-// TODO: make time values into Duration or other fitting values
 
 bitflags! {
     #[derive(Debug, Clone, Copy, Default)]
@@ -100,20 +98,20 @@ pub struct VideoDecodeUnit<'a> {
     /// Zero when the host doesn't provide the latency data
     /// or frame processing latency is not applicable to the current frame
     /// (happens when the frame is repeated).
-    pub frame_processing_latency: u16,
+    pub frame_processing_latency: Option<Duration>,
     /// Receive time of first buffer. This value uses an implementation-defined epoch,
     /// but the same epoch as enqueueTimeMs and LiGetMillis().
-    pub receive_time_ms: u64,
+    pub receive_time: Duration,
     /// Time the frame was fully assembled and queued for the video decoder to process.
     /// This is also approximately the same time as the final packet was received, so
     /// enqueueTimeMs - receiveTimeMs is the time taken to receive the frame. At the
     /// time the decode unit is passed to submitDecodeUnit(), the total queue delay
     /// can be calculated by LiGetMillis() - enqueueTimeMs.
-    pub enqueue_time_ms: u64,
+    pub enqueue_time: Duration,
     /// Presentation time in milliseconds with the epoch at the first captured frame.
     /// This can be used to aid frame pacing or to drop old frames that were queued too
     /// long prior to display.
-    pub presentation_time_ms: u32,
+    pub presentation_time: Duration,
     /// Determines if this frame is SDR or HDR
     ///
     /// Note: This is not currently parsed from the actual bitstream, so if your
@@ -148,7 +146,7 @@ pub trait VideoDecoder {
         width: u32,
         height: u32,
         redraw_rate: u32,
-        flags: (),
+        flags: i32,
     ) -> i32;
 
     /// This callback notifies the decoder that the stream is starting. No frames can be submitted before this callback returns.
@@ -199,7 +197,7 @@ unsafe extern "C" fn setup(
     height: i32,
     redrawRate: i32,
     _context: *mut c_void,
-    _drFlags: i32, // TODO: <--
+    drFlags: i32,
 ) -> i32 {
     global_decoder(|decoder| {
         decoder.setup(
@@ -207,7 +205,7 @@ unsafe extern "C" fn setup(
             width as u32,
             height as u32,
             redrawRate as u32,
-            (), // TODO
+            drFlags,
         )
     })
 }
@@ -217,17 +215,28 @@ unsafe extern "C" fn start() {
     })
 }
 
+static BUFFER: Mutex<Vec<VideoDataBuffer<'static>>> = Mutex::new(Vec::new());
+
 unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> i32 {
     let raw = unsafe { *decode_unit };
 
-    // TODO: store this vec somewhere so we don't realloc every time
-    let mut buffers: Vec<VideoDataBuffer> = Vec::new();
+    // # Safety
+    // This buffer is always cleared after (or before use when poisened)
+    // -> The data will only be able to be here this call
+    let mut buffers = BUFFER.lock().unwrap_or_else(|buf| {
+        let mut buf = buf.into_inner();
+        buf.clear();
+        buf
+    });
 
     let mut next_element_ptr = raw.bufferList;
     while !next_element_ptr.is_null() {
         unsafe {
             let element_raw = *next_element_ptr;
 
+            // # Safety
+            // The element currently has 'static but thats okay
+            // -> Look at the buffer safety
             let new_element = VideoDataBuffer {
                 ty: BufferType::from_i32(element_raw.bufferType).expect("valid buffer type"),
                 data: slice::from_raw_parts(
@@ -244,16 +253,26 @@ unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> i32 {
     let unit = VideoDecodeUnit {
         frame_number: raw.frameNumber,
         frame_type: FrameType::from_i32(raw.frameType).expect("valid FrameType"),
-        frame_processing_latency: raw.frameHostProcessingLatency,
-        receive_time_ms: raw.receiveTimeMs,
-        enqueue_time_ms: raw.enqueueTimeMs,
-        presentation_time_ms: raw.presentationTimeMs,
+        frame_processing_latency: if raw.frameHostProcessingLatency == 0 {
+            None
+        } else {
+            Some(Duration::from_millis(
+                (raw.frameHostProcessingLatency * 10) as u64,
+            ))
+        },
+        receive_time: Duration::from_millis(raw.receiveTimeMs),
+        enqueue_time: Duration::from_millis(raw.enqueueTimeMs),
+        presentation_time: Duration::from_millis(raw.presentationTimeMs as u64),
         color_space: Colorspace::from_u8(raw.colorspace).expect("valid Colorspace"),
         hdr_active: raw.hdrActive,
         buffers: &buffers,
     };
 
-    global_decoder(|decoder| decoder.submit_decode_unit(unit) as i32)
+    let result = global_decoder(|decoder| decoder.submit_decode_unit(unit) as i32);
+
+    buffers.clear();
+
+    result
 }
 
 unsafe extern "C" fn stop() {

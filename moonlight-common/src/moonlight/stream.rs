@@ -170,10 +170,6 @@ pub struct EstimatedRttInfo {
     pub rtt_variance: Duration,
 }
 
-pub struct MoonlightStream {
-    handle: Arc<Handle>,
-}
-
 #[repr(i8)]
 #[derive(Debug, Clone, Copy, FromPrimitive)]
 pub enum KeyAction {
@@ -294,23 +290,21 @@ impl ActiveGamepads {
     }
 }
 
-// TODO: should this be an enum?
-bitflags! {
-    /// Represents the type of controller.
-    ///
-    /// This is used to inform the host of what type of controller has arrived,
-    /// which can help the host decide how to emulate it and what features to expose.
-    #[derive(Debug, Clone, Copy)]
-    pub struct ControllerType: u8 {
-        /// Unknown controller type.
-        const UNKNOWN  = LI_CTYPE_UNKNOWN as u8;
-        /// Microsoft Xbox-compatible controller.
-        const XBOX     = LI_CTYPE_XBOX as u8;
-        /// Sony PlayStation-compatible controller.
-        const PS       = LI_CTYPE_PS as u8;
-        /// Nintendo-compatible controller (e.g., Switch Pro Controller).
-        const NINTENDO = LI_CTYPE_NINTENDO as u8;
-    }
+/// Represents the type of controller.
+///
+/// This is used to inform the host of what type of controller has arrived,
+/// which can help the host decide how to emulate it and what features to expose.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub enum ControllerType {
+    /// Unknown controller type.
+    Unknown = LI_CTYPE_UNKNOWN as u8,
+    /// Microsoft Xbox-compatible controller.
+    Xbox = LI_CTYPE_XBOX as u8,
+    /// Sony PlayStation-compatible controller.
+    PlayStation = LI_CTYPE_PS as u8,
+    /// Nintendo-compatible controller (e.g., Switch Pro Controller).
+    Nintendo = LI_CTYPE_NINTENDO as u8,
 }
 
 bitflags! {
@@ -369,6 +363,10 @@ bitflags! {
     }
 }
 
+pub struct MoonlightStream {
+    handle: Arc<Handle>,
+}
+
 impl MoonlightStream {
     pub(crate) fn start(
         handle: Arc<Handle>,
@@ -386,6 +384,10 @@ impl MoonlightStream {
             if *connection_guard {
                 return Err(MoonlightError::ConnectionAlreadyExists);
             }
+
+            *connection_guard = true;
+
+            drop(connection_guard);
 
             let address = CString::from_str(server_info.address)?;
             let app_version = server_info.app_version.to_string();
@@ -424,6 +426,9 @@ impl MoonlightStream {
                 remoteInputAesIv: transmute::<[u8; 16], [i8; 16]>(remote_input_aes_iv),
             };
 
+            // If something panics this will be dropped -> connection_guard is false again
+            let this = Self { handle };
+
             connection::set_global(connection_listener);
             let mut connection_callbacks = connection::raw_callbacks();
 
@@ -451,27 +456,42 @@ impl MoonlightStream {
                 return Err(MoonlightError::ConnectionFailed);
             }
 
-            *connection_guard = true;
-
-            drop(connection_guard);
-
-            Ok(Self { handle })
+            Ok(this)
         }
     }
 
-    pub fn host_features(&self) -> HostFeatures {
-        let features = unsafe { LiGetHostFeatureFlags() };
+    // For internal use only as it's possible for this connection to be cancelled
+    // and then the next connection setting connection_exists to true
+    fn is_connected(&self) -> bool {
+        let result = self.handle.connection_exists.lock();
 
-        HostFeatures::from_bits(features).expect("valid host feature flags")
+        result.map(|x| *x).unwrap_or(false)
     }
 
+    /// This function returns any extended feature flags supported by the host.
+    pub fn host_features(&self) -> Result<HostFeatures, MoonlightError> {
+        if !self.is_connected() {
+            return Err(MoonlightError::ConnectionFailed);
+        }
+
+        let features = unsafe { LiGetHostFeatureFlags() };
+
+        Ok(HostFeatures::from_bits(features).expect("valid host feature flags"))
+    }
+
+    /// This function returns an estimate of the current RTT to the host PC obtained via ENet
+    /// protocol statistics. This function will fail if the current GFE version does not use
+    /// ENet for the control stream (very old versions), or if the ENet peer is not connected.
+    /// This function may only be called between LiStartConnection() and LiStopConnection().
     pub fn estimated_rtt_info(&self) -> Result<EstimatedRttInfo, MoonlightError> {
-        // TODO: look if we're connected on fail
         unsafe {
             let mut rtt = 0u32;
             let mut rtt_variance = 0u32;
 
             if !LiGetEstimatedRttInfo(&mut rtt as *mut _, &mut rtt_variance as *mut _) {
+                if self.is_connected() {
+                    return Err(MoonlightError::ConnectionFailed);
+                }
                 return Err(MoonlightError::ENetRequired);
             }
 
@@ -489,8 +509,6 @@ impl MoonlightStream {
             _ => Some(MoonlightError::EventSendError(error)),
         }
     }
-
-    // TODO: unify some function types. E.g: controllers
 
     /// This function queues a relative mouse move event to be sent to the remote server.
     pub fn send_mouse_move(&self, delta_x: i16, delta_y: i16) -> Result<(), MoonlightError> {
@@ -808,7 +826,7 @@ impl MoonlightStream {
     /// removed controller and the bit of the removed controller cleared in the active gamepad mask.
     pub fn send_multi_controller(
         &self,
-        controller_number: i16,
+        controller_number: u8,
         active_gamepads: ActiveGamepads,
         buttons: ControllerButtons,
         left_trigger: u8,
@@ -820,7 +838,7 @@ impl MoonlightStream {
     ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendMultiControllerEvent(
-                controller_number,
+                controller_number as i16,
                 active_gamepads.bits() as i16,
                 buttons.bits() as i32,
                 left_trigger,
@@ -856,7 +874,7 @@ impl MoonlightStream {
             if let Some(err) = Self::send_event_error(LiSendControllerArrivalEvent(
                 controller_number,
                 active_gamepads.bits(),
-                ty.bits(),
+                ty as u8,
                 supported_button_flags.bits(),
                 capabilities.bits(),
             )) {
@@ -877,7 +895,7 @@ impl MoonlightStream {
     pub fn send_controller_touch_event(
         &self,
         controller_number: u8,
-        event_type: u8,
+        event_type: TouchEventType,
         pointer_id: u32,
         x: f32,
         y: f32,
@@ -886,7 +904,7 @@ impl MoonlightStream {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendControllerTouchEvent(
                 controller_number,
-                event_type,
+                event_type as u8,
                 pointer_id,
                 x,
                 y,

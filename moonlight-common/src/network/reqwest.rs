@@ -38,7 +38,6 @@ fn build_url(
     let protocol = if use_https { "https" } else { "http" };
 
     let authority = format!("{protocol}://{hostport}/{path}");
-    // TODO: remove unwrap
     let url = Url::parse_with_params(&authority, query_params)?;
 
     Ok(url)

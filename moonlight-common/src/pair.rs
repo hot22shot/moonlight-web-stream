@@ -123,6 +123,12 @@ fn sign_data(private_key: &PKey<Private>, data: &[u8]) -> Result<Vec<u8>, ErrorS
     Ok(out)
 }
 
+fn can_sign_with_pkcs1_sha256(pkey: &PKey<Private>) -> bool {
+    openssl::sign::Signer::new(MessageDigest::sha256(), pkey)
+        .and_then(|mut s| s.update(b"test").and_then(|_| s.sign_to_vec()))
+        .is_ok()
+}
+
 // TOOD: maybe remove this struct?
 #[derive(Clone)]
 pub struct ClientAuth {
@@ -204,10 +210,9 @@ pub async fn host_pair<C: RequestClient>(
     let client_cert = X509::from_der(client_certificate_pem.contents())?;
     let client_private_key = PKey::private_key_from_der(client_private_key_pem.contents())?;
 
-    // TODO: check
-    // if client_private_key. != &PKCS_RSA_SHA256 {
-    //     return Err(PairError::IncorrectPrivateKey);
-    // }
+    if !can_sign_with_pkcs1_sha256(&client_private_key) {
+        return Err(PairError::IncorrectPrivateKey);
+    }
 
     let client_cert_pem = client_certificate_pem.to_string();
 

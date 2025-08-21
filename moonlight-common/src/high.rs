@@ -530,7 +530,6 @@ mod moonlight_crypto {
     where
         C: RequestClient,
     {
-        // TODO: maybe remove bounds on decoder and listener?
         pub async fn start_stream(
             &mut self,
             instance: &MoonlightInstance,

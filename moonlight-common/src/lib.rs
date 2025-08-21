@@ -13,6 +13,10 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum MoonlightError {
+    #[error("couldn't aquire an instance")]
+    InstanceAquire,
+    #[error("a connection is already active")]
+    ConnectionAlreadyExists,
     #[error("the host doesn't support this feature")]
     NotSupportedOnHost,
     #[error("an error happened whilst sending an event")]
@@ -21,12 +25,8 @@ pub enum MoonlightError {
     ENetRequired,
     #[error("a string contained a nul byte which is not allowed in c strings")]
     StringNulError(#[from] NulError),
-    #[error("a moonlight instance already exists")]
-    ConnectionAlreadyExists,
     #[error("couldn't establish a connection")]
     ConnectionFailed,
-    #[error("a moonlight instance already exists")]
-    InstanceAlreadyExists,
     #[error("the client is not paired")]
     NotPaired,
 }
@@ -82,7 +82,6 @@ pub enum ParseServerVersionError {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ServerVersion {
-    // TODO: what are those?
     pub major: i32,
     pub minor: i32,
     pub patch: i32,

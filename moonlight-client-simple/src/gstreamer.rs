@@ -125,7 +125,7 @@ impl VideoDecoder for GStreamerVideoHandler {
 
                 buffer_mut.copy_from_slice(0, buffer.data).unwrap();
 
-                let pts_ns = unit.presentation_time_ms as u64 * 1_000_000;
+                let pts_ns = unit.presentation_time as u64 * 1_000_000;
                 buffer_mut.set_pts(ClockTime::from_nseconds(pts_ns));
                 buffer_mut.set_dts(ClockTime::from_nseconds(pts_ns));
 

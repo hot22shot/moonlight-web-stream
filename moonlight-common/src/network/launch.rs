@@ -1,17 +1,16 @@
-use std::fmt::{self, Write as _};
+use std::fmt::Write as _;
 use std::io::Write as _;
 
 use roxmltree::Document;
 use uuid::fmt::Hyphenated;
 
 use crate::network::request_client::LocalQueryParams;
+use crate::network::{fmt_write_to_buffer, i32_to_str, u32_to_str};
 use crate::{
     moonlight::MoonlightInstance,
     network::{
         ApiError, ClientInfo,
-        request_client::{
-            DynamicQueryParams, QueryBuilder, RequestClient, query_param, query_param_owned,
-        },
+        request_client::{DynamicQueryParams, QueryBuilder, RequestClient, query_param},
         xml_child_text, xml_root_node,
     },
 };
@@ -103,15 +102,21 @@ async fn inner_launch_host<C: RequestClient>(
         query_params.push((name, value));
     }
 
-    // TODO: don't alloc heap
-    query_params.push(query_param_owned("appid", request.app_id.to_string()));
-    query_params.push(query_param_owned(
-        "mode",
-        format!(
+    let mut appid_buffer = [0u8; _];
+    let appid = u32_to_str(request.app_id, &mut appid_buffer);
+    query_params.push(query_param("appid", appid));
+
+    let mut mode_buffer = [0u8; (11 * 3) + 2];
+    let mode = fmt_write_to_buffer(&mut mode_buffer, |writer| {
+        write!(
+            writer,
             "{}x{}x{}",
             request.mode_width, request.mode_height, request.mode_fps
-        ),
-    ));
+        )
+        .expect("write mode")
+    });
+    query_params.push(query_param("mode", mode));
+
     query_params.push(query_param("additionalStates", "1"));
     query_params.push(query_param("sops", if request.sops { "1" } else { "0" }));
 
@@ -206,32 +211,4 @@ pub async fn host_cancel<C: RequestClient>(
     let cancel = xml_child_text::<C>(root, "cancel")?.trim();
 
     Ok(cancel != "0")
-}
-
-struct CounterWriter<'a> {
-    buf: &'a mut [u8],
-    pos: usize, // tracks how many bytes have been written
-}
-
-impl<'a> fmt::Write for CounterWriter<'a> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        let bytes = s.as_bytes();
-        if self.pos + bytes.len() > self.buf.len() {
-            return Err(fmt::Error); // buffer overflow
-        }
-        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
-        self.pos += bytes.len();
-        Ok(())
-    }
-}
-
-fn i32_to_str(num: i32, buffer: &mut [u8; 11]) -> &str {
-    let mut writer = CounterWriter {
-        buf: buffer,
-        pos: 0,
-    };
-    write!(&mut writer, "{num}").expect("format i32 into bytes");
-    let pos = writer.pos;
-
-    str::from_utf8(&buffer[0..pos]).expect("valid utf8 bytes")
 }

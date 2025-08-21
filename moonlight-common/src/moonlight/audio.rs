@@ -60,7 +60,7 @@ pub trait AudioDecoder {
         &mut self,
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
-        ar_flags: (),
+        ar_flags: i32,
     ) -> i32;
 
     /// This callback notifies the decoder that the stream is starting. No audio can be submitted before this callback returns.
@@ -105,7 +105,7 @@ unsafe extern "C" fn setup(
     audioConfiguration: i32,
     opusConfig: POPUS_MULTISTREAM_CONFIGURATION,
     _context: *mut c_void,
-    _arFlags: i32,
+    arFlags: i32,
 ) -> i32 {
     global_decoder(|decoder| {
         let audio_config = AudioConfig(audioConfiguration as u32);
@@ -120,7 +120,7 @@ unsafe extern "C" fn setup(
             mapping: raw_opus_config.mapping,
         };
 
-        decoder.setup(audio_config, opus_config, ())
+        decoder.setup(audio_config, opus_config, arFlags)
     })
 }
 unsafe extern "C" fn start() {

@@ -1,9 +1,6 @@
 use std::{
     ffi::CStr,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterruptConnection};
@@ -29,7 +26,11 @@ pub mod input;
 pub mod stream;
 pub mod video;
 
-static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
+static INSTANCE: LazyLock<Arc<Handle>> = LazyLock::new(|| {
+    Arc::new(Handle {
+        connection_exists: Mutex::new(false),
+    })
+});
 
 pub(crate) struct Handle {
     /// This is also the lock because start / stop Connection is not thread safe
@@ -37,22 +38,8 @@ pub(crate) struct Handle {
 }
 
 impl Handle {
-    fn aquire() -> Option<Self> {
-        if INSTANCE_EXISTS
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
-        {
-            Some(Self {
-                connection_exists: Mutex::new(false),
-            })
-        } else {
-            None
-        }
-    }
-}
-impl Drop for Handle {
-    fn drop(&mut self) {
-        INSTANCE_EXISTS.store(false, Ordering::Relaxed);
+    fn aquire() -> Option<Arc<Self>> {
+        Some(Arc::clone(&INSTANCE))
     }
 }
 
@@ -62,19 +49,17 @@ pub struct MoonlightInstance {
 }
 
 impl MoonlightInstance {
-    // TODO: don't error but use global handle
     pub fn global() -> Result<Self, MoonlightError> {
-        let handle = Handle::aquire().ok_or(MoonlightError::InstanceAlreadyExists)?;
+        let handle = Handle::aquire().ok_or(MoonlightError::InstanceAquire)?;
 
-        Ok(Self {
-            handle: Arc::new(handle),
-        })
+        Ok(Self { handle })
     }
 
     pub fn launch_url_query_parameters(&self) -> &str {
         unsafe {
             // # Safety
             // The returned string is not freed by the caller and should live long enough
+            // https://github.com/moonlight-stream/moonlight-common-c/blob/5f2280183cb62cba1052894d76e64e5f4153377d/src/Connection.c#L537
             let str_raw = LiGetLaunchUrlQueryParameters();
             let str = CStr::from_ptr(str_raw);
             str.to_str().expect("valid moonlight query parameters")

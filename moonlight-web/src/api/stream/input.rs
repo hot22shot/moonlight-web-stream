@@ -135,7 +135,7 @@ impl StreamInput {
                 let _ = stream.send_controller_arrival(
                     i as u8,
                     *gamepads,
-                    ControllerType::UNKNOWN,
+                    ControllerType::Unknown,
                     ControllerButtons::all(),
                     ControllerCapabilities::empty(),
                 );
@@ -313,7 +313,7 @@ impl StreamInput {
                 let _ = stream.send_controller_arrival(
                     id,
                     active_gamepads,
-                    ControllerType::UNKNOWN,
+                    ControllerType::Unknown,
                     supported_buttons,
                     capabilities,
                 );
@@ -369,7 +369,7 @@ impl StreamInput {
             let right_stick_y = buffer.get_i16();
 
             let _ = stream.send_multi_controller(
-                controller_id as i16,
+                controller_id,
                 active_gamepads,
                 buttons,
                 left_trigger,

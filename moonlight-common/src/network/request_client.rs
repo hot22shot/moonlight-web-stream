@@ -8,6 +8,7 @@ pub(crate) fn empty_query_param<'a>() -> (Cow<'a, str>, Cow<'a, str>) {
 pub(crate) fn query_param<'a>(key: &'a str, value: &'a str) -> (Cow<'a, str>, Cow<'a, str>) {
     (Cow::Borrowed(key), Cow::Borrowed(value))
 }
+#[allow(unused)]
 pub(crate) fn query_param_owned<'a>(key: &'a str, value: String) -> (Cow<'a, str>, Cow<'a, str>) {
     (Cow::Borrowed(key), Cow::Owned(value))
 }

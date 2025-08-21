@@ -43,10 +43,23 @@ fn compile_moonlight() -> (String, PathBuf) {
     if let Ok(ssl_root_dir) = std::env::var("DEP_OPENSSL_ROOT") {
         config.define("OPENSSL_INCLUDE_DIR", format!("{ssl_root_dir}/include"));
 
-        // TODO: file extension .a or .lib
+        let lib_ext = {
+            use std::env::var;
+
+            let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
+            let target_env = var("CARGO_CFG_TARGET_ENV").unwrap();
+
+            match (target_os.as_str(), target_env.as_str()) {
+                ("windows", "msvc") => "lib",
+                ("windows", "gnu") => "a",
+                // other OSes
+                (_, _) => "a",
+            }
+        };
+
         config.define(
             "OPENSSL_CRYPTO_LIBRARY",
-            format!("{ssl_root_dir}/lib/libcrypto.a"),
+            format!("{ssl_root_dir}/lib/libcrypto.{lib_ext}"),
         );
 
         // -- For Cross:

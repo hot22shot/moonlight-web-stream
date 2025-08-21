@@ -1,4 +1,6 @@
-use std::{borrow::Cow, num::ParseIntError, str::FromStr, string::FromUtf8Error};
+use std::{
+    borrow::Cow, fmt, fmt::Write as _, num::ParseIntError, str::FromStr, string::FromUtf8Error,
+};
 
 use roxmltree::{Document, Error, Node};
 use thiserror::Error;
@@ -6,9 +8,7 @@ use uuid::{Uuid, fmt::Hyphenated};
 
 use crate::{
     PairStatus, ParseServerStateError, ParseServerVersionError, ServerState, ServerVersion,
-    network::request_client::{
-        LocalQueryParams, QueryBuilder, RequestClient, query_param, query_param_owned,
-    },
+    network::request_client::{LocalQueryParams, QueryBuilder, RequestClient, query_param},
 };
 
 #[derive(Debug, Error)]
@@ -281,8 +281,10 @@ pub async fn host_app_box_art<C: RequestClient>(
     let mut uuid_bytes = [0; Hyphenated::LENGTH];
     info.add_query_params(&mut uuid_bytes, &mut query_params);
 
-    // TODO: don't format use array
-    query_params.push(query_param_owned("appid", format!("{}", request.app_id)));
+    let mut appid_buffer = [0u8; _];
+    let appid = u32_to_str(request.app_id, &mut appid_buffer);
+    query_params.push(query_param("appid", appid));
+
     query_params.push(query_param("AssetType", "2"));
     query_params.push(query_param("AssetIdx", "0"));
 
@@ -292,4 +294,41 @@ pub async fn host_app_box_art<C: RequestClient>(
         .map_err(ApiError::RequestClient)?;
 
     Ok(response)
+}
+
+struct CounterWriter<'a> {
+    buf: &'a mut [u8],
+    pos: usize, // tracks how many bytes have been written
+}
+
+impl<'a> fmt::Write for CounterWriter<'a> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let bytes = s.as_bytes();
+        if self.pos + bytes.len() > self.buf.len() {
+            return Err(fmt::Error); // buffer overflow
+        }
+        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
+        self.pos += bytes.len();
+        Ok(())
+    }
+}
+
+fn i32_to_str(num: i32, buffer: &mut [u8; 11]) -> &str {
+    fmt_write_to_buffer(buffer, |writer| write!(writer, "{num}").expect("write i32"))
+}
+
+fn u32_to_str(num: u32, buffer: &mut [u8; 11]) -> &str {
+    fmt_write_to_buffer(buffer, |writer| write!(writer, "{num}").expect("write u32"))
+}
+fn fmt_write_to_buffer(buffer: &mut [u8], fmt: impl FnOnce(&mut CounterWriter)) -> &str {
+    let mut writer = CounterWriter {
+        buf: buffer,
+        pos: 0,
+    };
+
+    fmt(&mut writer);
+
+    let pos = writer.pos;
+
+    str::from_utf8(&buffer[0..pos]).expect("valid utf8 bytes")
 }
