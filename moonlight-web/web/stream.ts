@@ -8,6 +8,7 @@ import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { getSupportedVideoFormats } from "./stream/video.js";
+import { StreamCapabilities } from "./api_bindings.js";
 
 async function startApp() {
     const api = await getApi()
@@ -118,6 +119,8 @@ class ViewerApp implements Component {
             const app = data.app
 
             document.title = `Stream: ${app.title}`
+        } else if (data.type == "connectionComplete") {
+            this.sidebar.onCapabilitiesChange(data.capabilities)
         }
     }
 
@@ -345,6 +348,10 @@ class ViewerSidebar implements Component, Sidebar {
             preSelectedOption: this.config.touchMode
         })
         this.touchMode.addChangeListener(this.onTouchModeChange.bind(this))
+    }
+
+    onCapabilitiesChange(capabilities: StreamCapabilities) {
+        this.touchMode.setOptionEnabled("touch", capabilities.touch)
     }
 
     // -- Keyboard

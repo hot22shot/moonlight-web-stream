@@ -283,6 +283,12 @@ impl From<RTCIceServer> for WebRtcIceServer {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub struct StreamCapabilities {
+    pub touch: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
     WebRtcConfig { ice_servers: Vec<WebRtcIceServer> },
     Signaling(StreamSignalingMessage),
@@ -295,7 +301,7 @@ pub enum StreamServerMessage {
     StageStarting { stage: String },
     StageComplete { stage: String },
     StageFailed { stage: String, error_code: i32 },
-    ConnectionComplete,
+    ConnectionComplete { capabilities: StreamCapabilities },
     ConnectionTerminated { error_code: i32 },
     PeerDisconnect,
 }

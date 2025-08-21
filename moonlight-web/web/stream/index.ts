@@ -1,5 +1,5 @@
 import { Api } from "../api.js"
-import { App, ConnectionStatus, RtcIceCandidate, StreamClientMessage, StreamServerGeneralMessage, StreamServerMessage } from "../api_bindings.js"
+import { App, ConnectionStatus, RtcIceCandidate, StreamCapabilities, StreamClientMessage, StreamServerGeneralMessage, StreamServerMessage } from "../api_bindings.js"
 import { StreamSettings } from "../component/settings_menu.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { createSupportedVideoFormatsBits, VideoCodecSupport } from "./video.js"
@@ -9,7 +9,7 @@ export type InfoEvent = CustomEvent<
     { type: "error", message: string } |
     { type: "stageStarting" | "stageComplete", stage: string } |
     { type: "stageFailed", stage: string, errorCode: number } |
-    { type: "connectionComplete" } |
+    { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "connectionStatus", status: ConnectionStatus } |
     { type: "connectionTerminated", errorCode: number }
 >
@@ -38,7 +38,6 @@ export class Stream {
 
         this.settings = settings
 
-        // TODO: use addEventListener for all of these events because i like that more
         // Configure web socket
         this.ws = new WebSocket(`${api.host_url}/host/stream`)
         this.ws.addEventListener("error", this.onError.bind(this))
@@ -105,19 +104,11 @@ export class Stream {
 
     private async onMessage(message: StreamServerMessage | StreamServerGeneralMessage) {
         if (typeof message == "string") {
-            if (message == "ConnectionComplete") {
-                const event: InfoEvent = new CustomEvent("stream-info", {
-                    detail: { type: "connectionComplete" }
-                })
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "error", message }
+            })
 
-                this.eventTarget.dispatchEvent(event)
-            } else {
-                const event: InfoEvent = new CustomEvent("stream-info", {
-                    detail: { type: "error", message }
-                })
-
-                this.eventTarget.dispatchEvent(event)
-            }
+            this.eventTarget.dispatchEvent(event)
         } else if ("StageStarting" in message) {
             const event: InfoEvent = new CustomEvent("stream-info", {
                 detail: { type: "stageStarting", stage: message.StageStarting.stage }
@@ -154,6 +145,16 @@ export class Stream {
             })
 
             this.eventTarget.dispatchEvent(event)
+        } else if ("ConnectionComplete" in message) {
+            const capabilities = message.ConnectionComplete.capabilities
+
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "connectionComplete", capabilities }
+            })
+
+            this.eventTarget.dispatchEvent(event)
+
+            this.input.setCapabilities(capabilities)
         }
         // -- WebRTC Config
         else if ("WebRtcConfig" in message) {

@@ -125,6 +125,14 @@ export class SelectComponent extends ElementWithLabel {
         return this.selectElement.value
     }
 
+    setOptionEnabled(value: string, enabled: boolean) {
+        for (const optionElement of this.selectElement.options) {
+            if (optionElement.value == value) {
+                optionElement.disabled = !enabled
+            }
+        }
+    }
+
     addChangeListener(listener: InputChangeListener, options?: AddEventListenerOptions) {
         this.div.addEventListener("ml-change", listener as any, options)
     }

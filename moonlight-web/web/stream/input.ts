@@ -1,4 +1,4 @@
-import { StreamControllerButton, StreamControllerCapabilities, StreamMouseButton } from "../api_bindings.js"
+import { StreamCapabilities, StreamControllerButton, StreamControllerCapabilities, StreamMouseButton } from "../api_bindings.js"
 import { showMessage } from "../component/modal/index.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, convertStandardButton as convertStandardControllerButton, SUPPORTED_BUTTONS } from "./gamepad.js"
@@ -51,6 +51,7 @@ export class StreamInput {
     private buffer: ByteBuffer = new ByteBuffer(1024)
 
     private config: StreamInputConfig
+    private capabilities: StreamCapabilities = { touch: true }
 
     private keyboard: RTCDataChannel | null = null
     private mouse: RTCDataChannel | null = null
@@ -96,6 +97,13 @@ export class StreamInput {
     }
     getConfig(): StreamInputConfig {
         return this.config
+    }
+
+    setCapabilities(capabilities: StreamCapabilities) {
+        this.capabilities = capabilities
+    }
+    getCapabilities(): StreamCapabilities {
+        return this.capabilities
     }
 
     // -- Keyboard

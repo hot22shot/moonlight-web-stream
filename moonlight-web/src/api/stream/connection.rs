@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
-use log::info;
-use moonlight_common::moonlight::connection::{ConnectionListener, ConnectionStatus, Stage};
+use log::{info, warn};
+use moonlight_common::moonlight::{
+    connection::{ConnectionListener, ConnectionStatus, Stage},
+    stream::HostFeatures,
+};
 
 use crate::{
     api::stream::{StreamConnection, send_ws_message, serialize_json},
-    api_bindings::{StreamServerGeneralMessage, StreamServerMessage},
+    api_bindings::{StreamCapabilities, StreamServerGeneralMessage, StreamServerMessage},
 };
 
 pub struct StreamConnectionListener {
@@ -63,12 +66,6 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn connection_started(&mut self) {
-        let mut ws_sender = self.stream.ws_sender.clone();
-
-        self.stream.runtime.spawn(async move {
-            let _ = send_ws_message(&mut ws_sender, StreamServerMessage::ConnectionComplete).await;
-        });
-
         // Renegotate because we now have the audio and video streams
         let stream = self.stream.clone();
         self.stream.runtime.spawn(async move {

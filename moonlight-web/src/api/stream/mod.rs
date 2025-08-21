@@ -13,7 +13,7 @@ use moonlight_common::{
     MoonlightError,
     high::HostError,
     moonlight::{
-        stream::{ColorRange, Colorspace, MoonlightStream},
+        stream::{ColorRange, Colorspace, HostFeatures, MoonlightStream},
         video::SupportedVideoFormats,
     },
 };
@@ -54,8 +54,8 @@ use crate::{
         input::StreamInput, video::TrackSampleVideoDecoder,
     },
     api_bindings::{
-        RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
-        StreamServerMessage, StreamSignalingMessage,
+        RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamCapabilities,
+        StreamClientMessage, StreamServerMessage, StreamSignalingMessage,
     },
     data::RuntimeApiData,
 };
@@ -708,6 +708,24 @@ impl StreamConnection {
         };
 
         self.input.on_stream_start(&stream).await;
+
+        let host_features = stream.host_features().unwrap_or_else(|err| {
+            warn!("[Stream]: failed to get host features: {err:?}");
+            HostFeatures::empty()
+        });
+
+        let capabilities = StreamCapabilities {
+            touch: host_features.contains(HostFeatures::PEN_TOUCH_EVENTS),
+        };
+
+        let mut ws_sender = self.ws_sender.clone();
+        spawn(async move {
+            let _ = send_ws_message(
+                &mut ws_sender,
+                StreamServerMessage::ConnectionComplete { capabilities },
+            )
+            .await;
+        });
 
         drop(gamepads);
 
