@@ -148,6 +148,10 @@ The address and port the website will run on
 ```
 
 ## Building
+Make sure you've cloned this repo with all it's submodules
+```sh
+git clone --recursive TODO:URL
+```
 A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
 
 ### Crate: Moonlight Common Sys
