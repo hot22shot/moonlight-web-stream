@@ -30,6 +30,8 @@ button:hover {
     transition: all 0.2s;
 }
 
+/** TODO: Prettier default inputs for settings / in general */
+
 /** Modal */
 .modal-background {
     display: block;
@@ -110,25 +112,71 @@ button:hover {
 }
 
 /** Sidebar */
-.sidebar-background {
+.sidebar-overlay {
     position: fixed;
-    top: 50%;
-    transform: translate(calc(-100% + 30px), 0);
     z-index: 1;
+}
+
+.sidebar-background {
     display: flex;
-    flex-direction: row-reverse;
     align-items: center;
     gap: 5px;
     /** animation */
     transition: all 0.2s 0s linear;
 }
 
-.sidebar-background.sidebar-show {
-    /** animation */
-    transform: translate(0, 0);
+.sidebar-overlay.sidebar-edge-left {
+    top: 50%;
+    left: 0;
+}
+
+.sidebar-edge-left .sidebar-background {
+    flex-direction: row-reverse;
+    transform: translate(calc(-100% + 40px), -50%);
+}
+
+.sidebar-overlay.sidebar-edge-right {
+    top: 50%;
+    right: 0;
+}
+
+.sidebar-edge-right .sidebar-background {
+    flex-direction: row;
+    transform: translate(calc(100% - 40px), -50%);
+}
+
+.sidebar-edge-left.sidebar-show .sidebar-background,
+.sidebar-edge-right.sidebar-show .sidebar-background {
+    transform: translate(0, -50%);
+}
+
+.sidebar-overlay.sidebar-edge-up {
+    top: 0;
+    left: 50%;
+}
+
+.sidebar-edge-up .sidebar-background {
+    flex-direction: column-reverse;
+    transform: translate(-50%, calc(-100% + 40px));
+}
+
+.sidebar-overlay.sidebar-edge-down {
+    bottom: 0;
+    left: 50%;
+}
+
+.sidebar-edge-down .sidebar-background {
+    flex-direction: column;
+    transform: translate(-50%, calc(100% - 40px));
+}
+
+.sidebar-edge-down.sidebar-show .sidebar-background,
+.sidebar-edge-up.sidebar-show .sidebar-background {
+    transform: translate(-50%, 0);
 }
 
 .sidebar-button {
+    /** Note: Button full size: 30px(width / height) + 5px(padding as in button selector) + 5px(.sidebar-background gap) = 40px */
     width: 30px;
     height: 30px;
     display: flex;
@@ -136,14 +184,30 @@ button:hover {
     justify-content: center;
 }
 
-.sidebar-background .sidebar-button-image {
-    rotate: 180deg;
+.sidebar-button-image {
     transition: all 0.3s linear;
 }
 
-.sidebar-background.sidebar-show .sidebar-button-image {
+.sidebar-edge-left .sidebar-button-image {
+    rotate: 180deg;
+}
+
+.sidebar-edge-right .sidebar-button-image {
     rotate: 0deg;
 }
+
+.sidebar-edge-up .sidebar-button-image {
+    rotate: 270deg;
+}
+
+.sidebar-edge-down .sidebar-button-image {
+    rotate: 90deg;
+}
+
+.sidebar-show .sidebar-button-image {
+    transform: rotate(180deg);
+}
+
 
 .sidebar-content {
     background-color: rgb(86, 92, 100);
@@ -332,6 +396,6 @@ button:hover {
 
 .hiddeninput {
     position: absolute;
-    top: -1000px;
+    z-index: -1000;
     resize: none;
 }

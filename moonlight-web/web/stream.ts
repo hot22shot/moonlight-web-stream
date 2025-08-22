@@ -3,7 +3,7 @@ import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { InfoEvent, Stream } from "./stream/index.js"
 import { Modal, showMessage, showModal } from "./component/modal/index.js";
-import { setSidebar, setSidebarExtended, Sidebar } from "./component/sidebar/index.js";
+import { setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
@@ -95,7 +95,13 @@ class ViewerApp implements Component {
         let viewerHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
 
         const supportedVideoFormats = await getSupportedVideoFormats()
-        this.stream = new Stream(this.api, hostId, appId, getLocalStreamSettings() ?? defaultStreamSettings(), supportedVideoFormats, [viewerWidth, viewerHeight])
+
+        const settings = getLocalStreamSettings() ?? defaultStreamSettings()
+        setSidebarStyle({
+            edge: settings.sidebarEdge,
+        })
+
+        this.stream = new Stream(this.api, hostId, appId, settings, supportedVideoFormats, [viewerWidth, viewerHeight])
 
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))

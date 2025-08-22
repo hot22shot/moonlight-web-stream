@@ -8,23 +8,29 @@ export interface Sidebar extends Component {
 
 let sidebarMounted = false
 let sidebarExtended = false
-const sidebarBackground = document.getElementById("sidebar-background")
+const sidebarRoot = document.getElementById("sidebar-root")
 const sidebarParent = document.getElementById("sidebar-parent")
 const sidebarButton = document.getElementById("sidebar-button")
+
 sidebarButton?.addEventListener("click", toggleSidebar)
+setSidebarStyle({
+    edge: "left"
+})
+
 let sidebarComponent: Sidebar | null = null
 
 export type SidebarEdge = "up" | "down" | "left" | "right"
 export type SidebarStyle = {
     edge?: SidebarEdge
-    alwaysActive?: boolean
 }
 
 export function setSidebarStyle(style: SidebarStyle) {
+    // Default values
     const edge = style.edge ?? "left"
-    const alwaysActive = style.alwaysActive ?? false
 
-    // TODO
+    // Set edge
+    sidebarRoot?.classList.remove("sidebar-edge-left", "sidebar-edge-right", "sidebar-edge-up", "sidebar-edge-down")
+    sidebarRoot?.classList.add(`sidebar-edge-${edge}`)
 }
 
 export function toggleSidebar() {
@@ -36,9 +42,9 @@ export function setSidebarExtended(extended: boolean) {
     }
 
     if (extended) {
-        sidebarBackground?.classList.add("sidebar-show")
+        sidebarRoot?.classList.add("sidebar-show")
     } else {
-        sidebarBackground?.classList.remove("sidebar-show")
+        sidebarRoot?.classList.remove("sidebar-show")
     }
     sidebarExtended = extended
 }

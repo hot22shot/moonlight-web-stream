@@ -1,8 +1,10 @@
 import { ControllerConfig } from "../stream/gamepad.js";
 import { Component, ComponentEvent } from "./index.js";
 import { InputComponent, SelectComponent } from "./input.js";
+import { SidebarEdge } from "./sidebar/index.js";
 
 export type StreamSettings = {
+    sidebarEdge: SidebarEdge,
     bitrate: number
     packetSize: number
     videoSampleQueueSize: number
@@ -19,6 +21,7 @@ export type StreamSettings = {
 
 export function defaultStreamSettings(): StreamSettings {
     return {
+        sidebarEdge: "left",
         bitrate: 5000,
         packetSize: 4096,
         fps: 60,
@@ -64,6 +67,9 @@ export class StreamSettingsComponent implements Component {
 
     private divElement: HTMLDivElement = document.createElement("div")
 
+    private sidebarHeader: HTMLHeadingElement = document.createElement("h2")
+    private sidebarEdge: SelectComponent
+
     // TODO: move these to the input component
     private streamHeader: HTMLHeadingElement = document.createElement("h2")
     private bitrate: InputComponent
@@ -91,6 +97,23 @@ export class StreamSettingsComponent implements Component {
         // Root div
         this.divElement.classList.add("settings")
 
+        // Sidebar
+        this.sidebarHeader.innerText = "Sidebar"
+        this.divElement.appendChild(this.sidebarHeader)
+
+        this.sidebarEdge = new SelectComponent("sidebarEdge", [
+            { value: "left", name: "Left" },
+            { value: "right", name: "Right" },
+            { value: "up", name: "Up" },
+            { value: "down", name: "Down" },
+        ], {
+            displayName: "Sidebar Edge",
+            preSelectedOption: settings?.sidebarEdge ?? defaultSettings.sidebarEdge,
+        })
+        this.sidebarEdge.addChangeListener(this.onSettingsChange.bind(this))
+        this.sidebarEdge.mount(this.divElement)
+
+        // Video
         this.streamHeader.innerText = "Video"
         this.divElement.appendChild(this.streamHeader)
 
@@ -229,6 +252,7 @@ export class StreamSettingsComponent implements Component {
     getStreamSettings(): StreamSettings {
         const settings = defaultStreamSettings()
 
+        settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.bitrate = parseInt(this.bitrate.getValue())
         settings.packetSize = parseInt(this.packetSize.getValue())
         settings.fps = parseInt(this.fps.getValue())
