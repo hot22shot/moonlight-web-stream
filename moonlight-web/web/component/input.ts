@@ -94,7 +94,6 @@ export type SelectInit = {
     displayName?: string,
 }
 
-// TODO: use this where it's useful
 export class SelectComponent extends ElementWithLabel {
 
     private selectElement = document.createElement("select")
