@@ -38,6 +38,14 @@ async function startApp() {
     app.mount(rootElement)
 }
 
+// Prevent starting transition
+window.requestAnimationFrame(() => {
+    const elements = document.getElementsByClassName("prevent-start-transition")
+    for (const element of elements) {
+        element.classList.remove("prevent-start-transition")
+    }
+})
+
 startApp()
 
 class ViewerApp implements Component {

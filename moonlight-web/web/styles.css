@@ -399,3 +399,8 @@ button:hover {
     z-index: -1000;
     resize: none;
 }
+
+/* Prevent starting animation for elements */
+.prevent-start-transition {
+    transition: none;
+}
