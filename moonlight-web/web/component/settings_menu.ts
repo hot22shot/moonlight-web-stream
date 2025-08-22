@@ -70,7 +70,6 @@ export class StreamSettingsComponent implements Component {
     private sidebarHeader: HTMLHeadingElement = document.createElement("h2")
     private sidebarEdge: SelectComponent
 
-    // TODO: move these to the input component
     private streamHeader: HTMLHeadingElement = document.createElement("h2")
     private bitrate: InputComponent
     private packetSize: InputComponent
