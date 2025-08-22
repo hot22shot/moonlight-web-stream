@@ -297,7 +297,6 @@ class ViewerSidebar implements Component, Sidebar {
         this.app = app
 
         // Pop up keyboard
-        // TODO: try to push stream up to account for the pop up keyboard
         this.keyboardButton.innerText = "Keyboard"
         document.addEventListener("click", event => {
             if (event.target != this.keyboardButton) {
