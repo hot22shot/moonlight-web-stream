@@ -40,9 +40,10 @@ async function startApp() {
 
 // Prevent starting transition
 window.requestAnimationFrame(() => {
+    // Note: elements is a live array
     const elements = document.getElementsByClassName("prevent-start-transition")
-    for (const element of elements) {
-        element.classList.remove("prevent-start-transition")
+    while (elements.length > 0) {
+        elements.item(0)?.classList.remove("prevent-start-transition")
     }
 })
 
