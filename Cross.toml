@@ -3,5 +3,5 @@
 # https://docs.lizardbyte.dev/projects/sunshine/latest/md_docs_2building.html
 
 [target.x86_64-pc-windows-gnu]
-pre-build = "./Cross/windows.sh"
+# pre-build = "./Cross/windows.sh"
 # dockerfile= "./Cross/Dockerfile"

@@ -44,31 +44,91 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     }
 
     // builds into $OUT_DIR
+    println!("cargo::rerun-if-changed=moonlight-common-c");
     let mut config = cmake::Config::new("moonlight-common-c");
     config.define("BUILD_SHARED_LIBS", "OFF");
 
-    // Exported from openssl-sys for all dependents
-    if let Ok(ssl_include) = var("DEP_OPENSSL_INCLUDE") {
-        config.define("OPENSSL_INCLUDE_DIR", ssl_include);
+    // TODO: remove Debug
+    for (key, value) in std::env::vars() {
+        println!("cargo::warning=ENV {key}: {value}");
     }
-    if let Ok(sll_lib) = var("DEP_OPENSSL_LIB") {
-        let lib_ext = {
-            let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
-            let target_env = var("CARGO_CFG_TARGET_ENV").unwrap();
 
-            match (target_os.as_str(), target_env.as_str()) {
-                ("windows", "msvc") => "lib",
-                ("windows", "gnu") => "a",
-                // other OSes
-                (_, _) => "a",
-            }
-        };
-
-        config.define(
-            "OPENSSL_CRYPTO_LIBRARY",
-            format!("{sll_lib}/libcrypto.{lib_ext}"),
-        );
+    // -- Link OpenSSL
+    if var("CROSS_SYSROOT").is_ok() {
+        // Cmake won't find files in the mnt dir when using cross this allows that (i think)
+        config.define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH");
+        config.define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "BOTH");
     }
+
+    // Some environment variables are exported from openssl-sys for all dependents
+    // TODO: on env vars change
+    let ssl_include = var("DEP_OPENSSL_INCLUDE")
+        .or(var("OPENSSL_INCLUDE"))
+        .unwrap_or_else(|_| {
+            let mut ssl_root = var("DEP_OPENSSL_ROOT").expect("failed to find openssl");
+            ssl_root.push_str("/include");
+
+            ssl_root
+        });
+    config.define("OPENSSL_INCLUDE_DIR", ssl_include);
+
+    let ssl_lib = var("DEP_OPENSSL_LIB")
+        .or(var("OPENSSL_LIB_DIR"))
+        .unwrap_or_else(|_| {
+            let mut ssl_root = var("DEP_OPENSSL_ROOT").expect("failed to find openssl");
+            ssl_root.push_str("/lib");
+
+            ssl_root
+        });
+    let lib_ext = {
+        let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
+        let target_env = var("CARGO_CFG_TARGET_ENV").unwrap();
+
+        match (target_os.as_str(), target_env.as_str()) {
+            ("windows", "msvc") => "lib",
+            ("windows", "gnu") => "a",
+            // other OSes
+            (_, _) => "a",
+        }
+    };
+
+    config.define(
+        "OPENSSL_CRYPTO_LIBRARY",
+        format!("{ssl_lib}/libcrypto.{lib_ext}"),
+    );
+
+    // Force the library used by openssl
+    config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
+
+    // -- Manually set Enet checks based on os
+    // Disables actually trying to compile the tests when already set
+    config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
+
+    // let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
+    // match target_os.as_str() {
+    //     "windows" => {
+    //         // TODO: isn't this just define?
+    //         config.cflag("-DHAS_GETADDRINFO=1");
+    //         config.cflag("-DHAS_SOCKLEN_T=1");
+    //         config.cflag("-DHAS_INET_PTON=1");
+    //         config.cflag("-DHAS_INET_NTOP=1");
+    //         config.cflag("-DHAS_MSGHDR_FLAGS=0");
+
+    //         // config.cflag("-DSIZEOF_SOCKLEN_T=4");
+    //         // config.cflag("-DHAS_SOCKLEN_T=1");
+    //         // config.cflag("-DSIZEOF_QOS_FLOWID=4");
+    //         // config.cflag("-DHAS_QOS_FLOWID=1");
+    //         // config.cflag("-DSIZEOF_PQOS_FLOWID=8");
+    //         // config.cflag("-DHAS_PQOS_FLOWID=1");
+    //         config.define("_WIN32", "1");
+    //     }
+    //     "linux" => todo!(),
+    //     _ => {
+    //         println!(
+    //             "cargo::warning=Cannot find the predefined enet cmake checks for your target os. If you're cross compiling this might be an issue."
+    //         );
+    //     }
+    // }
 
     let profile = config.get_profile().to_string();
     Some((profile, config.build()))
