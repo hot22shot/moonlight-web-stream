@@ -19,6 +19,7 @@ export function convertToModifiers(event: KeyboardEvent): number {
     return modifiers
 }
 
+// TODO: the zero doesn't work
 // WHY: https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_code_values
 const VK_MAPPINGS: Record<string, number | null> = {
     /* Values on Windows */

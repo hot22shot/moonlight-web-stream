@@ -13,6 +13,7 @@ $targets = @(
     "x86_64-unknown-linux-gnu"
 )
 
+Remove-Item -Path "$outputDir/*" -Recurse -Force
 New-Item -ItemType Directory "$outputDir" -Force
 
 cd ./moonlight-web
