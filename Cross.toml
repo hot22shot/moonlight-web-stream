@@ -1,6 +1,8 @@
-# Maybe helpful for building
-# https://github.com/moonlight-stream/moonlight-qt?tab=readme-ov-file#building
-# https://docs.lizardbyte.dev/projects/sunshine/latest/md_docs_2building.html
+[build]
+dockerfile = "./Cross/Dockerfile"
 
 [target.x86_64-pc-windows-gnu]
-dockerfile = "./Cross/Dockerfile.x86_64-pc-windows-gnu"
+dockerfile = "./Cross/Dockerfile.windows"
+
+[target.i686-pc-windows-gnu]
+dockerfile = "./Cross/Dockerfile.windows"
