@@ -14,6 +14,9 @@ RUN wget -O mingw-w64-headers.zip https://github.com/mirror/mingw-w64/archive/re
 RUN cp -r mingw-w64-master/mingw-w64-headers/include/* /usr/x86_64-w64-mingw32/include/ && \
     rm -rf /tmp/*
 
+# -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib)
+RUN echo "" > /usr/local/share/cmake-3.23/Modules/FindOpenSSL.cmake
+
 # -- Overwrite the toolchain
 COPY Cross/toolchain.cmake /opt/toolchain.cmake
 

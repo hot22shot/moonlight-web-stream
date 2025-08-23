@@ -57,4 +57,3 @@ if(crt STREQUAL "newlib")
 endif()
 
 # -- Moonlight Common C
-set(CMAKE_DISABLE_FIND_PACKAGE_OpenSSL TRUE)
