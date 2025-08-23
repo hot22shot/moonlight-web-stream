@@ -44,9 +44,11 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     }
 
     // builds into $OUT_DIR
+    // TODO: also rerun when other vars change
     println!("cargo::rerun-if-changed=moonlight-common-c");
     let mut config = cmake::Config::new("moonlight-common-c");
     config.define("BUILD_SHARED_LIBS", "OFF");
+    config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
 
     // -- Link OpenSSL: Some environment variables are exported from openssl-sys for all dependents
     // Include
@@ -87,55 +89,23 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     // Force the library used by openssl
     config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
-    // -- Manually set Enet checks based on os
-    // Disables actually trying to compile the tests when already set
-    config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
-
     // TODO: remove Debug
     // for (key, value) in std::env::vars() {
     //     println!("cargo::warning=ENV {key}: {value}");
     // }
 
     // Cross compiling with cross
-    if var("CROSS_SYSROOT").is_ok() {
-        // config.define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "BOTH");
-        // config.define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH");
+    // TODO: pipe this into the toolchain cmake?
+    // TODO: only define this if in cross
+    // config.define("CMAKE_DISABLE_FIND_PACKAGE_OpenSSL", "TRUE");
+    // Disables actually trying to compile the tests when already set
+    // config.define("CMAKE_CROSSCOMPILING", "TRUE");
 
-        config.define("CMAKE_CROSSCOMPILING", "TRUE");
-
-        // Definitions required for some windows headers to enable them
-        // -> qos2.h
-        let c_flags = "-D_WIN32 -D_WIN32_WINNT=0x0600";
-        config.define("CMAKE_C_FLAGS", c_flags);
-        config.define("CMAKE_CXX_FLAGS", c_flags);
-    }
-
-    // TODO: i think this can be removed
-    // let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
-    // match target_os.as_str() {
-    //     "windows" => {
-    //         // TODO: isn't this just define?
-    //         config.cflag("-DHAS_GETADDRINFO=1");
-    //         config.cflag("-DHAS_SOCKLEN_T=1");
-    //         config.cflag("-DHAS_INET_PTON=1");
-    //         config.cflag("-DHAS_INET_NTOP=1");
-    //         config.cflag("-DHAS_MSGHDR_FLAGS=0");
-
-    //         // config.cflag("-DSIZEOF_SOCKLEN_T=4");
-    //         // config.cflag("-DHAS_SOCKLEN_T=1");
-    //         // config.cflag("-DSIZEOF_QOS_FLOWID=4");
-    //         // config.cflag("-DHAS_QOS_FLOWID=1");
-    //         // config.cflag("-DSIZEOF_PQOS_FLOWID=8");
-    //         // config.cflag("-DHAS_PQOS_FLOWID=1");
-    //         config.define("_WIN32", "1");
-    //     }
-    //     "linux" => todo!(),
-    //     _ => {
-    //         println!(
-    //             "cargo::warning=Cannot find the predefined enet cmake checks for your target os. If you're cross compiling this might be an issue."
-    //         );
-    //     }
-    // }
+    // Definitions required for some windows headers to enable them
+    // -> qos2.h
+    let flags = "-D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID";
+    config.cflag(flags);
+    config.cxxflag(flags);
 
     let profile = config.get_profile().to_string();
     Some((profile, config.build()))
@@ -152,6 +122,10 @@ fn link(compile_info: Option<(String, PathBuf)>, allow_vendored: bool) {
             "cargo:rustc-link-search=native={}/build/enet/{profile}",
             path.display()
         );
+        println!(
+            "cargo:rustc-link-search=native={}/build/enet",
+            path.display()
+        );
     } else if let Some(lib_path) = lib_path.as_ref() {
         println!("cargo:rustc-link-search=native={}/enet", lib_path);
     }
@@ -165,8 +139,9 @@ fn link(compile_info: Option<(String, PathBuf)>, allow_vendored: bool) {
             "cargo:rustc-link-search=native={}/build/{profile}",
             path.display(),
         );
+        println!("cargo:rustc-link-search=native={}/build", path.display(),);
     } else if let Some(lib_path) = lib_path.as_ref() {
-        println!("cargo:rustc-link-search=native={}", lib_path,);
+        println!("cargo:rustc-link-search=native={}", lib_path);
     }
     println!("cargo:rustc-link-lib=static=moonlight-common-c");
 

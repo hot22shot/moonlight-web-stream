@@ -3,4 +3,4 @@
 # https://docs.lizardbyte.dev/projects/sunshine/latest/md_docs_2building.html
 
 [target.x86_64-pc-windows-gnu]
-dockerfile = "./Cross/Windows"
+dockerfile = "./Cross/Dockerfile.x86_64-pc-windows-gnu"

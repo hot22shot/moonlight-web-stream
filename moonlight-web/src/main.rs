@@ -35,6 +35,7 @@ async fn main() -> std::io::Result<()> {
     // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
+        // TODO: don't panic
         panic!("enter your credentials in the config (server/config.json)");
     }
     let config = Data::new(config);
