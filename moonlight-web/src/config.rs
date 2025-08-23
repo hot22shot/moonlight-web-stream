@@ -20,6 +20,8 @@ pub struct Config {
     pub webrtc_port_range: Option<PortRange>,
     #[serde(default)]
     pub webrtc_nat_1to1_ips: Vec<String>,
+    #[serde(default)]
+    pub web_path_prefix: String,
     pub certificate: Option<ConfigSsl>,
 }
 
@@ -46,6 +48,7 @@ impl Default for Config {
             webrtc_port_range: Default::default(),
             webrtc_nat_1to1_ips: Default::default(),
             pair_device_name: default_pair_device_name(),
+            web_path_prefix: String::new(),
             certificate: None,
         }
     }

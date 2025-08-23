@@ -25,9 +25,9 @@ More optional configurations:
 ### Streaming over the Internet
 When in a local network the WebRTC Peers will negotatiate without any problems. However when you want to play over the internet without being in the same network as Moonlight Web, you'll have to configure it and forward ports.
 
-1) Forward the web server port (default is 8080)
+1. Forward the web server port (default is 8080)
 
-2) Set the port range used by the WebRTC Peer to a fixed range in the [config](#config):
+2. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config):
 ```json
 {
     ..
@@ -39,9 +39,9 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 }
 ```
 
-3) Forward the port range specified in the previous step as `udp` and `tcp` ports.
+3. Forward the port range specified in the previous step as `udp` and `tcp` ports.
 
-4) Configure WebRTC to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC Stun will automatically detect them):
+4. Configure WebRTC to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC Stun will automatically detect them):
 ```json
 {
     ..
@@ -55,7 +55,7 @@ If you're Apache 2, you can also proxy the webpage with it: [Proxying via Apache
 ### Configuring https
 You can configure https directly with the Moonlight Web Server.
 
-1) You'll need a private key and a certificate.
+1. You'll need a private key and a certificate.
 
 You can generate a self signed certificate with this python script [moonlight-web/generate_certificate.py](moonlight-web/generate_certificate.py):
 
@@ -64,9 +64,9 @@ pip install pyOpenSSL
 python ./moonlight-web/generate_certificate.py
 ```
 
-2) Copy the files `server/key.pem` and `server/cert.pem` into your `server` directory.
+2. Copy the files `server/key.pem` and `server/cert.pem` into your `server` directory.
 
-3) Modify the [config](#config) to enable https using the certificates
+3. Modify the [config](#config) to enable https using the certificates
 ```json
 {
     ..
@@ -84,13 +84,13 @@ It's possible to proxy the Moonlight Website using [Apache 2](https://httpd.apac
 Note:
 When you want to use https, the Moonlight Website should use http so that Apache 2 will handle all the https encryption.
 
-1) Enable the modules `mod_proxy`, `mod_proxy_wstunnel`
+1. Enable the modules `mod_proxy`, `mod_proxy_wstunnel`
 
 ```sh
 sudo a2enmod mod_proxy mod_proxy_wstunnel
 ```
 
-2) Create a new file under `/etc/apache2/conf-available/moonlight-web.conf` with the content:
+2. Create a new file under `/etc/apache2/conf-available/moonlight-web.conf` with the content:
 ```
 # Example subpath "/moonlight" -> To connect you'd go to "http://yourip.com/moonlight/"
 Define MOONLIGHT_SUBPATH /moonlight
@@ -109,15 +109,15 @@ ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_DEV}/
 ProxyPassReverse ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_DEV}/
 ```
 
-3) Enable the created config file
+3. Enable the created config file
 ```sh
 sudo a2enconf moonlight-web
 ```
 
-4) Change config to include the prefixed path
+4. Change config to include the prefixed path
 TODO: LINK TO CONFIG
 
-5) Use https with a certificate (Optional)
+5. Use https with a certificate (Optional)
 
 ## Config
 The config file is under `server/config.json` relative to the executable.
@@ -187,12 +187,38 @@ This is mostly optional because stun server can figure out the public ip.
 }
 ```
 
+### Web Path Prefix
+This is useful when rerouting the web page using services like [Apache 2](#proxying-via-apache-2).
+Will always append the prefix to all requests made by the website.
+
+```json
+{
+    ..
+    "web_path_prefix": "/test"
+    ..
+}
+```
+
 ## Building
 Make sure you've cloned this repo with all it's submodules
 ```sh
 git clone --recursive TODO:URL
 ```
 A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
+
+There are 2 ways to build [Moonlight Web](#moonlight-web):
+- Build it on your system
+
+  When you want to build it on your system take a look at how to compile the crates:
+  - [moonlight common sys](#crate-moonlight-common-sys)
+  - [moonlight web](#crate-moonlight-web)
+
+- Compile using [Cargo Cross](https://github.com/cross-rs/cross)
+
+  After you've got a successful installation of cross just run the command in the [moonlight web](moonlight-web/) directory
+  ```sh
+  cross build --release --target YOUR_TARGET
+  ```
 
 ### Crate: Moonlight Common Sys
 [moonlight-common-sys](./moonlight-common-sys/) are rust bindings to the cpp [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library.

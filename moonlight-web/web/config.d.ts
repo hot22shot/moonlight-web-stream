@@ -1,5 +1,5 @@
 interface Config {
-    pathPrefix: string
+    path_prefix: string
 }
 
 declare const CONFIG: Config | undefined

@@ -3,7 +3,7 @@ use std::{io::ErrorKind, path::Path};
 use tokio::fs;
 
 use actix_web::{App, HttpServer, web::Data};
-use log::{LevelFilter, info};
+use log::{LevelFilter, info, warn};
 use moonlight_common::moonlight::MoonlightInstance;
 use serde::{Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
@@ -36,9 +36,34 @@ async fn main() -> std::io::Result<()> {
     let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
         // TODO: don't panic
-        panic!("enter your credentials in the config (server/config.json)");
+        info!("enter your credentials in the config (server/config.json)");
+        return Ok(());
     }
     let config = Data::new(config);
+
+    // Write the static config.js
+    #[cfg(debug_assertions)]
+    let config_js_path = "./dist/config.js";
+    #[cfg(not(debug_assertions))]
+    let config_js_path = "./static/config.js";
+
+    match serde_json::to_string(&PublicConfigJs {
+        path_prefix: config.web_path_prefix.clone(),
+    }) {
+        Ok(json) => {
+            if let Err(err) = fs::write(config_js_path, &format!("export default {json}")).await {
+                warn!(
+                    "failed to write to the web config.js. The Web Interface might fail to load! {err:?}"
+                );
+            }
+        }
+        Err(err) => {
+            warn!(
+                "failed to write to the web config.js. The Web Interface might fail to load! {err:?}"
+            );
+        }
+    }
+
     let bind_address = config.bind_address;
 
     // Load Data
@@ -77,6 +102,11 @@ async fn main() -> std::io::Result<()> {
     } else {
         server.bind(bind_address)?.run().await
     }
+}
+
+#[derive(Debug, Serialize)]
+struct PublicConfigJs {
+    path_prefix: String,
 }
 
 async fn read_or_default<T>(path: impl AsRef<Path>) -> T

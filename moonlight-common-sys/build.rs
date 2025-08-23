@@ -51,6 +51,10 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
 
     // -- Link OpenSSL: Some environment variables are exported from openssl-sys for all dependents
+    if let Ok(ssl_root) = var("DEP_OPENSSL_ROOT").or_else(|_| var("OPENSSL_ROOT_DIR")) {
+        config.define("OPENSSL_ROOT_DIR", ssl_root);
+    }
+
     // Include
     let ssl_include = var("DEP_OPENSSL_INCLUDE")
         .or(var("OPENSSL_INCLUDE"))
