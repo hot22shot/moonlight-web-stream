@@ -89,23 +89,18 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     // Force the library used by openssl
     config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
-    // TODO: remove Debug
-    // for (key, value) in std::env::vars() {
-    //     println!("cargo::warning=ENV {key}: {value}");
-    // }
+    // If we're in cargo cross
+    if let Ok("1") = var("MOONLIGHT_COMMON_CROSS").as_deref() {
+        let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
 
-    // Cross compiling with cross
-    // TODO: pipe this into the toolchain cmake?
-    // TODO: only define this if in cross
-    // config.define("CMAKE_DISABLE_FIND_PACKAGE_OpenSSL", "TRUE");
-    // Disables actually trying to compile the tests when already set
-    // config.define("CMAKE_CROSSCOMPILING", "TRUE");
-
-    // Definitions required for some windows headers to enable them
-    // -> qos2.h
-    let flags = "-D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID";
-    config.cflag(flags);
-    config.cxxflag(flags);
+        if target_os == "windows" {
+            // Definitions required for some windows headers to enable them
+            // -> qos2.h
+            let flags = "-D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID";
+            config.cflag(flags);
+            config.cxxflag(flags);
+        }
+    }
 
     let profile = config.get_profile().to_string();
     Some((profile, config.build()))

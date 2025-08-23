@@ -17,8 +17,8 @@ RUN cp -r mingw-w64-master/mingw-w64-headers/include/* /usr/x86_64-w64-mingw32/i
 # -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib)
 RUN echo "" > /usr/local/share/cmake-3.23/Modules/FindOpenSSL.cmake
 
-# -- Overwrite the toolchain
-COPY Cross/toolchain.cmake /opt/toolchain.cmake
+# -- This will enable functionality for cross in the build rs
+ENV MOONLIGHT_COMMON_CROSS=1
 
 # -- Some moonlight common c files require windows headers but they have them capitalized so we just symlink them to fix that
 RUN ln -s /usr/x86_64-w64-mingw32/include/ws2tcpip.h /usr/x86_64-w64-mingw32/include/Ws2tcpip.h && \
