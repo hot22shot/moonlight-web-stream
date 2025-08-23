@@ -41,7 +41,7 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 
 3) Forward the port range specified in the previous step as `udp` and `tcp` ports.
 
-4) Configure WebRTC to advertise your [public ip](https://whatismyipaddress.com/) (TODO: Optional?):
+4) Configure WebRTC to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC Stun will automatically detect them):
 ```json
 {
     ..
