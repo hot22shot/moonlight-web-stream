@@ -115,6 +115,7 @@ button:hover {
 .sidebar-overlay {
     position: fixed;
     z-index: 1;
+    pointer-events: none;
 }
 
 .sidebar-background {
@@ -123,6 +124,10 @@ button:hover {
     gap: 5px;
     /** animation */
     transition: all 0.2s 0s linear;
+}
+
+.sidebar-background * {
+    pointer-events: all;
 }
 
 .sidebar-overlay.sidebar-edge-left {
