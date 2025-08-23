@@ -27,7 +27,7 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 
 1) Forward the web server port (default is 8080)
 
-2) Set the port range used by the WebRTC Peer to a fixed range in the config:
+2) Set the port range used by the WebRTC Peer to a fixed range in the [config](#config):
 ```json
 {
     ..
@@ -66,7 +66,7 @@ python ./moonlight-web/generate_certificate.py
 
 2) Copy the files `server/key.pem` and `server/cert.pem` into your `server` directory.
 
-3) Modify the config to enable https using the certificates
+3) Modify the [config](#config) to enable https using the certificates
 ```json
 {
     ..
@@ -147,6 +147,46 @@ The address and port the website will run on
 }
 ```
 
+### Https Certificates
+If enabled the web server will use https with the provided certificate data
+
+```json
+{
+    ..
+    "certificate": {
+        "private_key_pem": "./server/key.pem",
+        "certificate_pem": "./server/cert.pem"
+    }
+    ..
+}
+```
+
+### WebRTC Port Range
+This will set the port range on the web server used to communicate when using WebRTC
+
+```json
+{
+    ..
+    "webrtc_port_range": {
+        "min": 40000,
+        "max": 40010
+    }
+    ..
+}
+```
+
+### WebRTC Ip
+This will advertise the ip as a ice candidate on the web server.
+This is mostly optional because stun server can figure out the public ip.
+
+```json
+{
+    ..
+    "webrtc_nat_1to1_ips": "74.125.224.72"
+    ..
+}
+```
+
 ## Building
 Make sure you've cloned this repo with all it's submodules
 ```sh
@@ -180,6 +220,7 @@ cargo build --release
 
 Build the web frontend with:
 ```sh
+npm run install
 npm run build
 ```
 The build output will be in `moonlight-web/dist`. The dist folder needs to be called `static` and in the same directory as the executable.
