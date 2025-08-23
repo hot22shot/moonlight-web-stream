@@ -48,20 +48,8 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     let mut config = cmake::Config::new("moonlight-common-c");
     config.define("BUILD_SHARED_LIBS", "OFF");
 
-    // TODO: remove Debug
-    for (key, value) in std::env::vars() {
-        println!("cargo::warning=ENV {key}: {value}");
-    }
-
-    // -- Link OpenSSL
-    if var("CROSS_SYSROOT").is_ok() {
-        // Cmake won't find files in the mnt dir when using cross this allows that (i think)
-        config.define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH");
-        config.define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "BOTH");
-    }
-
-    // Some environment variables are exported from openssl-sys for all dependents
-    // TODO: on env vars change
+    // -- Link OpenSSL: Some environment variables are exported from openssl-sys for all dependents
+    // Include
     let ssl_include = var("DEP_OPENSSL_INCLUDE")
         .or(var("OPENSSL_INCLUDE"))
         .unwrap_or_else(|_| {
@@ -72,7 +60,8 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
         });
     config.define("OPENSSL_INCLUDE_DIR", ssl_include);
 
-    let ssl_lib = var("DEP_OPENSSL_LIB")
+    // Lib
+    let ssl_libs = var("DEP_OPENSSL_LIB")
         .or(var("OPENSSL_LIB_DIR"))
         .unwrap_or_else(|_| {
             let mut ssl_root = var("DEP_OPENSSL_ROOT").expect("failed to find openssl");
@@ -92,10 +81,8 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
         }
     };
 
-    config.define(
-        "OPENSSL_CRYPTO_LIBRARY",
-        format!("{ssl_lib}/libcrypto.{lib_ext}"),
-    );
+    let crypto_lib = format!("{ssl_libs}/libcrypto.{lib_ext}");
+    config.define("OPENSSL_CRYPTO_LIBRARY", &crypto_lib);
 
     // Force the library used by openssl
     config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
@@ -104,6 +91,26 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     // Disables actually trying to compile the tests when already set
     config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
 
+    // TODO: remove Debug
+    // for (key, value) in std::env::vars() {
+    //     println!("cargo::warning=ENV {key}: {value}");
+    // }
+
+    // Cross compiling with cross
+    if var("CROSS_SYSROOT").is_ok() {
+        // config.define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "BOTH");
+        // config.define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH");
+
+        config.define("CMAKE_CROSSCOMPILING", "TRUE");
+
+        // Definitions required for some windows headers to enable them
+        // -> qos2.h
+        let c_flags = "-D_WIN32 -D_WIN32_WINNT=0x0600";
+        config.define("CMAKE_C_FLAGS", c_flags);
+        config.define("CMAKE_CXX_FLAGS", c_flags);
+    }
+
+    // TODO: i think this can be removed
     // let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
     // match target_os.as_str() {
     //     "windows" => {

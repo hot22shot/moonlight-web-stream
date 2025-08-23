@@ -1,0 +1,6 @@
+FROM ghcr.io/cross-rs/x86_64-pc-windows-gnu:latest
+
+# Some moonlight common c files require windows headers but they have them capitalized so we just symlink them to fix that
+RUN ln -s /usr/x86_64-w64-mingw32/include/ws2tcpip.h /usr/x86_64-w64-mingw32/include/Ws2tcpip.h && \
+    ln -s /usr/x86_64-w64-mingw32/include/mswsock.h /usr/x86_64-w64-mingw32/include/Mswsock.h && \
+    ln -s /usr/x86_64-w64-mingw32/include/versionhelpers.h /usr/x86_64-w64-mingw32/include/VersionHelpers.h
