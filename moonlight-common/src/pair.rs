@@ -9,6 +9,7 @@ use openssl::{
     md::Md,
     md_ctx::MdCtx,
     pkey::{PKey, Private},
+    rand::rand_bytes,
     rsa::Rsa,
     sha::{sha1, sha256},
     x509::{X509, X509Builder, X509NameBuilder},
@@ -17,8 +18,8 @@ use pem::{Pem, PemError};
 use thiserror::Error;
 
 use crate::{
-    CHALLENGE_LENGTH, PairPin, PairStatus, SALT_LENGTH, ServerVersion,
-    moonlight::crypto::{HashAlgorithm, MoonlightCrypto},
+    CHALLENGE_LENGTH, HashAlgorithm, PairPin, PairStatus, SALT_LENGTH, ServerVersion,
+    hash_algorithm_for_server,
     network::{
         ApiError, ClientInfo,
         pair::{
@@ -197,7 +198,6 @@ pub enum PairError<RequestError> {
 }
 
 pub async fn host_pair<C: RequestClient>(
-    crypto: &MoonlightCrypto,
     client: &mut C,
     http_address: &str,
     client_info: ClientInfo<'_>,
@@ -216,9 +216,11 @@ pub async fn host_pair<C: RequestClient>(
 
     let client_cert_pem = client_certificate_pem.to_string();
 
-    let hash_algorithm = crypto.hash_algorithm_for_server(server_version);
+    let hash_algorithm = hash_algorithm_for_server(server_version);
 
-    let salt = crypto.generate_salt();
+    let mut salt = [0u8; SALT_LENGTH];
+    rand_bytes(&mut salt)?;
+
     let aes_key = generate_aes_key(hash_algorithm, salt, pin);
 
     let server_response1 = host_pair1(
@@ -245,7 +247,7 @@ pub async fn host_pair<C: RequestClient>(
     let server_cert = X509::from_der(server_cert_pem.contents())?;
 
     let mut challenge = [0u8; CHALLENGE_LENGTH];
-    crypto.generate_random(&mut challenge);
+    rand_bytes(&mut challenge)?;
 
     let encrypted_challenge = encrypt_aes(&aes_key, &challenge)?;
 
@@ -273,7 +275,7 @@ pub async fn host_pair<C: RequestClient>(
         &response[hash_algorithm.hash_len()..hash_algorithm.hash_len() + CHALLENGE_LENGTH];
 
     let mut client_secret = [0u8; 16];
-    crypto.generate_random(&mut client_secret);
+    rand_bytes(&mut client_secret)?;
 
     let mut challenge_response = Vec::new();
     challenge_response.extend_from_slice(server_challenge);

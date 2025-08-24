@@ -4,6 +4,7 @@ members = [
     "moonlight-client-simple",
     "moonlight-common",
     "moonlight-common-sys",
+    "moonlight-web/streamer",
     "moonlight-web/web-server",
 ]
 
@@ -11,8 +12,10 @@ members = [
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
-moonlight-common = { path = "./moonlight-common" }
-moonlight-common-sys = { path = "./moonlight-common-sys" }
+moonlight-common = { path = "./moonlight-common", default-features = false }
+moonlight-common-sys = { path = "./moonlight-common-sys", default-features = false }
+
+tokio = { version = "1.47.1" }
 
 openssl = "0.10.73"
 openssl-sys = "0.9.109"

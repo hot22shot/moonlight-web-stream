@@ -23,6 +23,8 @@ pub struct Config {
     #[serde(default)]
     pub web_path_prefix: String,
     pub certificate: Option<ConfigSsl>,
+    #[serde(default = "default_streamer_path")]
+    pub streamer_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +52,7 @@ impl Default for Config {
             pair_device_name: default_pair_device_name(),
             web_path_prefix: String::new(),
             certificate: None,
+            streamer_path: default_streamer_path(),
         }
     }
 }
@@ -86,4 +89,8 @@ fn default_ice_servers() -> Vec<RTCIceServer> {
 
 fn default_pair_device_name() -> String {
     "roth".to_string()
+}
+
+fn default_streamer_path() -> String {
+    "./streamer".to_string()
 }

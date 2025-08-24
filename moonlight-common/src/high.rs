@@ -8,9 +8,6 @@ use uuid::Uuid;
 
 use crate::{
     Error, MoonlightError, PairPin, PairStatus, ServerState, ServerVersion,
-    moonlight::{
-        crypto::MoonlightCrypto, stream::ServerCodeModeSupport, video::SupportedVideoFormats,
-    },
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, DEFAULT_UNIQUE_ID, HostInfo,
         ServerAppListResponse, host_app_box_art, host_app_list, host_info, launch::host_cancel,
@@ -293,7 +290,6 @@ where
 
     pub async fn pair(
         &mut self,
-        crypto: &MoonlightCrypto,
         auth: &ClientAuth,
         device_name: String,
         pin: PairPin,
@@ -309,7 +305,6 @@ where
         let mut client = C::with_defaults_long_timeout().map_err(ApiError::RequestClient)?;
 
         let PairSuccess { server_certificate } = host_pair(
-            crypto,
             &mut client,
             &http_address,
             client_info,
@@ -417,66 +412,6 @@ where
         Ok(response)
     }
 
-    // Stream config correction
-    pub async fn is_hdr_supported(&mut self) -> Result<bool, HostError<C::Error>> {
-        let server_codec_mode_support = self.server_codec_mode_support().await?;
-
-        Ok(
-            server_codec_mode_support.contains(ServerCodeModeSupport::HEVC_MAIN10)
-                || server_codec_mode_support.contains(ServerCodeModeSupport::AV1_MAIN10),
-        )
-    }
-    pub async fn is_4k_supported(&mut self) -> Result<bool, HostError<C::Error>> {
-        let is_nvidia = self.is_nvidia_software().await?;
-        let server_codec_mode_support = self.server_codec_mode_support().await?;
-
-        Ok(server_codec_mode_support.contains(ServerCodeModeSupport::HEVC_MAIN10) || !is_nvidia)
-    }
-    pub async fn is_4k_supported_gfe(&mut self) -> Result<bool, HostError<C::Error>> {
-        let gfe = self.gfe_version().await?;
-
-        Ok(!gfe.starts_with("2."))
-    }
-
-    pub async fn is_resolution_supported(
-        &mut self,
-        width: usize,
-        height: usize,
-        supported_video_formats: SupportedVideoFormats,
-    ) -> Result<(), HostError<C::Error>> {
-        let resolution_above_4k = width > 4096 || height > 4096;
-
-        if resolution_above_4k && !self.is_4k_supported().await? {
-            return Err(StreamConfigError::NotSupported4k.into());
-        } else if resolution_above_4k
-            && supported_video_formats.contains(!SupportedVideoFormats::MASK_H264)
-        {
-            return Err(StreamConfigError::NotSupported4kCodecMissing.into());
-        } else if height > 2160 && self.is_4k_supported_gfe().await? {
-            return Err(StreamConfigError::NotSupported4kUpdateGfe.into());
-        }
-
-        Ok(())
-    }
-
-    pub async fn should_disable_sops(
-        &mut self,
-        width: usize,
-        height: usize,
-    ) -> Result<bool, HostError<C::Error>> {
-        // Using an unsupported resolution (not 720p, 1080p, or 4K) causes
-        // GFE to force SOPS to 720p60. This is fine for < 720p resolutions like
-        // 360p or 480p, but it is not ideal for 1440p and other resolutions.
-        // When we detect an unsupported resolution, disable SOPS unless it's under 720p.
-        // FIXME: Detect support resolutions using the serverinfo response, not a hardcoded list
-        const NVIDIA_SUPPORTED_RESOLUTIONS: &[(usize, usize)] =
-            &[(1280, 720), (1920, 1080), (3840, 2160)];
-
-        let is_nvidia = self.is_nvidia_software().await?;
-
-        Ok(!NVIDIA_SUPPORTED_RESOLUTIONS.contains(&(width, height)) && is_nvidia)
-    }
-
     pub async fn cancel(&mut self) -> Result<bool, HostError<C::Error>> {
         self.check_paired()?;
 
@@ -501,8 +436,9 @@ where
     }
 }
 
-#[cfg(all(feature = "moonlight", feature = "crypto"))]
-mod moonlight_crypto {
+#[cfg(feature = "moonlight")]
+mod stream {
+    use openssl::rand::rand_bytes;
     use tokio::task::spawn_blocking;
     use uuid::Uuid;
 
@@ -512,28 +448,90 @@ mod moonlight_crypto {
             MoonlightInstance,
             audio::AudioDecoder,
             connection::ConnectionListener,
-            crypto::MoonlightCrypto,
             stream::{
                 ActiveGamepads, ColorRange, Colorspace, EncryptionFlags, MoonlightStream,
-                ServerInfo, StreamConfiguration, StreamingConfig,
+                ServerCodeModeSupport, ServerInfo, StreamConfiguration, StreamingConfig,
             },
-            video::VideoDecoder,
+            video::{SupportedVideoFormats, VideoDecoder},
         },
         network::{
             ClientInfo,
             launch::{ClientStreamRequest, host_launch, host_resume},
             request_client::RequestClient,
         },
+        pair::PairError,
     };
 
     impl<C> MoonlightHost<C>
     where
         C: RequestClient,
     {
+        // Stream config correction
+        pub async fn is_hdr_supported(&mut self) -> Result<bool, HostError<C::Error>> {
+            let server_codec_mode_support = self.server_codec_mode_support().await?;
+
+            Ok(
+                server_codec_mode_support.contains(ServerCodeModeSupport::HEVC_MAIN10)
+                    || server_codec_mode_support.contains(ServerCodeModeSupport::AV1_MAIN10),
+            )
+        }
+        pub async fn is_4k_supported(&mut self) -> Result<bool, HostError<C::Error>> {
+            let is_nvidia = self.is_nvidia_software().await?;
+            let server_codec_mode_support = self.server_codec_mode_support().await?;
+
+            Ok(
+                server_codec_mode_support.contains(ServerCodeModeSupport::HEVC_MAIN10)
+                    || !is_nvidia,
+            )
+        }
+        pub async fn is_4k_supported_gfe(&mut self) -> Result<bool, HostError<C::Error>> {
+            let gfe = self.gfe_version().await?;
+
+            Ok(!gfe.starts_with("2."))
+        }
+
+        pub async fn is_resolution_supported(
+            &mut self,
+            width: usize,
+            height: usize,
+            supported_video_formats: SupportedVideoFormats,
+        ) -> Result<(), HostError<C::Error>> {
+            let resolution_above_4k = width > 4096 || height > 4096;
+
+            if resolution_above_4k && !self.is_4k_supported().await? {
+                return Err(StreamConfigError::NotSupported4k.into());
+            } else if resolution_above_4k
+                && supported_video_formats.contains(!SupportedVideoFormats::MASK_H264)
+            {
+                return Err(StreamConfigError::NotSupported4kCodecMissing.into());
+            } else if height > 2160 && self.is_4k_supported_gfe().await? {
+                return Err(StreamConfigError::NotSupported4kUpdateGfe.into());
+            }
+
+            Ok(())
+        }
+
+        pub async fn should_disable_sops(
+            &mut self,
+            width: usize,
+            height: usize,
+        ) -> Result<bool, HostError<C::Error>> {
+            // Using an unsupported resolution (not 720p, 1080p, or 4K) causes
+            // GFE to force SOPS to 720p60. This is fine for < 720p resolutions like
+            // 360p or 480p, but it is not ideal for 1440p and other resolutions.
+            // When we detect an unsupported resolution, disable SOPS unless it's under 720p.
+            // FIXME: Detect support resolutions using the serverinfo response, not a hardcoded list
+            const NVIDIA_SUPPORTED_RESOLUTIONS: &[(usize, usize)] =
+                &[(1280, 720), (1920, 1080), (3840, 2160)];
+
+            let is_nvidia = self.is_nvidia_software().await?;
+
+            Ok(!NVIDIA_SUPPORTED_RESOLUTIONS.contains(&(width, height)) && is_nvidia)
+        }
+
         pub async fn start_stream(
             &mut self,
             instance: &MoonlightInstance,
-            crypto: &MoonlightCrypto,
             app_id: u32,
             width: u32,
             height: u32,
@@ -590,10 +588,10 @@ mod moonlight_crypto {
             let current_game = self.current_game().await?;
 
             let mut aes_key = [0u8; 16];
-            crypto.generate_random(&mut aes_key);
+            rand_bytes(&mut aes_key).map_err(PairError::from)?;
 
             let mut aes_iv = [0u8; 4];
-            crypto.generate_random(&mut aes_iv);
+            rand_bytes(&mut aes_iv).map_err(PairError::from)?;
             let aes_iv = i32::from_be_bytes(aes_iv);
 
             let request = ClientStreamRequest {

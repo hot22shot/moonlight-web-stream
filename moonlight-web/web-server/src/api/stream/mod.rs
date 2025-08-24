@@ -666,7 +666,6 @@ impl StreamConnection {
             .moonlight
             .start_stream(
                 &self.data.instance,
-                &self.data.crypto,
                 self.info.app_id as u32,
                 self.settings.width,
                 self.settings.height,

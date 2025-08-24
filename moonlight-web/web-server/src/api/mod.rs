@@ -7,7 +7,7 @@ use actix_web::{
 use futures::future::join_all;
 use log::{info, warn};
 use moonlight_common::{
-    PairStatus,
+    PairPin, PairStatus,
     high::HostError,
     network::{
         ApiError,
@@ -224,7 +224,11 @@ async fn pair_host(
             return;
         };
 
-        let pin = data.crypto.generate_pin();
+        let Ok(pin) = PairPin::generate() else {
+            warn!("[Api]: failed to generate pin!");
+
+            return
+        };
 
             let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
                 unreachable!()
@@ -235,7 +239,6 @@ async fn pair_host(
 
         if let Err(err) = host.moonlight
             .pair(
-                &data.crypto,
                 &client_auth,
                 config.pair_device_name.to_string(),
                 pin,

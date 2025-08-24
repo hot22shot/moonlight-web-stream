@@ -19,8 +19,6 @@ use crate::{
 
 pub mod audio;
 pub mod connection;
-#[cfg(feature = "crypto")]
-pub mod crypto;
 pub mod debug;
 pub mod input;
 pub mod stream;
@@ -88,10 +86,5 @@ impl MoonlightInstance {
         unsafe {
             LiInterruptConnection();
         }
-    }
-
-    #[cfg(feature = "crypto")]
-    pub fn crypto(&self) -> crypto::MoonlightCrypto {
-        crypto::MoonlightCrypto::new(self)
     }
 }

@@ -4,9 +4,7 @@ use actix_web::web::{Bytes, Data};
 use futures::future::join_all;
 use log::warn;
 use moonlight_common::{
-    PairStatus,
-    moonlight::{MoonlightInstance, crypto::MoonlightCrypto},
-    network::reqwest::ReqwestMoonlightHost,
+    PairStatus, moonlight::MoonlightInstance, network::reqwest::ReqwestMoonlightHost,
     pair::ClientAuth,
 };
 use serde::{Deserialize, Serialize};
@@ -50,7 +48,6 @@ pub struct RuntimeApiHost {
 pub struct RuntimeApiData {
     pub(crate) file_writer: Sender<()>,
     pub(crate) instance: MoonlightInstance,
-    pub(crate) crypto: MoonlightCrypto,
     pub(crate) hosts: RwLock<Slab<Mutex<RuntimeApiHost>>>,
 }
 
@@ -90,7 +87,6 @@ impl RuntimeApiData {
 
         let this = Data::new(Self {
             file_writer,
-            crypto: instance.crypto(),
             instance,
             hosts: RwLock::new(hosts),
         });

@@ -1,0 +1,11 @@
+[package]
+name = "streamer"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[dependencies]
+moonlight-common = { workspace = true }
+
+[lints]
+workspace = true

@@ -137,6 +137,20 @@ pub struct PairPin {
 }
 
 impl PairPin {
+    #[cfg(feature = "pair")]
+    pub fn generate() -> Result<Self, openssl::error::ErrorStack> {
+        let rand_num = || {
+            let mut num = [0u8];
+            openssl::rand::rand_bytes(&mut num)?;
+            Ok(num[0] % 10)
+        };
+
+        Ok(
+            Self::from_array([rand_num()?, rand_num()?, rand_num()?, rand_num()?])
+                .expect("generated invalid pair pin"),
+        )
+    }
+
     pub fn from_array(numbers: [u8; 4]) -> Option<Self> {
         let range = 0..10;
 
@@ -189,3 +203,28 @@ impl Debug for PairPin {
 
 pub const SALT_LENGTH: usize = 16;
 pub const CHALLENGE_LENGTH: usize = 16;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HashAlgorithm {
+    Sha1,
+    Sha256,
+}
+
+impl HashAlgorithm {
+    pub const MAX_HASH_LEN: usize = 32;
+
+    pub fn hash_len(&self) -> usize {
+        match self {
+            Self::Sha1 => 20,
+            Self::Sha256 => 32,
+        }
+    }
+}
+
+pub fn hash_algorithm_for_server(server_version: ServerVersion) -> HashAlgorithm {
+    if server_version.major >= 7 {
+        HashAlgorithm::Sha256
+    } else {
+        HashAlgorithm::Sha1
+    }
+}

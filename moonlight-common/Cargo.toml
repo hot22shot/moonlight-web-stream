@@ -39,14 +39,11 @@ openssl = { workspace = true }
 default = ["high", "moonlight", "backend_reqwest"]
 
 # High level api
-high = ["network", "pair", "crypto", "dep:log", "dep:tokio"]
+high = ["network", "pair", "dep:log", "dep:tokio"]
 
 # Moonlight Common C / Stream
+# TODO: rename to stream
 moonlight = ["dep:moonlight-common-sys", "dep:printf-compat"]
-
-# Crypto
-# TODO: maybe don't use crypto?
-crypto = ["moonlight", "moonlight-common-sys/crypto"]
 
 # Pairing
 pair = ["network"]
