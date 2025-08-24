@@ -13,7 +13,9 @@ license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 moonlight-common = { path = "./moonlight-common", default-features = false }
-moonlight-common-sys = { path = "./moonlight-common-sys", default-features = false }
+moonlight-common-sys = { path = "./moonlight-common-sys", default-features = false, features = [
+    "vendored",
+] }
 
 tokio = { version = "1.47.1" }
 

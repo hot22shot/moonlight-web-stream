@@ -113,6 +113,17 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
 fn link(compile_info: Option<(String, PathBuf)>, allow_vendored: bool) {
     let lib_path = var("MOONLIGHT_COMMON_LIB").ok();
 
+    if lib_path.is_none() && compile_info.is_none() {
+        panic!(
+            "Failed to compile moonlight sys because a library couldn't be found. You can try:\n1. Enable the vendored flags\n2. Provide a moonlight library with the MOONLIGHT_COMMON_LIB environment variable"
+        );
+    }
+    if !allow_vendored && lib_path.is_none() {
+        panic!(
+            "If you don't allow moonlight vendored you must provide a moonlight library with the MOONLIGHT_COMMON_LIB environment variable"
+        );
+    }
+
     // Enet
     if let Some((profile, path)) = &compile_info
         && allow_vendored
