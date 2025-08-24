@@ -4,7 +4,6 @@ An unofficial [Moonlight](https://moonlight-stream.org/) Client allowing you to 
 It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/) traffic to a Browser using the [WebRTC Api](https://webrtc.org/) for minimal latency.
 
 ## Limitations
-- Only one active stream per web server
 - Controllers only work when in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) because of the [Gamepad Api](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
   - [How to configure a Secure Context / https](#configuring-https)
 
