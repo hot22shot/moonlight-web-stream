@@ -3,6 +3,7 @@ $metadataJson = cargo metadata --format-version 1 --no-deps
 $metadata = $metadataJson | ConvertFrom-Json
 $targetDir = $metadata.target_directory
 
+New-Item -ItemType Directory "./finalOutput" -Force
 $outputDir = Resolve-Path "./finalOutput"
 
 echo "Target directory at $targetDir"
@@ -14,9 +15,8 @@ $targets = @(
 )
 
 Remove-Item -Path "$outputDir/*" -Recurse -Force
-New-Item -ItemType Directory "$outputDir" -Force
 
-cd ./moonlight-web
+Set-Location ./moonlight-web
 
 echo "------------- Starting Build for Frontend -------------"
 New-Item -ItemType Directory "$outputDir/static" -Force | Out-Null
