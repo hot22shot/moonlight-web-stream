@@ -1,36 +1,124 @@
 body {
     background-color: rgb(48, 48, 48);
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     font-family: sans-serif;
 }
 
 /* Prevent pull down refresh when Streaming */
-html .stream {
+html.stream {
     overscroll-behavior: none !important;
 }
 
-body .stream {
+body.stream {
     overscroll-behavior: none !important;
 }
 
+
+
+/** Button */
 button {
     background-color: rgba(63, 81, 181, 1.0);
     border: none;
     border-radius: 5px;
     padding: 5px;
-    margin-right: 5px;
-    margin-top: 5px;
-    margin-bottom: 5px;
+    margin: 8px;
     font-size: 1.2rem;
     cursor: pointer;
 }
 
 button:hover {
-    /** background-color: rgba(255, 255, 255, 0.2); */
-    transition: all 0.2s;
+    transition: box-shadow 0.2s;
+    box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
-/** TODO: Prettier default inputs for settings / in general */
+/** Label */
+label {
+    margin-right: 5px;
+}
+
+/** Checkbox */
+input[type="checkbox"] {
+    /* remove native box */
+    appearance: none;
+    vertical-align: middle;
+    width: 24px;
+    height: 24px;
+    border: 2px solid #555;
+    border-radius: 6px;
+    cursor: pointer;
+    position: relative;
+    display: inline-block;
+}
+
+input[type="checkbox"]::after {
+    content: "✓";
+    color: white;
+    font-size: 18px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* start hidden */
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+input[type="checkbox"]:checked {
+    /* box fill */
+    background: rgb(206, 147, 216);
+    border-color: rgb(206, 147, 216);
+}
+
+input[type="checkbox"]:checked::after {
+    /* scale in */
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+}
+
+/** Text Field likes  */
+select,
+input[type=text],
+input[type=number] {
+    color: white;
+    font-size: 1.2rem;
+    margin: 5px;
+    background-color: rgba(0, 0, 0, 0);
+    border-radius: 4px;
+    border-color: rgb(255, 255, 255, 0.4);
+}
+
+select:hover:enabled,
+input[type=text]:hover:enabled,
+input[type="number"]:hover:enabled {
+    transition: all 0.2s;
+    background-color: rgba(0, 0, 0, 0);
+    border-color: rgb(255, 255, 255, 0.7);
+}
+
+select:disabled,
+input[type=text]:disabled,
+input[type=number]:disabled {
+    color: gray;
+}
+
+select option {
+    background-color: rgb(66, 66, 66);
+}
+
+/** Hide the number up down thingy on number inputs */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    /* display: none; <- Crashes Chrome on hover */
+    -webkit-appearance: none;
+    margin: 0;
+    /* <-- Apparently some margin are still there even though it's hidden */
+}
+
+input[type=number] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+    /* Firefox */
+}
 
 /** Modal */
 .modal-background {
