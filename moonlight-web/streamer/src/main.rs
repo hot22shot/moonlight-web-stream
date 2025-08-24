@@ -4,6 +4,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    time::Duration,
 };
 
 use common::{
@@ -31,6 +32,7 @@ use tokio::{
     spawn,
     sync::{Mutex, Notify, RwLock},
     task::spawn_blocking,
+    time::sleep,
 };
 use webrtc::{
     api::{
@@ -85,8 +87,17 @@ async fn main() {
     .expect("failed to init logger");
 
     // At this point we're authenticated
-    let (ipc_sender, mut ipc_receiver) =
+    let (mut ipc_sender, mut ipc_receiver) =
         create_process_ipc::<ServerIpcMessage, StreamerIpcMessage>(stdin(), stdout()).await;
+
+    // Send stage
+    let _ = send_ws_message(
+        &mut ipc_sender,
+        StreamServerMessage::StageComplete {
+            stage: "Launch Streamer".to_string(),
+        },
+    )
+    .await;
 
     let (
         server_config,
@@ -126,6 +137,15 @@ async fn main() {
             _ => continue,
         }
     };
+
+    // Send stage
+    let _ = send_ws_message(
+        &mut ipc_sender,
+        StreamServerMessage::StageStarting {
+            stage: "Setup WebRTC Peer".to_string(),
+        },
+    )
+    .await;
 
     // -- Create the host and pair it
     let mut host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
@@ -198,7 +218,7 @@ async fn main() {
             app_id,
         },
         stream_settings,
-        ipc_sender,
+        ipc_sender.clone(),
         ipc_receiver,
         &api,
         rtc_config,
@@ -206,7 +226,38 @@ async fn main() {
     .await
     .expect("failed to create connection");
 
+    // Send stage
+    let _ = send_ws_message(
+        &mut ipc_sender,
+        StreamServerMessage::StageComplete {
+            stage: "Setup WebRTC Peer".to_string(),
+        },
+    )
+    .await;
+
+    // Send stage
+    let _ = send_ws_message(
+        &mut ipc_sender,
+        StreamServerMessage::StageStarting {
+            stage: "WebRTC Peer Negotiation".to_string(),
+        },
+    )
+    .await;
+
+    connection.stages.connected.when_reached().await;
+
+    // Send stage
+    let _ = send_ws_message(
+        &mut ipc_sender,
+        StreamServerMessage::StageComplete {
+            stage: "WebRTC Peer Negotiation".to_string(),
+        },
+    )
+    .await;
+
     connection.stages.stop.when_reached().await;
+
+    sleep(Duration::from_secs(1)).await;
 }
 
 struct StreamInfo {
@@ -451,6 +502,9 @@ impl StreamConnection {
             ServerIpcMessage::WebSocket(message) => {
                 self.on_ws_message(message).await;
             }
+            ServerIpcMessage::Stop => {
+                self.stop().await;
+            }
         }
     }
     async fn on_ws_message(&self, message: StreamClientMessage) {
@@ -564,6 +618,16 @@ impl StreamConnection {
 
     // Start Moonlight Stream
     async fn start_stream(self: &Arc<Self>) -> Result<(), anyhow::Error> {
+        // Send stage
+        let mut ipc_sender = self.ipc_sender.clone();
+        let _ = send_ws_message(
+            &mut ipc_sender,
+            StreamServerMessage::StageStarting {
+                stage: "Moonlight Stream".to_string(),
+            },
+        )
+        .await;
+
         let mut host = self.info.host.lock().await;
 
         let gamepads = self.input.active_gamepads.read().await;
@@ -638,10 +702,9 @@ impl StreamConnection {
             touch: host_features.contains(HostFeatures::PEN_TOUCH_EVENTS),
         };
 
-        let mut ws_sender = self.ipc_sender.clone();
         spawn(async move {
             let _ = send_ws_message(
-                &mut ws_sender,
+                &mut ipc_sender,
                 StreamServerMessage::ConnectionComplete { capabilities },
             )
             .await;

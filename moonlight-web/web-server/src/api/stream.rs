@@ -1,4 +1,4 @@
-use std::process::Stdio;
+use std::{process::Stdio, time::Duration};
 
 use actix_web::{
     Either, Error, HttpRequest, HttpResponse, get, post, rt as actix_rt,
@@ -14,9 +14,9 @@ use common::{
     ipc::{ServerIpcMessage, StreamerIpcMessage, create_child_ipc},
     serialize_json,
 };
-use log::warn;
-use moonlight_common::moonlight::video::SupportedVideoFormats;
-use tokio::{process::Command, spawn};
+use log::{info, warn};
+use moonlight_common::{PairStatus, moonlight::video::SupportedVideoFormats};
+use tokio::{process::Command, spawn, time::sleep};
 
 use crate::data::RuntimeApiData;
 
@@ -107,6 +107,7 @@ pub async fn start_host(
             client_private_key_pem,
             client_certificate_pem,
             server_certificate_pem,
+            app,
         ) = {
             let hosts = data.hosts.read().await;
             let Some(host) = hosts.get(host_id as usize) else {
@@ -116,6 +117,31 @@ pub async fn start_host(
             };
             let mut host = host.lock().await;
             let host = &mut host.moonlight;
+
+            if host.is_paired() == PairStatus::NotPaired {
+                warn!("[Stream]: tried to connect to a not paired host");
+
+                let _ = send_ws_message(&mut session, StreamServerMessage::HostNotPaired).await;
+                let _ = session.close(None).await;
+                return;
+            }
+
+            let apps = match host.app_list().await {
+                Ok(value) => value,
+                Err(err) => {
+                    warn!("[Stream]: failed to get app list from host: {err:?}");
+
+                    let _ = send_ws_message(&mut session, StreamServerMessage::InternalServerError)
+                        .await;
+                    let _ = session.close(None).await;
+                    return;
+                }
+            };
+            let Some(app) = apps.iter().find(|app| app.id == app_id).cloned() else {
+                let _ = send_ws_message(&mut session, StreamServerMessage::AppNotFound).await;
+                let _ = session.close(None).await;
+                return;
+            };
 
             if let Some(client_private_key) = host.client_private_key()
                 && let Some(client_certificate) = host.client_certificate()
@@ -127,13 +153,28 @@ pub async fn start_host(
                     client_private_key.to_string(),
                     client_certificate.to_string(),
                     server_certificate.to_string(),
+                    app,
                 )
             } else {
-                let _ = send_ws_message(&mut session, StreamServerMessage::HostNotPaired).await;
-                let _ = session.close(None).await;
                 return;
             }
         };
+
+        // Send App info
+        let _ = send_ws_message(
+            &mut session,
+            StreamServerMessage::UpdateApp { app: app.into() },
+        )
+        .await;
+
+        // Starting stage: launch streamer
+        let _ = send_ws_message(
+            &mut session,
+            StreamServerMessage::StageComplete {
+                stage: "Launch Streamer".to_string(),
+            },
+        )
+        .await;
 
         // Spawn child
         let (mut child, stdin, stdout) = match Command::new(&config.streamer_path)
@@ -170,7 +211,6 @@ pub async fn start_host(
                 return;
             }
         };
-        // TODO: kill child
 
         // Create ipc
         let (mut ipc_sender, mut ipc_receiver) =
@@ -191,6 +231,9 @@ pub async fn start_host(
                     }
                 }
             }
+
+            // close the websocket when the streamer crashed / disconnected / whatever
+            let _ = session.close(None).await;
         });
 
         // Send init into ipc
@@ -216,6 +259,20 @@ pub async fn start_host(
             };
 
             ipc_sender.send(ServerIpcMessage::WebSocket(message)).await;
+        }
+
+        // -- After the websocket disconnects we kill the stream:
+        ipc_sender.send(ServerIpcMessage::Stop).await;
+
+        sleep(Duration::from_secs(4)).await;
+
+        match child.kill().await {
+            Ok(_) => {
+                info!("[Stream]: killed streamer");
+            }
+            Err(err) => {
+                warn!("[Stream]: failed to kill child: {err:?}");
+            }
         }
     });
 

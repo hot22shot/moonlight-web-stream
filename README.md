@@ -8,19 +8,23 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 - Controllers only work when in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) because of the [Gamepad Api](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
   - [How to configure a Secure Context / https](#configuring-https)
 
-## Setup
-1. Download the [compressed archive](TODO:LINK) for your platform and uncompress it or [build it yourself](#building)
+## Overview
 
-2. Run the executable
+- [Setup](#setup)
+  - [Streaming over the Internet](#streaming-over-the-internet)
+  - [Configuring https](#configuring-https)
+  - [Proxying via Apache 2](#proxying-via-apache-2)
+- [Config](#config)
+- [Building](#building)
+
+## Setup
+1. Download the [compressed archive](https://github.com/MrCreativ3001/moonlight-web-stream/releases) for your platform and uncompress it or [build it yourself](#building)
+
+2. Run the "web-server" executable
 
 3. Change your [access credentials](#credentials) in the newly generated `server/config.json` (all changes require a restart)
 
 4. Go to `localhost:8080` and view the web interface. You can also the change [bind address](#bind-address).
-
-More optional configurations:
-- [Streaming over the Internet](#streaming-over-the-internet)
-- [Configuring https](#configuring-https)
-- [Proxying via Apache 2](#proxying-via-apache-2)
 
 ### Streaming over the Internet
 When in a local network the WebRTC Peers will negotatiate without any problems. However when you want to play over the internet without being in the same network as Moonlight Web, you'll have to configure it and forward ports.
@@ -121,9 +125,9 @@ TODO: LINK TO CONFIG
 
 ## Config
 The config file is under `server/config.json` relative to the executable.
-Here are the most important settings for configuring [Moonlight Web](#moonlight-web).
+Here are the most important settings for configuring Moonlight Web.
 
-For a full list of values look into the [Rust Config module](moonlight-web/src/config.rs).
+For a full list of values look into the [Rust Config module](moonlight-web/common/src/config.rs).
 
 ### Credentials
 The credentials the Website will prompt you to enter.
@@ -202,11 +206,11 @@ Will always append the prefix to all requests made by the website.
 ## Building
 Make sure you've cloned this repo with all it's submodules
 ```sh
-git clone --recursive TODO:URL
+git clone --recursive https://github.com/MrCreativ3001/moonlight-web-stream.git
 ```
 A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
 
-There are 2 ways to build [Moonlight Web](#moonlight-web):
+There are 2 ways to build Moonlight Web:
 - Build it on your system
 
   When you want to build it on your system take a look at how to compile the crates:
@@ -215,7 +219,7 @@ There are 2 ways to build [Moonlight Web](#moonlight-web):
 
 - Compile using [Cargo Cross](https://github.com/cross-rs/cross)
 
-  After you've got a successful installation of cross just run the command in the [moonlight web](moonlight-web/) directory
+  After you've got a successful installation of cross just run the command in the project root directory
   ```sh
   cross build --release --target YOUR_TARGET
   ```
@@ -227,11 +231,6 @@ Requires:
 - A [CMake installation](https://cmake.org/download/) which will automatically compile the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
 - [openssl-sys](https://docs.rs/openssl-sys/0.9.109/openssl_sys/): For information on building openssl sys go to the [openssl docs](https://docs.rs/openssl/latest/openssl/)
 
-Build with:
-```sh
-cargo build --release
-```
-
 ### Crate: Moonlight Web
 This is the main Moonlight Web project
 
@@ -239,7 +238,7 @@ Required:
 - [moonlight-common-sys](#moonlight-common-sys)
 - [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
-Build the executable with:
+Build the executables in the root directory with (builds streamer and web-server):
 ```sh
 cargo build --release
 ```

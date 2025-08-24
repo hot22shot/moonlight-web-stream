@@ -1,7 +1,10 @@
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{io::ErrorKind, path::Path};
-use tokio::fs;
+use tokio::{
+    fs,
+    io::{AsyncBufReadExt, BufReader, stdin},
+};
 
 use actix_web::{App, HttpServer, web::Data};
 use log::{LevelFilter, info, warn};
@@ -31,8 +34,13 @@ async fn main() -> std::io::Result<()> {
     // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
-        // TODO: don't panic
         info!("enter your credentials in the config (server/config.json)");
+        info!("Press Enter to close this window");
+
+        let mut line = String::new();
+        let mut reader = BufReader::new(stdin());
+
+        reader.read_line(&mut line).await?;
         return Ok(());
     }
     let config = Data::new(config);

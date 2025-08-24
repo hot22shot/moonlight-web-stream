@@ -1,3 +1,4 @@
+# Resolving paths
 
 $metadataJson = cargo metadata --format-version 1 --no-deps
 $metadata = $metadataJson | ConvertFrom-Json
@@ -6,10 +7,17 @@ $targetDir = $metadata.target_directory
 New-Item -ItemType Directory "./finalOutput" -Force
 $outputDir = Resolve-Path "./finalOutput"
 
-$moonlightRoot = Resolve-Path "./moonlight-web"
+$moonlightRoot = Resolve-Path "."
+$moonlightFrontend = Join-Path -Path $moonlightRoot -ChildPath "/moonlight-web/web-server"
+
+if(!$moonlightRoot -or !$moonlightFrontend) {
+    echo "No root directory found!"
+    exit 0
+}
 
 echo "Target directory at $targetDir"
 echo "Putting final output into $outputDir"
+echo "Moonlight Root Directory $moonlightRoot"
 
 $targets = @(
     "x86_64-pc-windows-gnu"
@@ -18,16 +26,18 @@ $targets = @(
 
 Remove-Item -Path "$outputDir/*" -Recurse -Force
 
-Set-Location $moonlightRoot + "/web-server"
-
 echo "------------- Starting Build for Frontend -------------"
+Set-Location $moonlightFrontend
+
 New-Item -ItemType Directory "$outputDir/static" -Force | Out-Null
 
-Remove-Item -Path "./dist" -Recurse -Force
+Remove-Item -Path "$moonlightFrontend/dist" -Recurse -Force
 npm run build
 
-Copy-Item -Path "./dist/*" -Destination "$outputDir/static" -Recurse -Force
+Copy-Item -Path "$moonlightFrontend/dist/*" -Destination "$outputDir/static" -Recurse -Force
 echo "------------- Finished Build for Frontend -------------"
+
+Set-Location $moonlightRoot
 
 foreach($target in $targets) {
     echo "------------- Starting Build for $target -------------"

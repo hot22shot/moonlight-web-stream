@@ -31,6 +31,7 @@ pub enum ServerIpcMessage {
         app_id: u32,
     },
     WebSocket(StreamClientMessage),
+    Stop,
 }
 
 #[derive(Debug, Encode, Decode)]
