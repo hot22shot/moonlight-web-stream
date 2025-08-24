@@ -23,8 +23,13 @@ mod web;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    #[cfg(debug_assertions)]
+    let log_level = LevelFilter::Debug;
+    #[cfg(not(debug_assertions))]
+    let log_level = LevelFilter::Info;
+
     TermLogger::init(
-        LevelFilter::Debug,
+        log_level,
         simplelog::Config::default(),
         TerminalMode::Mixed,
         ColorChoice::Auto,

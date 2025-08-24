@@ -181,6 +181,7 @@ pub async fn start_host(
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
         {
             Ok(mut child) => {
@@ -263,6 +264,7 @@ pub async fn start_host(
 
         // -- After the websocket disconnects we kill the stream:
         ipc_sender.send(ServerIpcMessage::Stop).await;
+        drop(ipc_sender);
 
         sleep(Duration::from_secs(4)).await;
 
