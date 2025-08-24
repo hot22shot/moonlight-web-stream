@@ -68,48 +68,17 @@ fn moonlight_default_http_port_default() -> u16 {
 
 fn default_ice_servers() -> Vec<RTCIceServer> {
     vec![
+        // Google
         RTCIceServer {
-            urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun.l.google.com:5349".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun1.l.google.com:3478".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun1.l.google.com:5349".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun2.l.google.com:19302".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun2.l.google.com:5349".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun3.l.google.com:3478".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun3.l.google.com:5349".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun4.l.google.com:19302".to_owned()],
-            ..Default::default()
-        },
-        RTCIceServer {
-            urls: vec!["stun:stun4.l.google.com:5349".to_owned()],
+            urls: vec![
+                // Google
+                "stun:l.google.com:19302".to_owned(),
+                "stun:stun.l.google.com:19302".to_owned(),
+                "stun:stun1.l.google.com:19302".to_owned(),
+                "stun:stun2.l.google.com:19302".to_owned(),
+                "stun:stun3.l.google.com:19302".to_owned(),
+                "stun:stun4.l.google.com:19302".to_owned(),
+            ],
             ..Default::default()
         },
     ]
