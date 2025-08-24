@@ -175,7 +175,7 @@ pub async fn start_host(
         // Create ipc
         let (mut ipc_sender, mut ipc_receiver) =
             create_child_ipc::<ServerIpcMessage, StreamerIpcMessage>(
-                "[Streamer]: ".to_string(),
+                "Streamer".to_string(),
                 stdin,
                 stdout,
                 child.stderr.take(),
