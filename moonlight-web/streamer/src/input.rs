@@ -1,6 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
-use actix_web::web::Bytes;
+use bytes::Bytes;
 use log::{debug, warn};
 use moonlight_common::moonlight::{
     input::TouchEventType,
@@ -13,7 +13,7 @@ use num_traits::FromPrimitive;
 use tokio::sync::RwLock;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 
-use crate::api::stream::{StreamConnection, buffer::ByteBuffer};
+use crate::{StreamConnection, buffer::ByteBuffer};
 
 const DEFAULT_CONTROLLER_BUTTONS: ControllerButtons = ControllerButtons::all();
 const DEFAULT_CONTROLLER_CAPABILITIES: ControllerCapabilities = ControllerCapabilities::empty();

@@ -1,11 +1,11 @@
+use bincode::{Decode, Encode};
 use moonlight_common::ServerState;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use webrtc::{ice_transport::ice_server::RTCIceServer, peer_connection::sdp::sdp_type::RTCSdpType};
 
 use crate::ts_consts;
 
-const EXPORT_PATH: &str = "../web/api_bindings.ts";
+const EXPORT_PATH: &str = "../../web-server/web/api_bindings.ts";
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy)]
 #[ts(export, export_to = EXPORT_PATH)]
@@ -71,7 +71,7 @@ pub struct DetailedHost {
     pub server_codec_mode_support: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct App {
     pub app_id: u32,
@@ -184,7 +184,7 @@ pub struct PostCancelResponse {
     pub success: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 #[serde(rename_all = "lowercase")]
 pub enum RtcSdpType {
@@ -195,37 +195,14 @@ pub enum RtcSdpType {
     Unspecified,
 }
 
-impl From<RtcSdpType> for RTCSdpType {
-    fn from(value: RtcSdpType) -> Self {
-        match value {
-            RtcSdpType::Offer => RTCSdpType::Offer,
-            RtcSdpType::Answer => RTCSdpType::Answer,
-            RtcSdpType::Pranswer => RTCSdpType::Pranswer,
-            RtcSdpType::Rollback => RTCSdpType::Rollback,
-            RtcSdpType::Unspecified => RTCSdpType::Unspecified,
-        }
-    }
-}
-impl From<RTCSdpType> for RtcSdpType {
-    fn from(value: RTCSdpType) -> Self {
-        match value {
-            RTCSdpType::Offer => RtcSdpType::Offer,
-            RTCSdpType::Answer => RtcSdpType::Answer,
-            RTCSdpType::Pranswer => RtcSdpType::Pranswer,
-            RTCSdpType::Rollback => RtcSdpType::Rollback,
-            RTCSdpType::Unspecified => RtcSdpType::Unspecified,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcSessionDescription {
     pub ty: RtcSdpType,
     pub sdp: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceCandidate {
     pub candidate: String,
@@ -234,14 +211,14 @@ pub struct RtcIceCandidate {
     pub username_fragment: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamSignalingMessage {
     Description(RtcSessionDescription),
     AddIceCandidate(RtcIceCandidate),
 }
 
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamClientMessage {
     AuthenticateAndInit {
@@ -263,40 +240,31 @@ pub enum StreamClientMessage {
     Signaling(StreamSignalingMessage),
 }
 
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Default, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct WebRtcIceServer {
+pub struct RtcIceServer {
     pub urls: Vec<String>,
     pub username: String,
     pub credential: String,
 }
 
-impl From<RTCIceServer> for WebRtcIceServer {
-    fn from(value: RTCIceServer) -> Self {
-        Self {
-            urls: value.urls,
-            username: value.username,
-            credential: value.credential,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct StreamCapabilities {
     pub touch: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
-    WebRtcConfig { ice_servers: Vec<WebRtcIceServer> },
+    WebRtcConfig { ice_servers: Vec<RtcIceServer> },
     Signaling(StreamSignalingMessage),
     // Optional Info
     UpdateApp { app: App },
     InternalServerError,
     HostNotFound,
     AppNotFound,
+    HostNotPaired,
     AlreadyStreaming,
     StageStarting { stage: String },
     StageComplete { stage: String },
@@ -843,7 +811,7 @@ ts_consts!(
     pub const CAPABILITY_TRIGGER_RUMBLE: u16 = moonlight_common::moonlight::stream::ControllerCapabilities::TRIGGER_RUMBLE.bits();
 );
 
-#[derive(Serialize, Deserialize, Debug, TS)]
+#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamColorspace {
     Rec601,

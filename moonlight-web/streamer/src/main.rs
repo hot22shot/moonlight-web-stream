@@ -1,3 +1,686 @@
-fn main() {
-    println!("Hello, world!");
+use std::{
+    str::FromStr,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use common::{
+    StreamSettings,
+    config::PortRange,
+    ipc::{IpcReceiver, IpcSender, ServerIpcMessage, StreamerIpcMessage, create_process_ipc},
+    serialize_json,
+};
+use log::{LevelFilter, debug, info, warn};
+use moonlight_common::{
+    MoonlightError,
+    high::HostError,
+    moonlight::{
+        MoonlightInstance,
+        stream::{ColorRange, HostFeatures, MoonlightStream},
+    },
+    network::reqwest::ReqwestMoonlightHost,
+    pair::ClientAuth,
+};
+use pem::Pem;
+use simplelog::{ColorChoice, TermLogger, TerminalMode};
+use tokio::{
+    io::{stdin, stdout},
+    runtime::Handle,
+    spawn,
+    sync::{Mutex, Notify, RwLock},
+    task::spawn_blocking,
+};
+use webrtc::{
+    api::{
+        API, APIBuilder, interceptor_registry::register_default_interceptors,
+        media_engine::MediaEngine, setting_engine::SettingEngine,
+    },
+    data_channel::RTCDataChannel,
+    ice::udp_network::{EphemeralUDP, UDPNetwork},
+    ice_transport::{
+        ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
+        ice_candidate_type::RTCIceCandidateType,
+        ice_connection_state::RTCIceConnectionState,
+    },
+    interceptor::registry::Registry,
+    peer_connection::{
+        RTCPeerConnection,
+        configuration::RTCConfiguration,
+        peer_connection_state::RTCPeerConnectionState,
+        sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
+    },
+};
+
+use common::api_bindings::{
+    RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamCapabilities, StreamClientMessage,
+    StreamServerMessage, StreamSignalingMessage,
+};
+
+use crate::{
+    audio::OpusTrackSampleAudioDecoder,
+    connection::StreamConnectionListener,
+    convert::{from_webrtc_sdp, into_webrtc_ice},
+    input::StreamInput,
+    video::TrackSampleVideoDecoder,
+};
+
+mod audio;
+mod buffer;
+mod connection;
+mod convert;
+mod decoder;
+mod input;
+mod video;
+
+#[tokio::main]
+async fn main() {
+    TermLogger::init(
+        LevelFilter::Debug,
+        simplelog::Config::default(),
+        TerminalMode::Stderr,
+        ColorChoice::Auto,
+    )
+    .expect("failed to init logger");
+
+    // At this point we're authenticated
+    let (ipc_sender, mut ipc_receiver) =
+        create_process_ipc::<ServerIpcMessage, StreamerIpcMessage>(stdin(), stdout()).await;
+
+    let (
+        server_config,
+        stream_settings,
+        host_address,
+        host_http_port,
+        host_unique_id,
+        client_private_key_pem,
+        client_certificate_pem,
+        server_certificate_pem,
+        app_id,
+    ) = loop {
+        match ipc_receiver.recv().await {
+            Some(ServerIpcMessage::Init {
+                server_config,
+                stream_settings,
+                host_address,
+                host_http_port,
+                host_unique_id,
+                client_private_key_pem,
+                client_certificate_pem,
+                server_certificate_pem,
+                app_id,
+            }) => {
+                break (
+                    server_config,
+                    stream_settings,
+                    host_address,
+                    host_http_port,
+                    host_unique_id,
+                    client_private_key_pem,
+                    client_certificate_pem,
+                    server_certificate_pem,
+                    app_id,
+                );
+            }
+            _ => continue,
+        }
+    };
+
+    // -- Create the host and pair it
+    let mut host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
+        .expect("failed to create host");
+
+    host.set_pairing_info(
+        &ClientAuth {
+            private_key: Pem::from_str(&client_private_key_pem)
+                .expect("failed to parse client private key"),
+            certificate: Pem::from_str(&client_certificate_pem)
+                .expect("failed to parse client certificate"),
+        },
+        &Pem::from_str(&server_certificate_pem).expect("failed to parse server certificate"),
+    )
+    .expect("failed to set pairing info");
+
+    // -- Configure moonlight
+    let moonlight = MoonlightInstance::global().expect("failed to find moonlight");
+
+    // -- Configure WebRTC
+    let rtc_config = RTCConfiguration {
+        ice_servers: server_config
+            .webrtc_ice_servers
+            .clone()
+            .into_iter()
+            .map(into_webrtc_ice)
+            .collect(),
+        ..Default::default()
+    };
+
+    let mut api_media = MediaEngine::default();
+    // TODO: only register supported codecs
+    api_media
+        .register_default_codecs()
+        .expect("failed to register webrtc codecs");
+
+    let mut api_registry = Registry::new();
+
+    // Use the default set of Interceptors
+    api_registry = register_default_interceptors(api_registry, &mut api_media)
+        .expect("failed to register webrtc default interceptors");
+
+    let mut api_settings = SettingEngine::default();
+    if let Some(PortRange { min, max }) = server_config.webrtc_port_range {
+        match EphemeralUDP::new(min, max) {
+            Ok(udp) => {
+                api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
+            }
+            Err(err) => {
+                warn!("[Stream]: Invalid port range in config: {err:?}");
+            }
+        }
+    }
+    api_settings.set_nat_1to1_ips(
+        server_config.webrtc_nat_1to1_ips.clone(),
+        RTCIceCandidateType::Host,
+    );
+
+    let api = APIBuilder::new()
+        .with_media_engine(api_media)
+        .with_interceptor_registry(api_registry)
+        .with_setting_engine(api_settings)
+        .build();
+
+    // -- Create and Configure Peer
+    let connection = StreamConnection::new(
+        moonlight,
+        StreamInfo {
+            host: Mutex::new(host),
+            app_id,
+        },
+        stream_settings,
+        ipc_sender,
+        ipc_receiver,
+        &api,
+        rtc_config,
+    )
+    .await
+    .expect("failed to create connection");
+
+    connection.stages.stop.when_reached().await;
+}
+
+struct StreamInfo {
+    host: Mutex<ReqwestMoonlightHost>,
+    app_id: u32,
+}
+
+struct StreamStage {
+    name: &'static str,
+    notify: Notify,
+    state: AtomicBool,
+}
+
+impl StreamStage {
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            notify: Notify::new(),
+            state: AtomicBool::new(false),
+        }
+    }
+
+    pub fn is_reached(&self) -> bool {
+        self.state.load(Ordering::Acquire)
+    }
+    pub async fn when_reached(&self) {
+        let future = self.notify.notified();
+        if self.is_reached() {
+            return;
+        }
+
+        future.await;
+    }
+
+    pub fn set_reached(&self) {
+        info!("[Stream]: signal \"{}\" called", self.name);
+        self.state.store(true, Ordering::Release);
+        self.notify.notify_waiters();
+    }
+}
+
+struct StreamStages {
+    pub connected: StreamStage,
+    pub stop: StreamStage,
+}
+
+struct StreamConnection {
+    pub runtime: Handle,
+    pub moonlight: MoonlightInstance,
+    pub info: StreamInfo,
+    pub settings: StreamSettings,
+    pub stages: Arc<StreamStages>,
+    pub peer: Arc<RTCPeerConnection>,
+    pub ipc_sender: IpcSender<StreamerIpcMessage>,
+    pub general_channel: Arc<RTCDataChannel>,
+    // Input
+    pub input: StreamInput,
+    // Stream
+    pub stream: RwLock<Option<MoonlightStream>>,
+}
+
+impl StreamConnection {
+    pub async fn new(
+        moonlight: MoonlightInstance,
+        info: StreamInfo,
+        settings: StreamSettings,
+        ipc_sender: IpcSender<StreamerIpcMessage>,
+        mut ipc_receiver: IpcReceiver<ServerIpcMessage>,
+        api: &API,
+        config: RTCConfiguration,
+    ) -> Result<Arc<Self>, anyhow::Error> {
+        let peer = Arc::new(api.new_peer_connection(config).await?);
+
+        let stages = Arc::new(StreamStages {
+            connected: StreamStage::new("connected"),
+            stop: StreamStage::new("stop"),
+        });
+
+        // -- Input
+        let input = StreamInput::new();
+
+        let general_channel = peer.create_data_channel("general", None).await?;
+
+        let this = Arc::new(Self {
+            runtime: Handle::current(),
+            moonlight,
+            info,
+            settings,
+            stages,
+            peer: peer.clone(),
+            ipc_sender,
+            general_channel,
+            input,
+            stream: Default::default(),
+        });
+
+        // -- Connection state
+        peer.on_ice_connection_state_change({
+            let this = this.clone();
+            Box::new(move |state| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.on_ice_connection_state_change(state).await;
+                })
+            })
+        });
+        peer.on_peer_connection_state_change({
+            let this = this.clone();
+            Box::new(move |state| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.on_peer_connection_state_change(state).await;
+                })
+            })
+        });
+
+        // -- Signaling
+        peer.on_negotiation_needed({
+            let this = this.clone();
+            Box::new(move || {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.on_negotiation_needed().await;
+                })
+            })
+        });
+        peer.on_ice_candidate({
+            let this = this.clone();
+            Box::new(move |candidate| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.on_ice_candidate(candidate).await;
+                })
+            })
+        });
+
+        spawn({
+            let this = this.clone();
+
+            async move {
+                while let Some(message) = ipc_receiver.recv().await {
+                    this.on_ipc_message(message).await;
+                }
+            }
+        });
+
+        // -- Data Channels
+        peer.on_data_channel({
+            let this = this.clone();
+            Box::new(move |channel| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.on_data_channel(channel).await;
+                })
+            })
+        });
+
+        Ok(this)
+    }
+
+    // -- Handle Connection State
+    async fn on_ice_connection_state_change(self: &Arc<Self>, state: RTCIceConnectionState) {
+        if matches!(state, RTCIceConnectionState::Connected) {
+            self.stages.connected.set_reached();
+
+            if let Err(err) = self.start_stream().await {
+                warn!("[Stream]: failed to start stream: {err:?}");
+
+                self.stop().await;
+            }
+        }
+    }
+    async fn on_peer_connection_state_change(&self, state: RTCPeerConnectionState) {
+        if matches!(
+            state,
+            RTCPeerConnectionState::Failed
+                | RTCPeerConnectionState::Disconnected
+                | RTCPeerConnectionState::Closed
+        ) {
+            self.stop().await;
+        }
+    }
+
+    // -- Handle Signaling
+    async fn make_answer(&self) -> Option<RTCSessionDescription> {
+        let local_description = match self.peer.create_answer(None).await {
+            Err(err) => {
+                warn!("[Signaling]: failed to create answer: {err:?}");
+                return None;
+            }
+            Ok(value) => value,
+        };
+
+        if let Err(err) = self
+            .peer
+            .set_local_description(local_description.clone())
+            .await
+        {
+            warn!("[Signaling]: failed to set local description: {err:?}");
+            return None;
+        }
+
+        Some(local_description)
+    }
+
+    async fn on_negotiation_needed(&self) {
+        // Empty
+    }
+    async fn renegotiate(&self) {
+        let local_description = match self.peer.create_offer(None).await {
+            Err(err) => {
+                warn!("[Signaling]: failed to create offer: {err:?}");
+                return;
+            }
+            Ok(value) => value,
+        };
+
+        if let Err(err) = self
+            .peer
+            .set_local_description(local_description.clone())
+            .await
+        {
+            warn!("[Signaling]: failed to set local description: {err:?}");
+            return;
+        }
+
+        send_ws_message(
+            &mut self.ipc_sender.clone(),
+            StreamServerMessage::Signaling(StreamSignalingMessage::Description(
+                RtcSessionDescription {
+                    ty: from_webrtc_sdp(local_description.sdp_type),
+                    sdp: local_description.sdp,
+                },
+            )),
+        )
+        .await;
+    }
+
+    async fn on_ipc_message(&self, message: ServerIpcMessage) {
+        match message {
+            ServerIpcMessage::Init { .. } => {}
+            ServerIpcMessage::WebSocket(message) => {
+                self.on_ws_message(message).await;
+            }
+        }
+    }
+    async fn on_ws_message(&self, message: StreamClientMessage) {
+        match message {
+            StreamClientMessage::Signaling(StreamSignalingMessage::Description(description)) => {
+                debug!(
+                    "[Signaling] Received Remote Description: {:?}",
+                    description.ty
+                );
+
+                let description = match &description.ty {
+                    RtcSdpType::Offer => RTCSessionDescription::offer(description.sdp),
+                    RtcSdpType::Answer => RTCSessionDescription::answer(description.sdp),
+                    RtcSdpType::Pranswer => RTCSessionDescription::pranswer(description.sdp),
+                    _ => {
+                        warn!(
+                            "[Signaling]: failed to handle RTCSdpType {:?}",
+                            description.ty
+                        );
+                        return;
+                    }
+                };
+
+                let Ok(description) = description else {
+                    warn!("[Signaling]: Received invalid RTCSessionDescription");
+                    return;
+                };
+
+                let remote_ty = description.sdp_type;
+                if let Err(err) = self.peer.set_remote_description(description).await {
+                    warn!("[Signaling]: failed to set remote description: {err:?}");
+                    return;
+                }
+
+                // Send an answer (local description) if we got an offer
+                if remote_ty == RTCSdpType::Offer {
+                    let Some(local_description) = self.make_answer().await else {
+                        return;
+                    };
+
+                    debug!(
+                        "[Signaling] Sending Local Description: {:?}",
+                        local_description.sdp_type
+                    );
+
+                    let _ = send_ws_message(
+                        &mut self.ipc_sender.clone(),
+                        StreamServerMessage::Signaling(StreamSignalingMessage::Description(
+                            RtcSessionDescription {
+                                ty: from_webrtc_sdp(local_description.sdp_type),
+                                sdp: local_description.sdp,
+                            },
+                        )),
+                    )
+                    .await;
+                }
+            }
+            StreamClientMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
+                description,
+            )) => {
+                debug!("[Signaling] Received Ice Candidate");
+
+                if let Err(err) = self
+                    .peer
+                    .add_ice_candidate(RTCIceCandidateInit {
+                        candidate: description.candidate,
+                        sdp_mid: description.sdp_mid,
+                        sdp_mline_index: description.sdp_mline_index,
+                        username_fragment: description.username_fragment,
+                    })
+                    .await
+                {
+                    warn!("[Signaling]: failed to add ice candidate: {err:?}");
+                }
+            }
+            // This should already be done
+            StreamClientMessage::AuthenticateAndInit { .. } => {}
+        }
+    }
+
+    async fn on_ice_candidate(&self, candidate: Option<RTCIceCandidate>) {
+        debug!(
+            "[Signaling] Sending Ice Candidate, is last: {}",
+            candidate.is_none()
+        );
+
+        let Some(candidate) = candidate else {
+            return;
+        };
+
+        let Ok(candidate_json) = candidate.to_json() else {
+            return;
+        };
+
+        let message = StreamServerMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
+            RtcIceCandidate {
+                candidate: candidate_json.candidate,
+                sdp_mid: candidate_json.sdp_mid,
+                sdp_mline_index: candidate_json.sdp_mline_index,
+                username_fragment: candidate_json.username_fragment,
+            },
+        ));
+
+        let _ = send_ws_message(&mut self.ipc_sender.clone(), message).await;
+    }
+
+    // -- Data Channels
+    async fn on_data_channel(self: &Arc<Self>, channel: Arc<RTCDataChannel>) {
+        self.input.on_data_channel(self, channel).await;
+    }
+
+    // Start Moonlight Stream
+    async fn start_stream(self: &Arc<Self>) -> Result<(), anyhow::Error> {
+        let mut host = self.info.host.lock().await;
+
+        let gamepads = self.input.active_gamepads.read().await;
+
+        let video_decoder = TrackSampleVideoDecoder::new(
+            self.clone(),
+            self.settings.video_supported_formats,
+            self.settings.video_sample_queue_size as usize,
+        );
+
+        let audio_decoder = OpusTrackSampleAudioDecoder::new(
+            self.clone(),
+            self.settings.audio_sample_queue_size as usize,
+        );
+
+        let connection_listener = StreamConnectionListener::new(self.clone());
+
+        let stream = match host
+            .start_stream(
+                &self.moonlight,
+                self.info.app_id,
+                self.settings.width,
+                self.settings.height,
+                self.settings.fps,
+                false,
+                true,
+                self.settings.play_audio_local,
+                *gamepads,
+                false,
+                self.settings.video_colorspace,
+                if self.settings.video_color_range_full {
+                    ColorRange::Full
+                } else {
+                    ColorRange::Limited
+                },
+                self.settings.bitrate,
+                self.settings.packet_size,
+                connection_listener,
+                video_decoder,
+                audio_decoder,
+            )
+            .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                warn!("[Stream]: failed to start moonlight stream: {err:?}");
+
+                #[allow(clippy::single_match)]
+                match err {
+                    HostError::Moonlight(MoonlightError::ConnectionAlreadyExists) => {
+                        let _ = send_ws_message(
+                            &mut self.ipc_sender.clone(),
+                            StreamServerMessage::AlreadyStreaming,
+                        )
+                        .await;
+                    }
+                    _ => {}
+                }
+
+                return Err(err.into());
+            }
+        };
+
+        self.input.on_stream_start(&stream).await;
+
+        let host_features = stream.host_features().unwrap_or_else(|err| {
+            warn!("[Stream]: failed to get host features: {err:?}");
+            HostFeatures::empty()
+        });
+
+        let capabilities = StreamCapabilities {
+            touch: host_features.contains(HostFeatures::PEN_TOUCH_EVENTS),
+        };
+
+        let mut ws_sender = self.ipc_sender.clone();
+        spawn(async move {
+            let _ = send_ws_message(
+                &mut ws_sender,
+                StreamServerMessage::ConnectionComplete { capabilities },
+            )
+            .await;
+        });
+
+        drop(gamepads);
+
+        let mut stream_guard = self.stream.write().await;
+        stream_guard.replace(stream);
+
+        Ok(())
+    }
+
+    async fn stop(&self) {
+        self.stages.stop.set_reached();
+
+        // Sometimes we don't connect before failing
+        self.stages.connected.set_reached();
+
+        let mut ipc_sender = self.ipc_sender.clone();
+        spawn(async move {
+            send_ws_message(&mut ipc_sender, StreamServerMessage::PeerDisconnect).await;
+        });
+
+        let stream = {
+            let mut stream = self.stream.write().await;
+            stream.take()
+        };
+        if let Err(err) = spawn_blocking(move || {
+            drop(stream);
+        })
+        .await
+        {
+            warn!("[Stream]: failed to stop stream: {err}");
+        };
+    }
+}
+
+// TODO: remove this fn
+async fn send_ws_message(sender: &mut IpcSender<StreamerIpcMessage>, message: StreamServerMessage) {
+    sender.send(StreamerIpcMessage::WebSocket(message)).await;
 }

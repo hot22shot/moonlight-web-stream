@@ -1,24 +1,20 @@
+use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{io::ErrorKind, path::Path};
 use tokio::fs;
 
 use actix_web::{App, HttpServer, web::Data};
 use log::{LevelFilter, info, warn};
-use moonlight_common::moonlight::MoonlightInstance;
 use serde::{Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 use crate::{
     api::api_service,
-    config::Config,
     data::{ApiData, RuntimeApiData},
     web::web_service,
 };
 
 mod api;
-mod api_bindings;
-mod api_bindings_consts;
-mod config;
 mod data;
 mod web;
 
@@ -68,12 +64,7 @@ async fn main() -> std::io::Result<()> {
 
     // Load Data
     let data = read_or_default::<ApiData>(&config.data_path).await;
-    let data = RuntimeApiData::load(
-        &config,
-        data,
-        MoonlightInstance::global().expect("failed to initialize moonlight"),
-    )
-    .await;
+    let data = RuntimeApiData::load(&config, data).await;
 
     let server = HttpServer::new({
         let config = config.clone();

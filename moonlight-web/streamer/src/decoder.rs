@@ -9,7 +9,7 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::api::stream::StreamConnection;
+use crate::StreamConnection;
 
 pub struct TrackSampleDecoder {
     channel_queue_size: usize,

@@ -10,7 +10,7 @@ use crate::{
     Error, MoonlightError, PairPin, PairStatus, ServerState, ServerVersion,
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, DEFAULT_UNIQUE_ID, HostInfo,
-        ServerAppListResponse, host_app_box_art, host_app_list, host_info, launch::host_cancel,
+        ServerAppListResponse, host_app_box_art, host_app_list, host_cancel, host_info,
         pair::host_unpair, request_client::RequestClient,
     },
     pair::{ClientAuth, PairError, PairSuccess, host_pair},

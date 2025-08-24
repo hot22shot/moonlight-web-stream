@@ -12,9 +12,12 @@ use num_derive::FromPrimitive;
 
 use crate::moonlight::stream::{Capabilities, Colorspace};
 
+#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SupportedVideoFormats(u32);
+
 bitflags! {
-    #[derive(Debug, Clone, Copy, Default)]
-    pub struct SupportedVideoFormats: u32 {
+    impl SupportedVideoFormats: u32 {
         const H264 = limelight::VIDEO_FORMAT_H264;          // H.264 High Profile
         const H264_HIGH8_444 = limelight::VIDEO_FORMAT_H264_HIGH8_444;   // H.264 High 4:4:4 8-bit Profile
         const H265 = limelight::VIDEO_FORMAT_H265;                       // HEVC Main Profile

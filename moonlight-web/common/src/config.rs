@@ -1,9 +1,11 @@
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
-use webrtc::ice_transport::ice_server::RTCIceServer;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use crate::api_bindings::RtcIceServer;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
 pub struct Config {
     pub credentials: String,
     #[serde(default = "data_path_default")]
@@ -15,7 +17,7 @@ pub struct Config {
     #[serde(default = "default_pair_device_name")]
     pub pair_device_name: String,
     #[serde(default = "default_ice_servers")]
-    pub webrtc_ice_servers: Vec<RTCIceServer>,
+    pub webrtc_ice_servers: Vec<RtcIceServer>,
     #[serde(default)]
     pub webrtc_port_range: Option<PortRange>,
     #[serde(default)]
@@ -27,13 +29,13 @@ pub struct Config {
     pub streamer_path: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
 pub struct ConfigSsl {
     pub private_key_pem: String,
     pub certificate_pem: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
 pub struct PortRange {
     pub min: u16,
     pub max: u16,
@@ -69,10 +71,10 @@ fn moonlight_default_http_port_default() -> u16 {
     47989
 }
 
-fn default_ice_servers() -> Vec<RTCIceServer> {
+fn default_ice_servers() -> Vec<RtcIceServer> {
     vec![
         // Google
-        RTCIceServer {
+        RtcIceServer {
             urls: vec![
                 // Google
                 "stun:l.google.com:19302".to_owned(),

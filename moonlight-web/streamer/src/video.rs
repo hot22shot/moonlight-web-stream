@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use actix_web::web::Bytes;
+use bytes::Bytes;
 use log::{error, info};
 use moonlight_common::moonlight::{
     stream::Capabilities,
@@ -25,7 +25,7 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::api::stream::{StreamConnection, decoder::TrackSampleDecoder};
+use crate::{StreamConnection, decoder::TrackSampleDecoder};
 
 pub struct TrackSampleVideoDecoder {
     decoder: TrackSampleDecoder,

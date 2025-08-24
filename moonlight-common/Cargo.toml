@@ -10,6 +10,7 @@ num = "0.4"
 num-derive = "0.4"
 num-traits = "0.2"
 thiserror = "2.0.12"
+log = { version = "0.4.27", optional = true }
 
 # Stream
 moonlight-common-sys = { workspace = true, optional = true }
@@ -24,16 +25,18 @@ form_urlencoded = { version = "1.2.1", optional = true }
 
 # Network Reqwest backend
 reqwest = { version = "0.12.22", optional = true }
-bytes = { version = "1.10.1", optional = true }
+bytes = { workspace = true, optional = true }
 
 # High
-log = { version = "0.4.27", optional = true }
 tokio = { version = "1.46.1", default-features = false, features = [
     "rt",
     "rt-multi-thread",
 ], optional = true }
-pem = { version = "3.0.5", optional = true }
+pem = { workspace = true, optional = true }
 openssl = { workspace = true }
+
+# bincode
+bincode = { workspace = true, features = ["derive"], optional = true }
 
 [features]
 default = ["high", "moonlight", "backend_reqwest"]
@@ -43,7 +46,7 @@ high = ["network", "pair", "dep:log", "dep:tokio"]
 
 # Moonlight Common C / Stream
 # TODO: rename to stream
-moonlight = ["dep:moonlight-common-sys", "dep:printf-compat"]
+moonlight = ["dep:moonlight-common-sys", "dep:log", "dep:printf-compat"]
 
 # Pairing
 pair = ["network"]
@@ -65,6 +68,8 @@ backend_reqwest = [
     "dep:tokio",
     "dep:bytes",
 ]
+
+bincode = ["dep:bincode"]
 
 [lints]
 workspace = true

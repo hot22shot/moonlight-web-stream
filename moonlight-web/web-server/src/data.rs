@@ -3,10 +3,7 @@ use std::{collections::HashMap, path::Path};
 use actix_web::web::{Bytes, Data};
 use futures::future::join_all;
 use log::warn;
-use moonlight_common::{
-    PairStatus, moonlight::MoonlightInstance, network::reqwest::ReqwestMoonlightHost,
-    pair::ClientAuth,
-};
+use moonlight_common::{PairStatus, network::reqwest::ReqwestMoonlightHost, pair::ClientAuth};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
 use tokio::{
@@ -47,12 +44,11 @@ pub struct RuntimeApiHost {
 
 pub struct RuntimeApiData {
     pub(crate) file_writer: Sender<()>,
-    pub(crate) instance: MoonlightInstance,
     pub(crate) hosts: RwLock<Slab<Mutex<RuntimeApiHost>>>,
 }
 
 impl RuntimeApiData {
-    pub async fn load(config: &Config, data: ApiData, instance: MoonlightInstance) -> Data<Self> {
+    pub async fn load(config: &Config, data: ApiData) -> Data<Self> {
         let mut hosts = Slab::new();
         let loaded_hosts = join_all(data.hosts.into_iter().map(|host_data| async move {
             let mut host =
@@ -87,7 +83,6 @@ impl RuntimeApiData {
 
         let this = Data::new(Self {
             file_writer,
-            instance,
             hosts: RwLock::new(hosts),
         });
 

@@ -21,12 +21,12 @@ use tokio::sync::Mutex;
 use crate::{
     Config,
     api::auth::{ApiCredentials, auth_middleware},
-    api_bindings::{
-        DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
-        GetHostQuery, GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1,
-        PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost,
-    },
     data::{RuntimeApiData, RuntimeApiHost},
+};
+use common::api_bindings::{
+    DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
+    GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
+    PutHostRequest, PutHostResponse, UndetailedHost,
 };
 
 mod auth;
@@ -362,8 +362,8 @@ pub fn api_service(data: Data<RuntimeApiData>, credentials: String) -> impl Http
         .app_data(data)
         .service(services![
             authenticate,
-            stream::start_stream,
-            stream::cancel::host_cancel,
+            stream::start_host,
+            stream::cancel_host,
             list_hosts,
             get_host,
             put_host,

@@ -296,6 +296,33 @@ pub async fn host_app_box_art<C: RequestClient>(
     Ok(response)
 }
 
+pub async fn host_cancel<C: RequestClient>(
+    client: &mut C,
+    https_hostport: &str,
+    info: ClientInfo<'_>,
+) -> Result<bool, ApiError<C::Error>> {
+    let mut query_params: LocalQueryParams<'_, 2> = LocalQueryParams::default();
+
+    let mut uuid_bytes = [0; Hyphenated::LENGTH];
+    info.add_query_params(&mut uuid_bytes, &mut query_params);
+
+    let response = client
+        .send_https_request_text_response(https_hostport, "cancel", &query_params)
+        .await
+        .map_err(ApiError::RequestClient)?;
+
+    let doc = Document::parse(response.as_ref())?;
+    let root = doc
+        .root()
+        .children()
+        .find(|node| node.tag_name().name() == "root")
+        .ok_or(ApiError::XmlRootNotFound)?;
+
+    let cancel = xml_child_text::<C>(root, "cancel")?.trim();
+
+    Ok(cancel != "0")
+}
+
 struct CounterWriter<'a> {
     buf: &'a mut [u8],
     pos: usize, // tracks how many bytes have been written
@@ -311,10 +338,6 @@ impl<'a> fmt::Write for CounterWriter<'a> {
         self.pos += bytes.len();
         Ok(())
     }
-}
-
-fn i32_to_str(num: i32, buffer: &mut [u8; 11]) -> &str {
-    fmt_write_to_buffer(buffer, |writer| write!(writer, "{num}").expect("write i32"))
 }
 
 fn u32_to_str(num: u32, buffer: &mut [u8; 11]) -> &str {

@@ -4,9 +4,11 @@ members = [
     "moonlight-client-simple",
     "moonlight-common",
     "moonlight-common-sys",
+    "moonlight-web/common",
     "moonlight-web/streamer",
     "moonlight-web/web-server",
 ]
+default-members = ["moonlight-web/streamer", "moonlight-web/web-server"]
 
 [workspace.package]
 license = "GPL-3.0-or-later"
@@ -21,6 +23,19 @@ tokio = { version = "1.47.1" }
 
 openssl = "0.10.73"
 openssl-sys = "0.9.109"
+pem = "3.0.5"
+
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+
+bincode = { version = "2.0.1", features = ["derive"] }
+
+anyhow = "1.0.99"
+
+bytes = "1.10.1"
+
+log = "0.4.27"
+simplelog = "0.12.2"
 
 [workspace.lints.clippy]
 too_many_arguments = "allow"

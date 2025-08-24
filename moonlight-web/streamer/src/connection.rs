@@ -1,15 +1,10 @@
 use std::sync::Arc;
 
-use log::{info, warn};
-use moonlight_common::moonlight::{
-    connection::{ConnectionListener, ConnectionStatus, Stage},
-    stream::HostFeatures,
-};
+use log::info;
+use moonlight_common::moonlight::connection::{ConnectionListener, ConnectionStatus, Stage};
 
-use crate::{
-    api::stream::{StreamConnection, send_ws_message, serialize_json},
-    api_bindings::{StreamCapabilities, StreamServerGeneralMessage, StreamServerMessage},
-};
+use crate::{StreamConnection, send_ws_message, serialize_json};
+use common::api_bindings::{StreamServerGeneralMessage, StreamServerMessage};
 
 pub struct StreamConnectionListener {
     stream: Arc<StreamConnection>,
@@ -23,7 +18,7 @@ impl StreamConnectionListener {
 
 impl ConnectionListener for StreamConnectionListener {
     fn stage_starting(&mut self, stage: Stage) {
-        let mut ws_sender = self.stream.ws_sender.clone();
+        let mut ws_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
             let _ = send_ws_message(
@@ -37,10 +32,10 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn stage_complete(&mut self, stage: Stage) {
-        let mut ws_sender = self.stream.ws_sender.clone();
+        let mut ws_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
-            let _ = send_ws_message(
+            send_ws_message(
                 &mut ws_sender,
                 StreamServerMessage::StageComplete {
                     stage: stage.name().to_string(),
@@ -51,11 +46,11 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn stage_failed(&mut self, stage: Stage, error_code: i32) {
-        let mut ws_sender = self.stream.ws_sender.clone();
+        let mut ipc_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
-            let _ = send_ws_message(
-                &mut ws_sender,
+            send_ws_message(
+                &mut ipc_sender,
                 StreamServerMessage::StageFailed {
                     stage: stage.name().to_string(),
                     error_code,
@@ -74,11 +69,11 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn connection_terminated(&mut self, error_code: i32) {
-        let mut ws_sender = self.stream.ws_sender.clone();
+        let mut ipc_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
-            let _ = send_ws_message(
-                &mut ws_sender,
+            send_ws_message(
+                &mut ipc_sender,
                 StreamServerMessage::ConnectionTerminated { error_code },
             )
             .await;
