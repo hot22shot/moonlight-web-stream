@@ -17,6 +17,7 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 - [Building](#building)
 
 ## Setup
+
 1. Download the [compressed archive](https://github.com/MrCreativ3001/moonlight-web-stream/releases) for your platform and uncompress it or [build it yourself](#building)
 
 2. Run the "web-server" executable
@@ -24,6 +25,14 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 3. Change your [access credentials](#credentials) in the newly generated `server/config.json` (all changes require a restart)
 
 4. Go to `localhost:8080` and view the web interface. You can also the change [bind address](#bind-address).
+
+Add your pc:
+
+1. Add a new pc (<img src="moonlight-web/web-server/web/resources/ic_add_to_queue_white_48px.svg" alt="icon" style="height:1em; vertical-align:middle;">) with the address as `localhost` and leave the port empty (if you've got the default port)
+
+2. Pair your pc by clicking on the host (<img src="moonlight-web/web-server/web/resources/desktop_windows-48px.svg" alt="icon" style="height:1em; vertical-align:middle;">) and entering the code in sunshine
+
+3. Launch an app
 
 ### Streaming over the Internet
 When in a local network the WebRTC Peers will negotatiate without any problems. However when you want to play over the internet without being in the same network as Moonlight Web, you'll have to configure it and forward ports.
@@ -117,8 +126,14 @@ ProxyPassReverse ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_DEV}/
 sudo a2enconf moonlight-web
 ```
 
-4. Change config to include the prefixed path
-TODO: LINK TO CONFIG
+4. Change [config](#config) to include the [prefixed path](#web-path-prefix)
+```json
+{
+    ..
+    "web_path_prefix": "/test"
+    ..
+}
+```
 
 5. Use https with a certificate (Optional)
 
@@ -222,6 +237,7 @@ There are 2 ways to build Moonlight Web:
   ```sh
   cross build --release --target YOUR_TARGET
   ```
+  Note: windows only has the gnu target `x86_64-pc-windows-gnu`
 
 ### Crate: Moonlight Common Sys
 [moonlight-common-sys](./moonlight-common-sys/) are rust bindings to the cpp [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library.
