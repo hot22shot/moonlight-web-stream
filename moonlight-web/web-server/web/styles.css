@@ -13,7 +13,11 @@ body.stream {
     overscroll-behavior: none !important;
 }
 
-
+h2,
+h3 {
+    margin-top: 12px;
+    margin-bottom: 8px;
+}
 
 /** Button */
 button {

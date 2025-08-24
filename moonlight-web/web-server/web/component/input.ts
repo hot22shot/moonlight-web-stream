@@ -26,6 +26,7 @@ export type InputInit = {
     checked?: boolean
     step?: string
     accept?: string
+    inputMode?: string
 }
 
 export type InputChangeListener = (event: ComponentEvent<InputComponent>) => void
@@ -53,6 +54,9 @@ export class InputComponent extends ElementWithLabel {
         }
         if (init && init.accept != null) {
             this.input.accept = init.accept
+        }
+        if (init && init.inputMode != null) {
+            this.input.inputMode = init.inputMode
         }
         this.div.appendChild(this.input)
 

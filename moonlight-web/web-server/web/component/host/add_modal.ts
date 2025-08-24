@@ -1,34 +1,33 @@
 import { PutHostRequest } from "../../api_bindings.js"
+import { InputComponent } from "../input.js"
 import { FormModal } from "../modal/form.js"
 
 export class AddHostModal extends FormModal<PutHostRequest> {
 
-    private addressLabel: HTMLLabelElement = document.createElement("label")
-    private addressInput: HTMLInputElement = document.createElement("input")
+    private header: HTMLElement = document.createElement("h2")
 
-    private httpPortLabel: HTMLLabelElement = document.createElement("label")
-    private httpPortInput: HTMLInputElement = document.createElement("input")
+    private address: InputComponent
+    private httpPort: InputComponent
 
     constructor() {
         super()
 
-        this.addressLabel.innerText = "Address"
-        this.addressInput.type = "text"
-        this.addressLabel.appendChild(this.addressInput)
+        this.header.innerText = "Host"
 
-        this.httpPortLabel.innerText = "Port"
-        this.httpPortInput.type = "text"
-        this.httpPortInput.inputMode = "numeric"
-        this.httpPortLabel.appendChild(this.httpPortInput)
+        this.address = new InputComponent("address", "text", "Address")
+
+        this.httpPort = new InputComponent("httpPort", "text", "Port", {
+            inputMode: "numeric"
+        })
     }
 
     reset(): void {
-        this.addressInput.value = ""
-        this.httpPortInput.value = ""
+        this.address.reset()
+        this.httpPort.reset()
     }
     submit(): PutHostRequest | null {
-        const address = this.addressInput.value
-        const httpPort = this.httpPortInput.valueAsNumber
+        const address = this.address.getValue()
+        const httpPort = parseInt(this.httpPort.getValue())
 
         return {
             address,
@@ -37,7 +36,8 @@ export class AddHostModal extends FormModal<PutHostRequest> {
     }
 
     mountForm(form: HTMLFormElement): void {
-        form.appendChild(this.addressLabel)
-        form.appendChild(this.httpPortLabel)
+        form.appendChild(this.header)
+        this.address.mount(form)
+        this.httpPort.mount(form)
     }
 }
