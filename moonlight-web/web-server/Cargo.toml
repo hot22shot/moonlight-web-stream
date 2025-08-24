@@ -1,5 +1,5 @@
 [package]
-name = "moonlight-web"
+name = "web-server"
 version = "0.1.0"
 edition = "2024"
 license = { workspace = true }
@@ -32,8 +32,6 @@ async-stream = "0.3.6"
 
 ts-rs = "11.0.1"
 futures = "0.3.31"
-
-[features]
 
 [lints]
 workspace = true

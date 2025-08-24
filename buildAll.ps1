@@ -6,6 +6,8 @@ $targetDir = $metadata.target_directory
 New-Item -ItemType Directory "./finalOutput" -Force
 $outputDir = Resolve-Path "./finalOutput"
 
+$moonlightRoot = Resolve-Path "./moonlight-web"
+
 echo "Target directory at $targetDir"
 echo "Putting final output into $outputDir"
 
@@ -16,7 +18,7 @@ $targets = @(
 
 Remove-Item -Path "$outputDir/*" -Recurse -Force
 
-Set-Location ./moonlight-web
+Set-Location $moonlightRoot + "/web-server"
 
 echo "------------- Starting Build for Frontend -------------"
 New-Item -ItemType Directory "$outputDir/static" -Force | Out-Null
@@ -42,7 +44,7 @@ foreach($target in $targets) {
 
     echo "------------- Starting Zipping for $target -------------"
     $itemsToZip = @($binaryPaths) + "$outputDir/static"
-    $zipDestination = "../finalOutput/moonlight-web-$target.zip"
+    $zipDestination = "$outputDir/moonlight-web-$target.zip"
 
     Compress-Archive -Path $itemsToZip -DestinationPath $zipDestination -Force
 

@@ -4,7 +4,7 @@ members = [
     "moonlight-client-simple",
     "moonlight-common",
     "moonlight-common-sys",
-    "moonlight-web",
+    "moonlight-web/web-server",
 ]
 
 [workspace.package]
