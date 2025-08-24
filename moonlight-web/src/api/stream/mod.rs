@@ -69,6 +69,8 @@ mod decoder;
 mod input;
 mod video;
 
+// Big TODO: fix memory issues with webrtc (maybe use a seperate process for the streamer?): https://github.com/webrtc-rs/webrtc/issues/406
+
 struct StreamSettings {
     bitrate: u32,
     packet_size: u32,
