@@ -61,7 +61,6 @@ foreach($target in $targets) {
     echo "Created Zip file at $zipDestination"
     echo "------------- Finished Zipping for $target -------------"
 }
-Remove-Item -Path "$outputDir" -Recurse -Force
 
 cd ..
 
