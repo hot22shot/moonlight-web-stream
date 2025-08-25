@@ -62,7 +62,7 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 }
 ```
 
-If you're Apache 2, you can also proxy the webpage with it: [Proxying via Apache 2](#proxying-via-apache-2).
+If you're using Apache 2, you can also proxy the webpage with it: [Proxying via Apache 2](#proxying-via-apache-2).
 
 ### Configuring https
 You can configure https directly with the Moonlight Web Server.
