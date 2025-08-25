@@ -57,7 +57,7 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 ```json
 {
     ..
-    "webrtc_nat_1to1_ips": "74.125.224.72"
+    "webrtc_nat_1to1_ips": ["74.125.224.72"]
     ..
 }
 ```
