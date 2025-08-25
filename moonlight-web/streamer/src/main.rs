@@ -404,6 +404,11 @@ impl StreamConnection {
 
             async move {
                 while let Some(message) = ipc_receiver.recv().await {
+                    if let ServerIpcMessage::Stop = &message {
+                        this.on_ipc_message(ServerIpcMessage::Stop).await;
+                        return;
+                    }
+
                     this.on_ipc_message(message).await;
                 }
             }

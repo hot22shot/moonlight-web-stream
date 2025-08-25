@@ -268,6 +268,7 @@ pub async fn start_host(
 
         sleep(Duration::from_secs(4)).await;
 
+        info!("[Stream]: killing streamer");
         match child.kill().await {
             Ok(_) => {
                 info!("[Stream]: killed streamer");
