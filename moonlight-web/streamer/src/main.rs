@@ -204,10 +204,12 @@ async fn main() {
             }
         }
     }
-    api_settings.set_nat_1to1_ips(
-        server_config.webrtc_nat_1to1_ips.clone(),
-        RTCIceCandidateType::Host,
-    );
+    if !server_config.webrtc_nat_1to1_ips.is_empty() {
+        api_settings.set_nat_1to1_ips(
+            server_config.webrtc_nat_1to1_ips.clone(),
+            RTCIceCandidateType::Host,
+        );
+    }
 
     let api = APIBuilder::new()
         .with_media_engine(api_media)

@@ -10,6 +10,10 @@ import { SelectComponent } from "./component/input.js";
 import { getSupportedVideoFormats } from "./stream/video.js";
 import { StreamCapabilities } from "./api_bindings.js";
 
+// TODO Touch Mouse scrolling when mouse mode
+// TODO Touch mouse mode keyboard on triple when mouse mode
+// TODO Touch mouse mode right click
+
 async function startApp() {
     const api = await getApi()
 
