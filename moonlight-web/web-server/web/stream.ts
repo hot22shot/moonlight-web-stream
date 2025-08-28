@@ -339,13 +339,24 @@ class ViewerSidebar implements Component, Sidebar {
 
         // Fullscreen
         this.fullscreenButton.innerText = "Fullscreen"
-        this.fullscreenButton.addEventListener("click", () => {
+        this.fullscreenButton.addEventListener("click", async () => {
             const root = document.getElementById("root")
             if (root) {
-                // TODO: try set landscape
-                root.requestFullscreen({
+                await root.requestFullscreen({
                     navigationUI: "hide"
                 })
+
+                try {
+                    if (screen && "orientation" in screen) {
+                        const orientation = screen.orientation
+
+                        if ("lock" in orientation && typeof orientation.lock == "function") {
+                            await orientation.lock("landscape")
+                        }
+                    }
+                } catch (e) {
+                    console.warn("failed to set orientation to landscape", e)
+                }
             }
         })
 
