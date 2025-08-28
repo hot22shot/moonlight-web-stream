@@ -1,15 +1,13 @@
-import { StreamCapabilities, StreamControllerButton, StreamControllerCapabilities, StreamMouseButton } from "../api_bindings.js"
-import { showMessage } from "../component/modal/index.js"
+import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton } from "../api_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, convertStandardButton as convertStandardControllerButton, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
+// Everything greater than this is a right click
 const TOUCH_AS_CLICK_MAX_TIME_MS = 300
 
-// TODO: is this even used
-const CONTROLLER_SEND_INTERVAL_MS = 50
 const CONTROLLER_RUMBLE_INTERVAL_MS = 60
 
 function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
@@ -239,6 +237,7 @@ export class StreamInput {
         originY: number
         x: number
         y: number
+        clicked: boolean
     }> = new Map()
     private primaryTouch: number | null = null
 
@@ -256,7 +255,8 @@ export class StreamInput {
                 originX: touch.clientX,
                 originY: touch.clientY,
                 x: touch.clientX,
-                y: touch.clientY
+                y: touch.clientY,
+                clicked: false
             })
         } else {
             oldTouch.x = touch.clientX
@@ -280,11 +280,12 @@ export class StreamInput {
                 this.primaryTouch = touch.identifier
 
                 if (this.config.touchMode == "pointAndDrag") {
-                    this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, StreamMouseButton.LEFT)
+                    this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect)
                 }
             }
         }
     }
+
     onTouchMove(event: TouchEvent, rect: DOMRect) {
         if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
@@ -305,6 +306,14 @@ export class StreamInput {
                 const movementY = touch.clientY - oldTouch.y;
 
                 this.sendMouseMove(movementX, movementY)
+
+                // Should we make this a click when pointAndDrag?
+                const distance = Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY)
+                if (this.config.touchMode == "pointAndDrag" && !oldTouch.clicked && distance > TOUCH_AS_CLICK_MAX_DISTANCE) {
+                    this.sendMouseButton(true, StreamMouseButton.LEFT)
+
+                    oldTouch.clicked = true
+                }
             }
         }
 
@@ -326,17 +335,24 @@ export class StreamInput {
                 const oldTouch = this.touchTracker.get(this.primaryTouch)
                 this.primaryTouch = null
 
-                if (this.config.touchMode == "mouseRelative") {
-                    // mouse click
-                    if (oldTouch
-                        && Date.now() - oldTouch.startTime <= TOUCH_AS_CLICK_MAX_TIME_MS
-                        && Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY) <= TOUCH_AS_CLICK_MAX_DISTANCE
-                    ) {
+                if (oldTouch) {
+                    const time = Date.now() - oldTouch.startTime
+                    const distance = Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY)
+
+                    if (distance <= TOUCH_AS_CLICK_MAX_DISTANCE) {
+                        if (time <= TOUCH_AS_CLICK_MAX_TIME_MS || oldTouch.clicked) {
+                            if (!oldTouch.clicked) {
+                                this.sendMouseButton(true, StreamMouseButton.LEFT)
+                            }
+                            this.sendMouseButton(false, StreamMouseButton.LEFT)
+                        } else {
+                            this.sendMouseButton(true, StreamMouseButton.RIGHT)
+                            this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                        }
+                    } else if (this.config.touchMode == "pointAndDrag") {
                         this.sendMouseButton(true, StreamMouseButton.LEFT)
                         this.sendMouseButton(false, StreamMouseButton.LEFT)
                     }
-                } else if (this.config.touchMode == "pointAndDrag") {
-                    this.sendMouseButton(false, StreamMouseButton.LEFT)
                 }
             }
         }
