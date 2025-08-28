@@ -28,7 +28,6 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 }
 
 export type StreamInputConfig = {
-    keyboardOrdered: boolean
     mouseMode: "relative" | "follow" | "pointAndDrag"
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
     controllerConfig: ControllerConfig
@@ -36,7 +35,6 @@ export type StreamInputConfig = {
 
 export function defaultStreamInputConfig(): StreamInputConfig {
     return {
-        keyboardOrdered: true,
         mouseMode: "follow",
         touchMode: "pointAndDrag",
         controllerConfig: {
@@ -79,13 +77,9 @@ export class StreamInput {
     }
 
     private createChannels() {
-        // TODO: recreate channels when required
-        this.keyboard = this.peer.createDataChannel("keyboard", {
-            ordered: this.config.keyboardOrdered
-        })
+        this.keyboard = this.peer.createDataChannel("keyboard")
 
-        this.mouse = this.peer.createDataChannel("mouse", {
-        })
+        this.mouse = this.peer.createDataChannel("mouse")
 
         this.touch = this.peer.createDataChannel("touch")
         this.touch.onmessage = this.onTouchMessage.bind(this)
