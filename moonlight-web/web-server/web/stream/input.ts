@@ -274,6 +274,20 @@ export class StreamInput {
         }
     }
 
+    private calcTouchTime(touch: { startTime: number }): number {
+        return Date.now() - touch.startTime
+    }
+    private calcTouchOriginDistance(
+        touch: { x: number, y: number } | { clientX: number, clientY: number },
+        oldTouch: { originX: number, originY: number }
+    ): number {
+        if ("clientX" in touch) {
+            return Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY)
+        } else {
+            return Math.hypot(touch.x - oldTouch.originX, touch.y - oldTouch.originY)
+        }
+    }
+
     onTouchStart(event: TouchEvent, rect: DOMRect) {
         for (const touch of event.changedTouches) {
             this.updateTouchTracker(touch)
@@ -312,7 +326,7 @@ export class StreamInput {
                 return
             }
 
-            const time = Date.now() - touch.startTime
+            const time = this.calcTouchTime(touch)
             if (this.touchMouseAction == "default" && !touch.mouseMoved && time >= TOUCH_AS_CLICK_MIN_TIME_MS) {
                 this.sendMousePositionClientCoordinates(touch.originX, touch.originY, rect)
 
@@ -343,8 +357,7 @@ export class StreamInput {
                 if (this.touchMouseAction == "default") {
                     this.sendMouseMove(movementX, movementY)
 
-                    // Should we make this a click when pointAndDrag?
-                    const distance = Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY)
+                    const distance = this.calcTouchOriginDistance(touch, oldTouch)
                     if (this.config.touchMode == "pointAndDrag" && distance > TOUCH_AS_CLICK_MAX_DISTANCE) {
                         if (!oldTouch.mouseMoved) {
                             this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect)
@@ -396,9 +409,8 @@ export class StreamInput {
                 this.primaryTouch = null
 
                 if (oldTouch) {
-                    // TODO: put this into functions
-                    const time = Date.now() - oldTouch.startTime
-                    const distance = Math.hypot(touch.clientX - oldTouch.originX, touch.clientY - oldTouch.originY)
+                    const time = this.calcTouchTime(oldTouch)
+                    const distance = this.calcTouchOriginDistance(touch, oldTouch)
 
                     if (this.touchMouseAction == "default") {
                         if (distance <= TOUCH_AS_CLICK_MAX_DISTANCE) {
