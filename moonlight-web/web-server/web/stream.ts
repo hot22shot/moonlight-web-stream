@@ -78,14 +78,13 @@ class ViewerApp implements Component {
         this.videoElement.muted = true
 
         // Configure input
-        document.addEventListener("keydown", this.onKeyDown.bind(this))
-        document.addEventListener("keyup", this.onKeyUp.bind(this))
+        document.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
+        document.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
 
-        // TODO: add passive false to more listeners
-        this.videoElement.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
-        this.videoElement.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
-        this.videoElement.addEventListener("mousemove", this.onMouseMove.bind(this))
-        this.videoElement.addEventListener("wheel", this.onWheel.bind(this))
+        this.videoElement.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
+        this.videoElement.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
+        this.videoElement.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
+        this.videoElement.addEventListener("wheel", this.onWheel.bind(this), { passive: false })
 
         this.videoElement.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
         this.videoElement.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })

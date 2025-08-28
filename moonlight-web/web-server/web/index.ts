@@ -93,7 +93,7 @@ class MainApp implements Component {
         this.setCurrentDisplay("hosts")
 
         // Context Menu
-        document.body.addEventListener("contextmenu", this.onContextMenu.bind(this))
+        document.body.addEventListener("contextmenu", this.onContextMenu.bind(this), { passive: false })
     }
 
     setAppState(state: AppState) {
