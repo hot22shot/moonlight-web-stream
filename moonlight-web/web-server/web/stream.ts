@@ -273,12 +273,16 @@ class ConnectionInfoModal implements Modal<void> {
             this.text.innerText = `Connection Complete`
 
             this.eventTarget.dispatchEvent(new Event("ml-connected"))
-        } else if (data.type == "connectionTerminated") {
+        }
+        // Reopen the modal cause we might already be closed at this point
+        else if (data.type == "connectionTerminated") {
             this.text.innerText = `Connection Terminated with code ${data.errorCode}`
-            // TODO: maybe reload button?
+
+            showModal(this)
         } else if (data.type == "error") {
             this.text.innerText = `Error: ${data.message}`
-            // TODO: maybe reload button?
+
+            showModal(this)
         }
     }
 

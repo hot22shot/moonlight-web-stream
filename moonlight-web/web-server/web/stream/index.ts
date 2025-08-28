@@ -245,17 +245,22 @@ export class Stream {
     private onTrack(event: RTCTrackEvent) {
         event.receiver.jitterBufferTarget = 0
 
-        // TODO: remove debug
-        console.log(event)
         const stream = event.streams[0]
         if (stream) {
             stream.getTracks().forEach(track => this.mediaStream.addTrack(track))
         }
-        // this.mediaStream.addTrack(event.track)
     }
     private onConnectionStateChange(event: Event) {
-        // TODO: remove
-        console.log(this.peer.connectionState)
+        if (this.peer.connectionState == "failed" || this.peer.connectionState == "disconnected" || this.peer.connectionState == "closed") {
+            const customEvent: InfoEvent = new CustomEvent("stream-info", {
+                detail: {
+                    type: "error",
+                    message: `Connection state is ${this.peer.connectionState}`
+                }
+            })
+
+            this.eventTarget.dispatchEvent(customEvent)
+        }
     }
 
     private onDataChannel(event: RTCDataChannelEvent) {
