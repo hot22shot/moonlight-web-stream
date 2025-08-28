@@ -4,12 +4,13 @@ export type TextEvent = CustomEvent<{ text: string }>
 export class ScreenKeyboard {
 
     private eventTarget = new EventTarget()
-    private fakeElement = document.createElement("textarea")
+    private fakeElement = document.createElement("input")
 
     private visible: boolean = false
 
     constructor() {
         this.fakeElement.classList.add("hiddeninput")
+        this.fakeElement.type = "text"
         this.fakeElement.name = "keyboard"
         this.fakeElement.autocomplete = "off"
         this.fakeElement.autocapitalize = "off"
@@ -17,9 +18,11 @@ export class ScreenKeyboard {
         if ("autocorrect" in this.fakeElement) {
             this.fakeElement.autocorrect = false
         }
+
         this.fakeElement.addEventListener("input", this.onKeyInput.bind(this))
 
-        // TODO: on blur for visible detection?
+        document.addEventListener("click", this.hide.bind(this))
+        this.fakeElement.addEventListener("blur", this.hide.bind(this))
     }
 
     getHiddenElement() {
@@ -28,17 +31,18 @@ export class ScreenKeyboard {
 
     show() {
         if (!this.visible) {
+            this.visible = true
+
             this.fakeElement.focus()
         }
-
-        this.visible = true
     }
     hide() {
         if (this.visible) {
+            this.visible = false
+
+            this.fakeElement.focus()
             this.fakeElement.blur()
         }
-
-        this.visible = false
     }
 
     isVisible(): boolean {

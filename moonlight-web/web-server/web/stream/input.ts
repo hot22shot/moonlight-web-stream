@@ -366,7 +366,7 @@ export class StreamInput {
                     // inverting horizontal scroll
                     this.sendMouseWheel(-movementX, movementY)
                 } else if (this.touchMouseAction == "screenKeyboard") {
-                    const distanceY = touch.clientY - oldTouch.originX
+                    const distanceY = touch.clientY - oldTouch.originY
 
                     if (distanceY < -TOUCHES_AS_KEYBOARD_DISTANCE) {
                         const customEvent: ScreenKeyboardSetVisibleEvent = new CustomEvent("ml-screenkeyboardvisible", {

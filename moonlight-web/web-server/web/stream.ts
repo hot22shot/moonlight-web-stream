@@ -4,7 +4,7 @@ import { showErrorPopup } from "./component/error.js";
 import { InfoEvent, Stream } from "./stream/index.js"
 import { Modal, showMessage, showModal } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
-import { defaultStreamInputConfig, StreamInputConfig } from "./stream/input.js";
+import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { getSupportedVideoFormats } from "./stream/video.js";
@@ -129,18 +129,7 @@ class ViewerApp implements Component {
         this.onTouchUpdate()
         this.onGamepadUpdate()
 
-        this.stream.getInput().addScreenKeyboardVisibleEvent((event) => {
-            const screenKeyboard = this.sidebar.getScreenKeyboard()
-
-            const newShown = event.detail.visible
-            if (newShown != screenKeyboard.isVisible()) {
-                if (newShown) {
-                    screenKeyboard.show()
-                } else {
-                    screenKeyboard.hide()
-                }
-            }
-        })
+        this.stream.getInput().addScreenKeyboardVisibleEvent(this.onScreenKeyboardSetVisible.bind(this))
     }
 
     private async onInfo(event: InfoEvent) {
@@ -157,6 +146,19 @@ class ViewerApp implements Component {
 
     onUserInteraction() {
         this.videoElement.muted = false
+    }
+    private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
+        console.info(event.detail)
+        const screenKeyboard = this.sidebar.getScreenKeyboard()
+
+        const newShown = event.detail.visible
+        if (newShown != screenKeyboard.isVisible()) {
+            if (newShown) {
+                screenKeyboard.show()
+            } else {
+                screenKeyboard.hide()
+            }
+        }
     }
 
     // Keyboard
@@ -316,14 +318,11 @@ class ViewerSidebar implements Component, Sidebar {
 
         // Pop up keyboard
         this.keyboardButton.innerText = "Keyboard"
-        document.addEventListener("click", event => {
-            if (event.target != this.keyboardButton) {
-                this.screenKeyboard.hide()
-            }
-        })
-        this.keyboardButton.addEventListener("click", async () => {
-            setSidebarExtended(false)
+        this.keyboardButton.addEventListener("click", async event => {
+            // This could trigger the screen keyboard listeners for detecting close
+            event.stopPropagation()
 
+            setSidebarExtended(false)
             this.screenKeyboard.show()
         })
 
