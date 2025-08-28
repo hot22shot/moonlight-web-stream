@@ -9,9 +9,7 @@ import { defaultStreamSettings, getLocalStreamSettings } from "./component/setti
 import { SelectComponent } from "./component/input.js";
 import { getSupportedVideoFormats } from "./stream/video.js";
 import { StreamCapabilities } from "./api_bindings.js";
-
-// TODO Touch Mouse scrolling when mouse mode
-// TODO Touch mouse mode keyboard on triple when mouse mode
+import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 
 async function startApp() {
     const api = await getApi()
@@ -83,6 +81,7 @@ class ViewerApp implements Component {
         document.addEventListener("keydown", this.onKeyDown.bind(this))
         document.addEventListener("keyup", this.onKeyUp.bind(this))
 
+        // TODO: add passive false to more listeners
         this.videoElement.addEventListener("mousedown", this.onMouseButtonDown.bind(this))
         this.videoElement.addEventListener("mouseup", this.onMouseButtonUp.bind(this))
         this.videoElement.addEventListener("mousemove", this.onMouseMove.bind(this))
@@ -129,6 +128,19 @@ class ViewerApp implements Component {
         // Start animation frame loop
         this.onTouchUpdate()
         this.onGamepadUpdate()
+
+        this.stream.getInput().addScreenKeyboardVisibleEvent((event) => {
+            const screenKeyboard = this.sidebar.getScreenKeyboard()
+
+            const newShown = event.detail.visible
+            if (newShown != screenKeyboard.isVisible()) {
+                if (newShown) {
+                    screenKeyboard.show()
+                } else {
+                    screenKeyboard.hide()
+                }
+            }
+        })
     }
 
     private async onInfo(event: InfoEvent) {
@@ -287,7 +299,7 @@ class ViewerSidebar implements Component, Sidebar {
     private app: ViewerApp
 
     private keyboardButton = document.createElement("button")
-    private keyboardInput = document.createElement("input")
+    private screenKeyboard = new ScreenKeyboard()
 
     private lockMouseButton = document.createElement("button")
 
@@ -306,26 +318,18 @@ class ViewerSidebar implements Component, Sidebar {
         this.keyboardButton.innerText = "Keyboard"
         document.addEventListener("click", event => {
             if (event.target != this.keyboardButton) {
-                this.keyboardInput.blur()
+                this.screenKeyboard.hide()
             }
         })
         this.keyboardButton.addEventListener("click", async () => {
             setSidebarExtended(false)
 
-            this.keyboardInput.focus()
+            this.screenKeyboard.show()
         })
 
-        this.keyboardInput.classList.add("hiddeninput")
-        this.keyboardInput.name = "keyboard"
-        this.keyboardInput.autocomplete = "off"
-        this.keyboardInput.autocapitalize = "off"
-        this.keyboardInput.spellcheck = false
-        if ("autocorrect" in this.keyboardInput) {
-            this.keyboardInput.autocorrect = false
-        }
-        this.keyboardInput.addEventListener("input", this.onKeyInput.bind(this))
-        this.keyboardInput.addEventListener("keydown", this.onKeyDown.bind(this))
-        this.keyboardInput.addEventListener("keyup", this.onKeyUp.bind(this))
+        this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
+        this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
+        this.screenKeyboard.addTextListener(this.onText.bind(this))
 
         // Pointer Lock
         this.lockMouseButton.innerText = "Lock Mouse"
@@ -340,6 +344,7 @@ class ViewerSidebar implements Component, Sidebar {
         this.fullscreenButton.addEventListener("click", () => {
             const root = document.getElementById("root")
             if (root) {
+                // TODO: try set landscape
                 root.requestFullscreen({
                     navigationUI: "hide"
                 })
@@ -373,43 +378,19 @@ class ViewerSidebar implements Component, Sidebar {
         this.touchMode.setOptionEnabled("touch", capabilities.touch)
     }
 
+    getScreenKeyboard(): ScreenKeyboard {
+        return this.screenKeyboard
+    }
+
     // -- Keyboard
-    private onKeyInput(event: Event) {
-        if (!(event instanceof InputEvent)) {
-            return
-        }
-        if (event.isComposing) {
-            return
-        }
-
-        const stream = this.app.getStream()
-        if (!stream) {
-            return
-        }
-
-        if ((event.inputType == "insertText" || event.inputType == "insertFromPaste") && event.data != null) {
-            stream.getInput().sendText(event.data)
-        } else if (event.inputType == "deleteContentBackward" || event.inputType == "deleteByCut") {
-            // these are handled by on key down / up on mobile
-        } else if (event.inputType == "deleteContentForward") {
-            // these are handled by on key down / up on mobile
-        }
+    private onText(event: TextEvent) {
+        this.app.getStream()?.getInput().sendText(event.detail.text)
     }
     private onKeyDown(event: KeyboardEvent) {
-        const stream = this.app.getStream()
-        if (!stream) {
-            return
-        }
-
-        stream.getInput().onKeyDown(event)
+        this.app.getStream()?.getInput().onKeyDown(event)
     }
     private onKeyUp(event: KeyboardEvent) {
-        const stream = this.app.getStream()
-        if (!stream) {
-            return
-        }
-
-        stream.getInput().onKeyUp(event)
+        this.app.getStream()?.getInput().onKeyUp(event)
     }
 
     // -- Mouse Mode
@@ -433,7 +414,7 @@ class ViewerSidebar implements Component, Sidebar {
 
     mount(parent: HTMLElement): void {
         parent.appendChild(this.keyboardButton)
-        parent.appendChild(this.keyboardInput)
+        parent.appendChild(this.screenKeyboard.getHiddenElement())
         parent.appendChild(this.lockMouseButton)
         parent.appendChild(this.fullscreenButton)
         this.mouseMode.mount(parent)
@@ -441,7 +422,7 @@ class ViewerSidebar implements Component, Sidebar {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.keyboardButton)
-        parent.removeChild(this.keyboardInput)
+        parent.removeChild(this.screenKeyboard.getHiddenElement())
         parent.removeChild(this.lockMouseButton)
         parent.removeChild(this.fullscreenButton)
         this.mouseMode.unmount(parent)

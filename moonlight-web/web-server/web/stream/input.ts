@@ -9,6 +9,8 @@ const TOUCH_AS_CLICK_MAX_DISTANCE = 30
 const TOUCH_AS_CLICK_MIN_TIME_MS = 100
 // Everything greater than this is a right click
 const TOUCH_AS_CLICK_MAX_TIME_MS = 300
+// How much to move to open up the screen keyboard when having three touches at the same time
+const TOUCHES_AS_KEYBOARD_DISTANCE = 100
 
 const CONTROLLER_RUMBLE_INTERVAL_MS = 60
 
@@ -44,7 +46,11 @@ export function defaultStreamInputConfig(): StreamInputConfig {
     }
 }
 
+export type ScreenKeyboardSetVisibleEvent = CustomEvent<{ visible: boolean }>
+
 export class StreamInput {
+
+    private eventTarget = new EventTarget()
 
     private peer: RTCPeerConnection
 
@@ -104,6 +110,11 @@ export class StreamInput {
     }
     getCapabilities(): StreamCapabilities {
         return this.capabilities
+    }
+
+    // -- External Event Listeners
+    addScreenKeyboardVisibleEvent(listener: (event: ScreenKeyboardSetVisibleEvent) => void) {
+        this.eventTarget.addEventListener("ml-screenkeyboardvisible", listener as any)
     }
 
     // -- Keyboard
@@ -242,7 +253,7 @@ export class StreamInput {
         mouseClicked: boolean
         mouseMoved: boolean
     }> = new Map()
-    private touchMouseAction: "default" | "scroll" = "default"
+    private touchMouseAction: "default" | "scroll" | "screenKeyboard" = "default"
     private primaryTouch: number | null = null
 
     private onTouchMessage(event: MessageEvent) {
@@ -283,12 +294,16 @@ export class StreamInput {
                 if (this.primaryTouch == null) {
                     this.primaryTouch = touch.identifier
                     this.touchMouseAction = "default"
-                } else if (this.touchTracker.size >= 2) {
-                    const primaryTouch = this.touchTracker.get(this.primaryTouch)
-                    if (primaryTouch && !primaryTouch.mouseMoved && !primaryTouch.mouseClicked) {
-                        this.touchMouseAction = "scroll"
-                    }
                 }
+            }
+
+            if (this.primaryTouch != null && this.touchTracker.size == 2) {
+                const primaryTouch = this.touchTracker.get(this.primaryTouch)
+                if (primaryTouch && !primaryTouch.mouseMoved && !primaryTouch.mouseClicked) {
+                    this.touchMouseAction = "scroll"
+                }
+            } else if (this.touchTracker.size == 3) {
+                this.touchMouseAction = "screenKeyboard"
             }
         }
     }
@@ -350,6 +365,20 @@ export class StreamInput {
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
                     this.sendMouseWheel(-movementX, movementY)
+                } else if (this.touchMouseAction == "screenKeyboard") {
+                    const distanceY = touch.clientY - oldTouch.originX
+
+                    if (distanceY < -TOUCHES_AS_KEYBOARD_DISTANCE) {
+                        const customEvent: ScreenKeyboardSetVisibleEvent = new CustomEvent("ml-screenkeyboardvisible", {
+                            detail: { visible: true }
+                        })
+                        this.eventTarget.dispatchEvent(customEvent)
+                    } else if (distanceY > TOUCHES_AS_KEYBOARD_DISTANCE) {
+                        const customEvent: ScreenKeyboardSetVisibleEvent = new CustomEvent("ml-screenkeyboardvisible", {
+                            detail: { visible: false }
+                        })
+                        this.eventTarget.dispatchEvent(customEvent)
+                    }
                 }
             }
         }
