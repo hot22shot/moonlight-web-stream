@@ -39,6 +39,7 @@ async fn main() -> std::io::Result<()> {
     // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
+        // TODO: put this into an exit function!
         info!("enter your credentials in the config (server/config.json)");
         info!("Press Enter to close this window");
 

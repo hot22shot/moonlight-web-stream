@@ -51,13 +51,18 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 }
 ```
 
-3. Forward the port range specified in the previous step as `udp` and `tcp` ports.
+3. Forward the port range specified in the previous step as `udp` and `tcp` ports or [configure the used network types]().
 
-4. Configure WebRTC to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC Stun will automatically detect them):
+4. Configure [WebRTC Nat 1 To 1](#webrtc-nat-11-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
 ```json
 {
     ..
-    "webrtc_nat_1to1_ips": ["74.125.224.72"]
+    "webrtc_nat_1to1": {
+        "ice_candidate_type": "host",
+        "ips": [
+            "74.125.224.72"
+        ]
+    }
     ..
 }
 ```
@@ -193,14 +198,65 @@ This will set the port range on the web server used to communicate when using We
 }
 ```
 
-### WebRTC Ip
-This will advertise the ip as a ice candidate on the web server.
-This is mostly optional because stun server can figure out the public ip.
+### WebRTC Ice Servers
+A list of ice server for webrtc to use.
+Is force set to empty if WebRTC Nat 1 To 1 Ice Candidate Type is set to host.
 
 ```json
 {
     ..
-    "webrtc_nat_1to1_ips": "74.125.224.72"
+    "webrtc_ice_servers": [
+        {
+            "urls": [
+                    "stun:l.google.com:19302",
+                    "stun:stun.l.google.com:19302",
+                    "stun:stun1.l.google.com:19302",
+                    "stun:stun2.l.google.com:19302",
+                    "stun:stun3.l.google.com:19302",
+                    "stun:stun4.l.google.com:19302",
+            ]
+        }
+    ]
+    ..
+}
+```
+
+### WebRTC Nat 1 to 1 ips
+This will advertise the ip as an ice candidate on the web server.
+It's recommended to set this but stun servers should figure out the public ip.
+Is force set the WebRTC ice servers to empty if the Ice Candidate Type is set to host.
+
+host -> This is the ip address of the server and the client can connect to
+srflx -> This is the public ip address of this server, like a ice candidate added from a stun server.
+
+```json
+{
+    ..
+    "webrtc_nat_1to1": {
+        "ice_candidate_type": "host", // "srflx" or "host"
+        "ips": [
+            "74.125.224.72"
+        ]
+    }
+    ..
+}
+```
+
+### WebRTC Network Types
+This will set the network types allowed by webrtc.
+Allowed values:
+udp4: All udp with ipv4
+udp6: All udp with ipv6
+tcp4: All tcp with ipv4
+tcp6: All tcp with ipv6
+
+```json
+{
+    ..
+    "webrtc_network_types": [
+        "udp4",
+        "udp6",
+    ]
     ..
 }
 ```

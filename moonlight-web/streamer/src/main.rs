@@ -43,7 +43,6 @@ use webrtc::{
     ice::udp_network::{EphemeralUDP, UDPNetwork},
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
-        ice_candidate_type::RTCIceCandidateType,
         ice_connection_state::RTCIceConnectionState,
     },
     interceptor::registry::Registry,
@@ -63,7 +62,10 @@ use common::api_bindings::{
 use crate::{
     audio::OpusTrackSampleAudioDecoder,
     connection::StreamConnectionListener,
-    convert::{from_webrtc_sdp, into_webrtc_ice},
+    convert::{
+        from_webrtc_ice, from_webrtc_sdp, into_webrtc_ice, into_webrtc_ice_candidate,
+        into_webrtc_network_type,
+    },
     input::StreamInput,
     video::TrackSampleVideoDecoder,
 };
@@ -180,6 +182,32 @@ async fn main() {
             .collect(),
         ..Default::default()
     };
+    let mut api_settings = SettingEngine::default();
+
+    if let Some(PortRange { min, max }) = server_config.webrtc_port_range {
+        match EphemeralUDP::new(min, max) {
+            Ok(udp) => {
+                api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
+            }
+            Err(err) => {
+                warn!("[Stream]: Invalid port range in config: {err:?}");
+            }
+        }
+    }
+    if let Some(mapping) = server_config.webrtc_nat_1to1 {
+        api_settings.set_nat_1to1_ips(
+            mapping.ips.clone(),
+            into_webrtc_ice_candidate(mapping.ice_candidate_type),
+        );
+    }
+    api_settings.set_network_types(
+        server_config
+            .webrtc_network_types
+            .iter()
+            .copied()
+            .map(into_webrtc_network_type)
+            .collect(),
+    );
 
     let mut api_media = MediaEngine::default();
     // TODO: only register supported codecs
@@ -193,28 +221,10 @@ async fn main() {
     api_registry = register_default_interceptors(api_registry, &mut api_media)
         .expect("failed to register webrtc default interceptors");
 
-    let mut api_settings = SettingEngine::default();
-    if let Some(PortRange { min, max }) = server_config.webrtc_port_range {
-        match EphemeralUDP::new(min, max) {
-            Ok(udp) => {
-                api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
-            }
-            Err(err) => {
-                warn!("[Stream]: Invalid port range in config: {err:?}");
-            }
-        }
-    }
-    if !server_config.webrtc_nat_1to1_ips.is_empty() {
-        api_settings.set_nat_1to1_ips(
-            server_config.webrtc_nat_1to1_ips.clone(),
-            RTCIceCandidateType::Host,
-        );
-    }
-
     let api = APIBuilder::new()
+        .with_setting_engine(api_settings)
         .with_media_engine(api_media)
         .with_interceptor_registry(api_registry)
-        .with_setting_engine(api_settings)
         .build();
 
     // -- Create and Configure Peer
@@ -331,11 +341,25 @@ impl StreamConnection {
         moonlight: MoonlightInstance,
         info: StreamInfo,
         settings: StreamSettings,
-        ipc_sender: IpcSender<StreamerIpcMessage>,
+        mut ipc_sender: IpcSender<StreamerIpcMessage>,
         mut ipc_receiver: IpcReceiver<ServerIpcMessage>,
         api: &API,
         config: RTCConfiguration,
     ) -> Result<Arc<Self>, anyhow::Error> {
+        // Send WebRTC Info
+        let _ = send_ws_message(
+            &mut ipc_sender,
+            StreamServerMessage::WebRtcConfig {
+                ice_servers: config
+                    .ice_servers
+                    .iter()
+                    .cloned()
+                    .map(from_webrtc_ice)
+                    .collect(),
+            },
+        )
+        .await;
+
         let peer = Arc::new(api.new_peer_connection(config).await?);
 
         let stages = Arc::new(StreamStages {

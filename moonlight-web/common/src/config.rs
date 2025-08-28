@@ -21,12 +21,40 @@ pub struct Config {
     #[serde(default)]
     pub webrtc_port_range: Option<PortRange>,
     #[serde(default)]
-    pub webrtc_nat_1to1_ips: Vec<String>,
+    pub webrtc_nat_1to1: Option<WebRtcNat1To1Mapping>,
+    #[serde(default = "default_network_types")]
+    pub webrtc_network_types: Vec<WebRtcNetworkType>,
     #[serde(default)]
     pub web_path_prefix: String,
     pub certificate: Option<ConfigSsl>,
     #[serde(default = "default_streamer_path")]
     pub streamer_path: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Encode, Decode)]
+pub enum WebRtcNetworkType {
+    #[serde(rename = "udp4")]
+    Udp4,
+    #[serde(rename = "udp6")]
+    Udp6,
+    #[serde(rename = "tcp4")]
+    Tcp4,
+    #[serde(rename = "tcp6")]
+    Tcp6,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+pub struct WebRtcNat1To1Mapping {
+    pub ips: Vec<String>,
+    pub ice_candidate_type: WebRtcNat1To1IceCandidateType,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Encode, Decode)]
+pub enum WebRtcNat1To1IceCandidateType {
+    #[serde(rename = "srflx")]
+    Srflx,
+    #[serde(rename = "host")]
+    Host,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -50,7 +78,8 @@ impl Default for Config {
             moonlight_default_http_port: moonlight_default_http_port_default(),
             webrtc_ice_servers: default_ice_servers(),
             webrtc_port_range: Default::default(),
-            webrtc_nat_1to1_ips: Default::default(),
+            webrtc_nat_1to1: Default::default(),
+            webrtc_network_types: default_network_types(),
             pair_device_name: default_pair_device_name(),
             web_path_prefix: String::new(),
             certificate: None,
@@ -87,6 +116,9 @@ fn default_ice_servers() -> Vec<RtcIceServer> {
             ..Default::default()
         },
     ]
+}
+fn default_network_types() -> Vec<WebRtcNetworkType> {
+    vec![WebRtcNetworkType::Udp4, WebRtcNetworkType::Udp6]
 }
 
 fn default_pair_device_name() -> String {
