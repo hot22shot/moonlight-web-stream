@@ -127,6 +127,7 @@ class ViewerApp implements Component {
         this.videoElement.srcObject = this.stream.getMediaStream()
 
         // Start animation frame loop
+        this.onTouchUpdate()
         this.onGamepadUpdate()
     }
 
@@ -195,6 +196,11 @@ class ViewerApp implements Component {
         event.preventDefault()
         this.stream?.getInput().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
+    onTouchUpdate() {
+        this.stream?.getInput().onTouchUpdate(this.videoElement.getBoundingClientRect())
+
+        window.requestAnimationFrame(this.onTouchUpdate.bind(this))
+    }
     onTouchMove(event: TouchEvent) {
         event.preventDefault()
         this.stream?.getInput().onTouchMove(event, this.videoElement.getBoundingClientRect())
@@ -211,11 +217,7 @@ class ViewerApp implements Component {
         this.stream?.getInput().onGamepadDisconnect(event)
     }
     onGamepadUpdate() {
-        try {
-            this.stream?.getInput().onGamepadUpdate()
-        } catch (e: any) {
-            alert(e.toString())
-        }
+        this.stream?.getInput().onGamepadUpdate()
 
         window.requestAnimationFrame(this.onGamepadUpdate.bind(this))
     }
