@@ -12,9 +12,10 @@ use num_derive::FromPrimitive;
 
 use crate::video::annexb::{AnnexBSplitter, AnnexBStartCode};
 
-pub struct NAL {
+#[allow(unused)]
+pub struct Nal {
     pub payload_range: Range<usize>,
-    pub header: NALHeader,
+    pub header: NalHeader,
     pub header_range: Range<usize>,
     pub start_code: AnnexBStartCode,
     pub start_code_range: Range<usize>,
@@ -23,7 +24,7 @@ pub struct NAL {
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive)]
-pub enum NALUnitType {
+pub enum NalUnitType {
     // VCL NAL units
     Unspecified = 0,
     CodedSliceNonIDR = 1,
@@ -59,14 +60,15 @@ pub enum NALUnitType {
     Unspecified31 = 31,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy)]
-pub struct NALHeader {
+pub struct NalHeader {
     pub forbidden_zero_bit: bool,
     pub nal_ref_idc: u8,
-    pub nal_unit_type: NALUnitType,
+    pub nal_unit_type: NalUnitType,
 }
 
-impl NALHeader {
+impl NalHeader {
     fn parse(header: [u8; 1]) -> Self {
         // F: 1 bit
         let forbidden_zero_bit = ((header[0] & 0b10000000) >> 7) == 1;
@@ -81,7 +83,7 @@ impl NALHeader {
             forbidden_zero_bit,
             nal_ref_idc,
             #[allow(clippy::unwrap_used)]
-            nal_unit_type: NALUnitType::from_u8(nal_unit_type).unwrap(),
+            nal_unit_type: NalUnitType::from_u8(nal_unit_type).unwrap(),
         }
     }
 }
@@ -101,22 +103,22 @@ where
         }
     }
 
-    pub fn next_nal(&mut self) -> Result<Option<NAL>, io::Error> {
+    pub fn next_nal(&mut self) -> Result<Option<Nal>, io::Error> {
         loop {
             if let Some(annex_b) = self.annex_b.next()? {
                 let header_range = annex_b.payload_range.start..(annex_b.payload_range.start + 1);
 
                 let mut header = [0u8; 1];
                 header.copy_from_slice(&annex_b.full[header_range.clone()]);
-                let header = NALHeader::parse(header);
+                let header = NalHeader::parse(header);
 
-                if header.nal_unit_type == NALUnitType::Sei {
+                if header.nal_unit_type == NalUnitType::Sei {
                     continue;
                 }
 
                 let payload_range = header_range.end..annex_b.payload_range.end;
 
-                return Ok(Some(NAL {
+                return Ok(Some(Nal {
                     payload_range,
                     header,
                     header_range,

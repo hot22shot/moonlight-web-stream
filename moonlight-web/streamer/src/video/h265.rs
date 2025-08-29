@@ -13,24 +13,26 @@ use num_derive::FromPrimitive;
 
 use crate::video::annexb::{AnnexBSplitter, AnnexBStartCode};
 
-pub struct NAL {
+#[allow(unused)]
+pub struct Nal {
     pub payload_range: Range<usize>,
-    pub header: NALHeader,
+    pub header: NalHeader,
     pub header_range: Range<usize>,
     pub start_code: AnnexBStartCode,
     pub start_code_range: Range<usize>,
     pub full: BytesMut,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy)]
-pub struct NALHeader {
+pub struct NalHeader {
     pub forbidden_zero_bit: bool,
     pub nal_unit_type: NALUnitType,
     pub nuh_layer_id: u8,
     pub nuh_temporal_id_plus1: u8,
 }
 
-impl NALHeader {
+impl NalHeader {
     pub fn parse(header: [u8; 2]) -> Self {
         // F: 1 bit
         let forbidden_zero_bit = (header[0] & 0b1000_0000) != 0;
@@ -54,6 +56,7 @@ impl NALHeader {
         }
     }
 
+    #[allow(unused)]
     pub fn serialize(&self) -> [u8; 2] {
         let mut header = [0u8; 2];
 
@@ -170,17 +173,17 @@ where
 
     /// Read the next NAL unit from the Annex-B stream..
     /// The BytesMut contains the annex-b start code
-    pub fn next_nal(&mut self) -> Result<Option<NAL>, io::Error> {
+    pub fn next_nal(&mut self) -> Result<Option<Nal>, io::Error> {
         if let Some(annex_b) = self.annex_b.next()? {
             let header_range = annex_b.payload_range.start..(annex_b.payload_range.start + 2);
 
             let mut header = [0u8; 2];
             header.copy_from_slice(&annex_b.full[header_range.clone()]);
-            let header = NALHeader::parse(header);
+            let header = NalHeader::parse(header);
 
             let payload_range = header_range.end..annex_b.payload_range.end;
 
-            Ok(Some(NAL {
+            Ok(Some(Nal {
                 payload_range,
                 header,
                 header_range,
@@ -205,19 +208,19 @@ mod tests {
     #[test]
     fn test_parse_forbidden_zero_bit() {
         let header_bytes = [0b00000001, 0b00000000]; // forbidden_zero_bit = 1
-        let nal = NALHeader::parse(header_bytes);
+        let nal = NalHeader::parse(header_bytes);
         assert!(nal.forbidden_zero_bit);
 
         let header_bytes = [0b00000000, 0b00000000]; // forbidden_zero_bit = 0
-        let nal = NALHeader::parse(header_bytes);
+        let nal = NalHeader::parse(header_bytes);
         assert!(!nal.forbidden_zero_bit);
     }
 
     #[test]
     fn test_parse_nal_unit_type() {
         for i in 0..64 {
-            let header_bytes = [(i << 1) as u8, 0];
-            let nal = NALHeader::parse(header_bytes);
+            let header_bytes = [(i << 1), 0];
+            let nal = NalHeader::parse(header_bytes);
             assert_eq!(nal.nal_unit_type as u8, i);
         }
     }
@@ -225,7 +228,7 @@ mod tests {
     #[test]
     fn test_parse_layer_id_and_tid() {
         let header_bytes = [0b10000010, 0b10101100];
-        let nal = NALHeader::parse(header_bytes);
+        let nal = NalHeader::parse(header_bytes);
         // nuh_layer_id = (header[0] >> 7) | ((header[1] & 0b00011111) << 1)
         let expected_layer_id = (header_bytes[0] >> 7) | ((header_bytes[1] & 0b00011111) << 1);
         assert_eq!(nal.nuh_layer_id, expected_layer_id);
@@ -235,14 +238,14 @@ mod tests {
 
     #[test]
     fn test_serialize_round_trip() {
-        let original = NALHeader {
+        let original = NalHeader {
             forbidden_zero_bit: true,
             nal_unit_type: NALUnitType::TrailN, // example variant
             nuh_layer_id: 0x2A,
             nuh_temporal_id_plus1: 0x05,
         };
         let serialized = original.serialize();
-        let parsed = NALHeader::parse(serialized);
+        let parsed = NalHeader::parse(serialized);
         assert_eq!(parsed.forbidden_zero_bit, original.forbidden_zero_bit);
         assert_eq!(parsed.nal_unit_type as u8, original.nal_unit_type as u8);
         assert_eq!(parsed.nuh_layer_id, original.nuh_layer_id);
@@ -251,14 +254,14 @@ mod tests {
 
     #[test]
     fn test_serialize_known_values() {
-        let nal = NALHeader {
+        let nal = NalHeader {
             forbidden_zero_bit: false,
             nal_unit_type: NALUnitType::TrailR,
             nuh_layer_id: 0b010101,
             nuh_temporal_id_plus1: 0b011,
         };
         let bytes = nal.serialize();
-        let parsed = NALHeader::parse(bytes);
+        let parsed = NalHeader::parse(bytes);
         assert_eq!(parsed.forbidden_zero_bit, nal.forbidden_zero_bit);
         assert_eq!(parsed.nal_unit_type as u8, nal.nal_unit_type as u8);
         assert_eq!(parsed.nuh_layer_id, nal.nuh_layer_id);
