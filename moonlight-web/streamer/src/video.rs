@@ -2,8 +2,8 @@ use std::{
     io::Cursor,
     ops::Range,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     time::{Duration, SystemTime},
 };
@@ -17,7 +17,7 @@ use moonlight_common::moonlight::{
     },
 };
 use webrtc::{
-    media::{Sample, io::h264_reader},
+    media::Sample,
     rtcp::payload_feedbacks::{
         full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
     },
@@ -26,9 +26,9 @@ use webrtc::{
 };
 
 use crate::{
-    StreamConnection,
     decoder::TrackSampleDecoder,
     video::{h264::H264Reader, h265::reader::H265Reader},
+    StreamConnection,
 };
 
 mod annexb;
@@ -60,7 +60,7 @@ impl TrackSampleVideoDecoder {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
             // TODO: implement other formats?
-            supported_formats: supported_formats & SupportedVideoFormats::H264,
+            supported_formats: supported_formats & SupportedVideoFormats::MASK_H264,
             clock_rate: 90000,
             current_reader: None,
             needs_idr: Default::default(),
@@ -164,6 +164,8 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         match &mut self.current_reader {
             // -- H264
             Some(Reader::H264(nal_reader)) => {
+                // TODO: implement other modes: https://datatracker.ietf.org/doc/html/rfc3984#section-6
+
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);

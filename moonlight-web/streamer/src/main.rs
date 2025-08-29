@@ -261,6 +261,7 @@ async fn main() {
     )
     .await;
 
+    // TODO: remove the stages!
     connection.stages.connected.when_reached().await;
 
     // Send stage
