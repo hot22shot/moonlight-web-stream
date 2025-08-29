@@ -13,7 +13,7 @@ use crate::StreamConnection;
 
 pub struct TrackSampleDecoder {
     channel_queue_size: usize,
-    stream: Arc<StreamConnection>,
+    pub(crate) stream: Arc<StreamConnection>,
     sender: Option<Sender<Sample>>,
 }
 
@@ -66,11 +66,6 @@ impl TrackSampleDecoder {
         Ok(())
     }
 
-    pub fn send_sample(&self, sample: Sample) {
-        if let Some(sender) = self.sender.as_ref() {
-            let _ = sender.try_send(sample);
-        }
-    }
     pub fn blocking_send_sample(&self, sample: Sample) {
         if let Some(sender) = self.sender.as_ref() {
             let _ = sender.blocking_send(sample);

@@ -17,6 +17,8 @@ tokio = { workspace = true }
 bytes = { workspace = true }
 webrtc = "0.13.0"
 
+base64 = "0.22.1"
+
 pem = { workspace = true }
 
 serde = { workspace = true }
