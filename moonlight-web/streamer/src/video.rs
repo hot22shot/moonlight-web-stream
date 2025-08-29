@@ -8,8 +8,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use base64::{Engine, engine::general_purpose};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use log::{error, info};
 use moonlight_common::moonlight::{
     stream::Capabilities,
@@ -17,7 +16,6 @@ use moonlight_common::moonlight::{
         DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat,
     },
 };
-use tokio::time::sleep;
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC},
     media::Sample,
@@ -41,14 +39,6 @@ mod h265;
 enum Reader {
     H264 {
         nal_reader: H264Reader<Cursor<Vec<u8>>>,
-    },
-    H265Init {
-        format: VideoFormat,
-        nal_reader: H265Reader<Cursor<Vec<u8>>>,
-        vps: Option<(h265::NALHeader, BytesMut)>,
-        sps: Option<(h265::NALHeader, BytesMut)>,
-        pps: Option<(h265::NALHeader, BytesMut)>,
-        idr: Option<(h265::NALHeader, BytesMut)>,
     },
     H265 {
         nal_reader: H265Reader<Cursor<Vec<u8>>>,
@@ -75,7 +65,7 @@ impl TrackSampleVideoDecoder {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
             // TODO: implement other formats?
-            supported_formats: supported_formats & SupportedVideoFormats::H265,
+            supported_formats: supported_formats & SupportedVideoFormats::MASK_H264,
             clock_rate: 90000,
             current_state: None,
             needs_idr: Default::default(),
@@ -109,35 +99,34 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         let mime_type = video_format_to_mime_type(format);
 
         let needs_idr = self.needs_idr.clone();
+        if let Err(err) = self.decoder.blocking_create_track(
+            TrackLocalStaticSample::new(
+                RTCRtpCodecCapability {
+                    // TODO: is it possible to make the video channel unreliable?
+                    mime_type: mime_type.clone(),
+                    clock_rate: self.clock_rate,
+                    ..Default::default()
+                },
+                "video".to_string(),
+                "moonlight".to_string(),
+            ),
+            move |packet| {
+                let packet = packet.as_any();
+
+                if packet.is::<PictureLossIndication>() || packet.is::<FullIntraRequest>() {
+                    needs_idr.store(true, Ordering::Release);
+                }
+            },
+        ) {
+            error!(
+                "Failed to create video track with format {format:?} and mime \"{mime_type}\": {err:?}"
+            );
+            return -1;
+        }
 
         match format {
             // -- H264
             VideoFormat::H264 | VideoFormat::H264High8_444 => {
-                if let Err(err) = self.decoder.blocking_create_track(
-                    TrackLocalStaticSample::new(
-                        RTCRtpCodecCapability {
-                            // TODO: is it possible to make the video channel unreliable?
-                            mime_type: mime_type.clone(),
-                            clock_rate: self.clock_rate,
-                            ..Default::default()
-                        },
-                        "video".to_string(),
-                        "moonlight".to_string(),
-                    ),
-                    move |packet| {
-                        let packet = packet.as_any();
-
-                        if packet.is::<PictureLossIndication>() || packet.is::<FullIntraRequest>() {
-                            needs_idr.store(true, Ordering::Release);
-                        }
-                    },
-                ) {
-                    error!(
-                        "Failed to create video track with format {format:?} and mime \"{mime_type}\": {err:?}"
-                    );
-                    return -1;
-                }
-
                 self.current_state = Some(Reader::H264 {
                     nal_reader: H264Reader::new(Cursor::new(Vec::new()), 0),
                 });
@@ -147,13 +136,8 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             | VideoFormat::H265Main10
             | VideoFormat::H265Rext8_444
             | VideoFormat::H265Rext10_444 => {
-                self.current_state = Some(Reader::H265Init {
-                    format,
+                self.current_state = Some(Reader::H265 {
                     nal_reader: H265Reader::new(Cursor::new(Vec::new()), 0),
-                    vps: None,
-                    sps: None,
-                    pps: None,
-                    idr: None,
                 });
             }
             // -- AV1
@@ -183,8 +167,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         match &mut self.current_state {
             // -- H264
             Some(Reader::H264 { nal_reader }) => {
-                // TODO: implement other modes: https://datatracker.ietf.org/doc/html/rfc3984#section-6
-
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);
@@ -226,86 +208,30 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 };
             }
             // -- H265
-            Some(Reader::H265Init {
-                nal_reader,
-                vps,
-                sps,
-                pps,
-                idr,
-                ..
-            }) => {
-                // Collect vps, sps, pps
-
-                let mut full_frame = Vec::new();
-                for buffer in unit.buffers {
-                    full_frame.extend_from_slice(buffer.data);
-                }
-                let reader = Cursor::new(full_frame);
-                nal_reader.reset(reader);
-
-                while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    if matches!(
-                        nal.header.nal_unit_type,
-                        h265::NALUnitType::VpsNut
-                            | h265::NALUnitType::SpsNut
-                            | h265::NALUnitType::PpsNut
-                            | h265::NALUnitType::IdrNLp
-                            | h265::NALUnitType::IdrWRadl
-                    ) {
-                        let data = trim_bytes_to_range(nal.full, nal.payload_range);
-
-                        match nal.header.nal_unit_type {
-                            h265::NALUnitType::VpsNut => {
-                                vps.replace((nal.header, data));
-                            }
-                            h265::NALUnitType::SpsNut => {
-                                sps.replace((nal.header, data));
-                            }
-                            h265::NALUnitType::PpsNut => {
-                                pps.replace((nal.header, data));
-                            }
-                            h265::NALUnitType::IdrNLp | h265::NALUnitType::IdrWRadl => {
-                                idr.replace((nal.header, data));
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-
-                    if vps.is_some() && pps.is_some() && sps.is_some() && idr.is_some() {
-                        break;
-                    }
-                }
-            }
             Some(Reader::H265 { nal_reader }) => {
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);
                 }
-                let reader = Cursor::new(full_frame);
-                nal_reader.reset(reader);
 
                 match unit.frame_type {
                     FrameType::Idr => {
-                        let mut full_idr = BytesMut::new();
+                        let data = Bytes::from(full_frame);
 
-                        while let Ok(Some(nal)) = nal_reader.next_nal() {
-                            let data = trim_bytes_to_range(
-                                nal.full,
-                                nal.header_range.start..nal.payload_range.end,
-                            );
-
-                            full_idr.put(data);
-                        }
-
+                        // We need this to be delivered
                         self.decoder.blocking_send_sample(Sample {
-                            data: full_idr.freeze(),
+                            data,
                             timestamp,
                             duration: Duration::from_secs_f32(frame_time),
                             packet_timestamp,
-                            ..Default::default() // <-- Must be default
+                            prev_dropped_packets,
+                            prev_padding_packets: 0,
                         });
                     }
                     FrameType::PFrame => {
+                        let reader = Cursor::new(full_frame);
+                        nal_reader.reset(reader);
+
                         while let Ok(Some(nal)) = nal_reader.next_nal() {
                             let data = trim_bytes_to_range(
                                 nal.full,
@@ -321,7 +247,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                             });
                         }
                     }
-                }
+                };
             }
             // -- AV1
             // _ => {
@@ -331,116 +257,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 // this shouldn't happen
                 unreachable!()
             }
-        }
-
-        // -- Init H265
-        if matches!(
-            &self.current_state,
-            Some(Reader::H265Init {
-                vps: Some(_),
-                sps: Some(_),
-                pps: Some(_),
-                idr: Some(_),
-                ..
-            })
-        ) {
-            let Some(Reader::H265Init {
-                format,
-                mut nal_reader,
-                vps: Some((vps_header, vps)),
-                sps: Some((sps_header, sps)),
-                pps: Some((pps_header, pps)),
-                idr: Some((idr_header, idr)),
-            }) = self.current_state.take()
-            else {
-                unreachable!()
-            };
-
-            // Create the new track with the vps, pps, sps
-            let mime_type = video_format_to_mime_type(format);
-
-            let b64_vps = general_purpose::STANDARD.encode(&vps);
-            let b64_sps = general_purpose::STANDARD.encode(&sps);
-            let b64_pps = general_purpose::STANDARD.encode(&pps);
-
-            let sdp_fmtp_line = format!(
-                "sprop-vps={};sprop-sps={};sprop-pps={}",
-                b64_vps, b64_sps, b64_pps
-            );
-
-            let needs_idr = self.needs_idr.clone();
-            if let Err(err) = self.decoder.blocking_create_track(
-                TrackLocalStaticSample::new(
-                    RTCRtpCodecCapability {
-                        // TODO: is it possible to make the video channel unreliable?
-                        mime_type: mime_type.clone(),
-                        clock_rate: self.clock_rate,
-                        ..Default::default()
-                    },
-                    "video".to_string(),
-                    "moonlight".to_string(),
-                ),
-                move |packet| {
-                    let packet = packet.as_any();
-
-                    if packet.is::<PictureLossIndication>() || packet.is::<FullIntraRequest>() {
-                        needs_idr.store(true, Ordering::Release);
-                    }
-                },
-            ) {
-                error!(
-                    "Failed to create video track with format {format:?} and mime \"{mime_type}\": {err:?}"
-                );
-
-                let stream = self.decoder.stream.clone();
-                self.decoder.stream.runtime.spawn(async move {
-                    stream.stop().await;
-                });
-                return DecodeResult::Ok;
-            }
-
-            // renegotiate
-            let stream = self.decoder.stream.clone();
-            self.decoder.stream.runtime.spawn(async move {
-                sleep(Duration::from_secs(1)).await;
-                stream.renegotiate().await;
-            });
-
-            // send the vps, sps, pps and INCLUDE THE HEADER
-            let mut first_sample = BytesMut::new();
-            first_sample.put(vps_header.serialize().as_slice());
-            first_sample.put(vps);
-            first_sample.put(sps_header.serialize().as_slice());
-            first_sample.put(sps);
-            first_sample.put(pps_header.serialize().as_slice());
-            first_sample.put(pps);
-            first_sample.put(idr_header.serialize().as_slice());
-            first_sample.put(idr);
-
-            self.decoder.blocking_send_sample(Sample {
-                data: first_sample.freeze(),
-                timestamp,
-                duration: Duration::from_secs_f32(frame_time),
-                packet_timestamp,
-                ..Default::default() // <-- Must be default
-            });
-
-            // send the remaining frames
-            while let Ok(Some(nal)) = nal_reader.next_nal() {
-                let data =
-                    trim_bytes_to_range(nal.full, nal.header_range.start..nal.payload_range.end);
-
-                self.decoder.blocking_send_sample(Sample {
-                    data: data.freeze(),
-                    timestamp,
-                    duration: Duration::from_secs_f32(frame_time),
-                    packet_timestamp,
-                    ..Default::default() // <-- Must be default
-                });
-            }
-
-            // Set the state
-            self.current_state = Some(Reader::H265 { nal_reader });
         }
 
         if self
