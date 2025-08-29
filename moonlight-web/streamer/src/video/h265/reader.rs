@@ -27,48 +27,45 @@ pub struct NALHeader {
 }
 
 impl NALHeader {
-    pub fn parse(header: [u8; 2]) -> Self {
+    fn parse(header: [u8; 2]) -> Self {
         // F: 1 bit
-        let forbidden_zero_bit = header[0] & 0b0000_0001 != 0;
+        let forbidden_zero_bit = (header[0] & 0b1000_0000) != 0;
 
         // Type: 6 bits
-        let nal_unit_type = (header[0] >> 1) & 0b0011_1111;
-        // It's impossible for this to fail because we only have 6 bits like the enum
-        #[allow(clippy::unwrap_used)]
-        let nal_unit_type = NALUnitType::from_u8(nal_unit_type).unwrap();
+        let nal_unit_type = (header[0] & 0b0111_1110) >> 1;
 
         // LayerId: 6 bits
-        let nuh_layer_id = (header[0] >> 7) | ((header[1] & 0b0001_1111) << 1);
+        let nuh_layer_id = ((header[0] & 0b0000_0001) << 5) | ((header[1] & 0b1111_1000) >> 3);
 
         // TID: 3 bits
-        let nuh_temporal_id_plus1 = (header[1] >> 5) & 0b0000_0111;
+        let nuh_temporal_id_plus1 = header[1] & 0b0000_0111;
 
         Self {
             forbidden_zero_bit,
-            nal_unit_type,
+            // It's impossible for this to fail because we only have 6 bits like the enum
+            #[allow(clippy::unwrap_used)]
+            nal_unit_type: NALUnitType::from_u8(nal_unit_type).unwrap(),
             nuh_layer_id,
             nuh_temporal_id_plus1,
         }
     }
 
-    pub fn serialize(&self) -> [u8; 2] {
+    fn serialize(&self) -> [u8; 2] {
         let mut header = [0u8; 2];
 
-        // F: 1 bit
         if self.forbidden_zero_bit {
-            header[0] |= 0b00000001;
+            header[0] |= 0b1000_0000;
         }
 
         // Type: 6 bits
-        let nal_unit_type = self.nal_unit_type as u8;
-        header[0] |= (nal_unit_type << 1) & 0b01111110;
+        header[0] |= (self.nal_unit_type as u8 & 0b0011_1111) << 1;
 
         // LayerId: 6 bits
-        header[0] |= (self.nuh_layer_id << 7) & 0b10000000;
-        header[1] |= (self.nuh_layer_id >> 1) & 0b00011111;
+        header[0] |= (self.nuh_layer_id >> 5) & 0b0000_0001;
+        header[1] |= (self.nuh_layer_id & 0b0001_1111) << 3;
 
         // TID: 3 bits
-        header[1] |= (self.nuh_temporal_id_plus1 << 5) & 0b11100000;
+        header[1] |= self.nuh_temporal_id_plus1 & 0b0000_0111;
 
         header
     }
@@ -190,6 +187,10 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    pub fn reset(&mut self, new_reader: R) {
+        self.annex_b.reset(new_reader);
     }
 }
 

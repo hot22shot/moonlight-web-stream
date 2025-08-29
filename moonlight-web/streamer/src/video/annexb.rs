@@ -110,6 +110,13 @@ where
         }
     }
 
+    pub fn reset(&mut self, new_reader: R) {
+        // Read to end
+        while let Ok(Some(_)) = self.next() {}
+
+        self.reader = new_reader;
+    }
+
     fn next_annex_b_start_code(
         &mut self,
         buffer_bytes: bool,

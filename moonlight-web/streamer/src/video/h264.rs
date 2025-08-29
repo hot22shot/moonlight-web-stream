@@ -67,7 +67,7 @@ pub struct NALHeader {
 }
 
 impl NALHeader {
-    pub fn parse(header: [u8; 1]) -> Self {
+    fn parse(header: [u8; 1]) -> Self {
         // F: 1 bit
         let forbidden_zero_bit = ((header[0] & 0b10000000) >> 7) == 1;
 
@@ -128,5 +128,9 @@ where
                 return Ok(None);
             }
         }
+    }
+
+    pub fn reset(&mut self, new_reader: R) {
+        self.annex_b.reset(new_reader);
     }
 }
