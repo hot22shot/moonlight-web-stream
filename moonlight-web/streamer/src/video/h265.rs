@@ -31,7 +31,7 @@ pub struct NALHeader {
 }
 
 impl NALHeader {
-    fn parse(header: [u8; 2]) -> Self {
+    pub fn parse(header: [u8; 2]) -> Self {
         // F: 1 bit
         let forbidden_zero_bit = (header[0] & 0b1000_0000) != 0;
 
@@ -54,7 +54,7 @@ impl NALHeader {
         }
     }
 
-    fn serialize(&self) -> [u8; 2] {
+    pub fn serialize(&self) -> [u8; 2] {
         let mut header = [0u8; 2];
 
         if self.forbidden_zero_bit {

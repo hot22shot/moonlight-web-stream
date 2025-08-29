@@ -45,10 +45,10 @@ enum Reader {
     H265Init {
         format: VideoFormat,
         nal_reader: H265Reader<Cursor<Vec<u8>>>,
-        vps: Option<BytesMut>,
-        sps: Option<BytesMut>,
-        pps: Option<BytesMut>,
-        idr: Option<BytesMut>,
+        vps: Option<(h265::NALHeader, BytesMut)>,
+        sps: Option<(h265::NALHeader, BytesMut)>,
+        pps: Option<(h265::NALHeader, BytesMut)>,
+        idr: Option<(h265::NALHeader, BytesMut)>,
     },
     H265 {
         nal_reader: H265Reader<Cursor<Vec<u8>>>,
@@ -256,16 +256,16 @@ impl VideoDecoder for TrackSampleVideoDecoder {
 
                         match nal.header.nal_unit_type {
                             h265::NALUnitType::VpsNut => {
-                                vps.replace(data);
+                                vps.replace((nal.header, data));
                             }
                             h265::NALUnitType::SpsNut => {
-                                sps.replace(data);
+                                sps.replace((nal.header, data));
                             }
                             h265::NALUnitType::PpsNut => {
-                                pps.replace(data);
+                                pps.replace((nal.header, data));
                             }
                             h265::NALUnitType::IdrNLp | h265::NALUnitType::IdrWRadl => {
-                                idr.replace(data);
+                                idr.replace((nal.header, data));
                             }
                             _ => unreachable!(),
                         }
@@ -347,10 +347,10 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             let Some(Reader::H265Init {
                 format,
                 mut nal_reader,
-                vps: Some(vps),
-                sps: Some(sps),
-                pps: Some(pps),
-                idr: Some(idr),
+                vps: Some((vps_header, vps)),
+                sps: Some((sps_header, sps)),
+                pps: Some((pps_header, pps)),
+                idr: Some((idr_header, idr)),
             }) = self.current_state.take()
             else {
                 unreachable!()
@@ -367,7 +367,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 "sprop-vps={};sprop-sps={};sprop-pps={}",
                 b64_vps, b64_sps, b64_pps
             );
-            log::info!("{}", sdp_fmtp_line);
 
             let needs_idr = self.needs_idr.clone();
             if let Err(err) = self.decoder.blocking_create_track(
@@ -376,7 +375,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         // TODO: is it possible to make the video channel unreliable?
                         mime_type: mime_type.clone(),
                         clock_rate: self.clock_rate,
-                        sdp_fmtp_line,
                         ..Default::default()
                     },
                     "video".to_string(),
@@ -408,12 +406,17 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 stream.renegotiate().await;
             });
 
-            // send the vps, sps, pps
+            // send the vps, sps, pps and INCLUDE THE HEADER
             let mut first_sample = BytesMut::new();
+            first_sample.put(vps_header.serialize().as_slice());
             first_sample.put(vps);
+            first_sample.put(sps_header.serialize().as_slice());
             first_sample.put(sps);
+            first_sample.put(pps_header.serialize().as_slice());
             first_sample.put(pps);
+            first_sample.put(idr_header.serialize().as_slice());
             first_sample.put(idr);
+
             self.decoder.blocking_send_sample(Sample {
                 data: first_sample.freeze(),
                 timestamp,
