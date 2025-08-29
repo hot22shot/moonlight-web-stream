@@ -135,7 +135,7 @@ sudo a2enconf moonlight-web
 ```json
 {
     ..
-    "web_path_prefix": "/test"
+    "web_path_prefix": "/moonlight"
     ..
 }
 ```
@@ -226,8 +226,8 @@ This will advertise the ip as an ice candidate on the web server.
 It's recommended to set this but stun servers should figure out the public ip.
 Is force set the WebRTC ice servers to empty if the Ice Candidate Type is set to host.
 
-host -> This is the ip address of the server and the client can connect to
-srflx -> This is the public ip address of this server, like a ice candidate added from a stun server.
+- host -> This is the ip address of the server and the client can connect to
+- srflx -> This is the public ip address of this server, like a ice candidate added from a stun server.
 
 ```json
 {
@@ -244,11 +244,11 @@ srflx -> This is the public ip address of this server, like a ice candidate adde
 
 ### WebRTC Network Types
 This will set the network types allowed by webrtc.
-Allowed values:
-udp4: All udp with ipv4
-udp6: All udp with ipv6
-tcp4: All tcp with ipv4
-tcp6: All tcp with ipv6
+<br>Allowed values:
+- udp4: All udp with ipv4
+- udp6: All udp with ipv6
+- tcp4: All tcp with ipv4
+- tcp6: All tcp with ipv6
 
 ```json
 {
@@ -268,7 +268,7 @@ Will always append the prefix to all requests made by the website.
 ```json
 {
     ..
-    "web_path_prefix": "/test"
+    "web_path_prefix": "/moonlight"
     ..
 }
 ```
