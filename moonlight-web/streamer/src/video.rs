@@ -1,5 +1,6 @@
 use std::{
     io::Cursor,
+    ops::Range,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -7,17 +8,16 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use log::{error, info};
 use moonlight_common::moonlight::{
     stream::Capabilities,
     video::{
-        BufferType, DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder,
-        VideoFormat,
+        DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat,
     },
 };
 use webrtc::{
-    media::{Sample, io::h264_reader::H264Reader},
+    media::{Sample, io::h264_reader},
     rtcp::payload_feedbacks::{
         full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
     },
@@ -25,7 +25,15 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::{StreamConnection, decoder::TrackSampleDecoder};
+use crate::{
+    StreamConnection,
+    decoder::TrackSampleDecoder,
+    video::{h264::H264Reader, h265::reader::H265Reader},
+};
+
+mod annexb;
+mod h264;
+mod h265;
 
 pub struct TrackSampleVideoDecoder {
     decoder: TrackSampleDecoder,
@@ -47,7 +55,7 @@ impl TrackSampleVideoDecoder {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
             // TODO: implement other formats?
-            supported_formats: supported_formats & SupportedVideoFormats::MASK_H264,
+            supported_formats: supported_formats & SupportedVideoFormats::H264,
             clock_rate: 90000,
             current_video_format: None,
             needs_idr: Default::default(),
@@ -131,19 +139,12 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             // -- H264
             Some(VideoFormat::H264) | Some(VideoFormat::H264High8_444) => {
                 let mut full_frame = Vec::new();
+                for buffer in unit.buffers {
+                    full_frame.extend_from_slice(buffer.data);
+                }
+
                 match unit.frame_type {
                     FrameType::Idr => {
-                        for buffer in unit.buffers {
-                            match buffer.ty {
-                                BufferType::Sps
-                                | BufferType::Pps
-                                | BufferType::Vps
-                                | BufferType::PicData => {
-                                    full_frame.extend_from_slice(buffer.data);
-                                }
-                            }
-                        }
-
                         let data = Bytes::from(full_frame);
 
                         // We need this to be delivered
@@ -157,21 +158,20 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         });
                     }
                     FrameType::PFrame => {
-                        for buffer in unit.buffers {
-                            full_frame.extend_from_slice(buffer.data);
-                        }
-
                         let len = full_frame.len();
-                        let reader = Cursor::new(full_frame);
+
+                        let reader = Cursor::new(full_frame.as_slice());
                         let mut nal_reader = H264Reader::new(reader, len);
 
-                        while let Ok(nal) = nal_reader.next_nal() {
+                        while let Ok(Some(nal)) = nal_reader.next_nal() {
+                            let data = &nal.full[nal.header_range.start..nal.payload_range.end];
+
                             self.decoder.blocking_send_sample(Sample {
-                                data: nal.data.into(),
+                                data: Bytes::copy_from_slice(data),
                                 timestamp,
                                 duration: Duration::from_secs_f32(frame_time),
                                 packet_timestamp,
-                                ..Default::default()
+                                ..Default::default() // <-- Must be default
                             });
                         }
                     }
@@ -182,15 +182,32 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             | Some(VideoFormat::H265Main10)
             | Some(VideoFormat::H265Rext8_444)
             | Some(VideoFormat::H265Rext10_444) => {
-                // https://stackoverflow.com/questions/59311873/how-to-depacketize-the-fragmented-frames-in-rtp-data-over-udp-for-h265-hevc
-                todo!()
+                let mut full_frame = Vec::new();
+                for buffer in unit.buffers {
+                    full_frame.extend_from_slice(buffer.data);
+                }
+
+                let reader = Cursor::new(full_frame);
+                let mut nal_reader = H265Reader::new(reader, 0);
+
+                let mut frame_nals = Vec::new();
+                while let Ok(Some(nal)) = nal_reader.next_nal() {
+                    frame_nals.extend_from_slice(&nal.full);
+                }
+
+                self.decoder.blocking_send_sample(Sample {
+                    data: frame_nals.into(),
+                    timestamp,
+                    duration: Duration::from_secs_f32(frame_time),
+                    packet_timestamp,
+                    ..Default::default() // <-- Must be default
+                });
             }
             // -- AV1
             Some(VideoFormat::Av1Main8)
             | Some(VideoFormat::Av1Main10)
             | Some(VideoFormat::Av1High8_444)
             | Some(VideoFormat::Av1High10_444) => {
-                // https://github.com/memorysafety/rav1d
                 todo!()
             }
             _ => {
@@ -231,4 +248,16 @@ fn video_format_to_mime_type(format: VideoFormat) -> Option<String> {
         VideoFormat::Av1High8_444 => Some("video/AV1".to_string()),
         VideoFormat::Av1High10_444 => Some("video/AV1".to_string()),
     }
+}
+
+fn trim_bytes_to_range(mut buf: BytesMut, range: Range<usize>) -> BytesMut {
+    if range.start > 0 {
+        let _ = buf.split_to(range.start);
+    }
+
+    if range.end - range.start < buf.len() {
+        let _ = buf.split_off(range.end - range.start);
+    }
+
+    buf
 }

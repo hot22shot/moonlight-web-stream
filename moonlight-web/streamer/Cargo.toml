@@ -17,15 +17,17 @@ tokio = { workspace = true }
 bytes = { workspace = true }
 webrtc = "0.13.0"
 
-# TODO: num traits in workspace
-num-traits = "0.2.19"
-
 pem = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+num = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
 
 log = { workspace = true }
 simplelog = { workspace = true }
