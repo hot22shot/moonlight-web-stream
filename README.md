@@ -78,7 +78,7 @@ You can generate a self signed certificate with this python script [moonlight-we
 
 ```sh
 pip install pyOpenSSL
-python ./moonlight-web/generate_certificate.py
+python ./moonlight-web/web-server/generate_certificate.py
 ```
 
 2. Copy the files `server/key.pem` and `server/cert.pem` into your `server` directory.
