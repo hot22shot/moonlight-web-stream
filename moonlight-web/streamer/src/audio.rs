@@ -76,7 +76,7 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
             ..Default::default()
         };
 
-        self.decoder.send_sample(sample);
+        self.decoder.blocking_send_sample(sample);
     }
 
     fn config(&self) -> AudioConfig {

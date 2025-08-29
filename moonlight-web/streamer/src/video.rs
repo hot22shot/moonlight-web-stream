@@ -146,7 +146,8 @@ impl VideoDecoder for TrackSampleVideoDecoder {
 
                         let data = Bytes::from(full_frame);
 
-                        self.decoder.send_sample(Sample {
+                        // We need this to be delivered
+                        self.decoder.blocking_send_sample(Sample {
                             data,
                             timestamp,
                             duration: Duration::from_secs_f32(frame_time),
@@ -165,7 +166,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         let mut nal_reader = H264Reader::new(reader, len);
 
                         while let Ok(nal) = nal_reader.next_nal() {
-                            self.decoder.send_sample(Sample {
+                            self.decoder.blocking_send_sample(Sample {
                                 data: nal.data.into(),
                                 timestamp,
                                 duration: Duration::from_secs_f32(frame_time),
@@ -181,6 +182,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             | Some(VideoFormat::H265Main10)
             | Some(VideoFormat::H265Rext8_444)
             | Some(VideoFormat::H265Rext10_444) => {
+                // https://stackoverflow.com/questions/59311873/how-to-depacketize-the-fragmented-frames-in-rtp-data-over-udp-for-h265-hevc
                 todo!()
             }
             // -- AV1
@@ -188,6 +190,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             | Some(VideoFormat::Av1Main10)
             | Some(VideoFormat::Av1High8_444)
             | Some(VideoFormat::Av1High10_444) => {
+                // https://github.com/memorysafety/rav1d
                 todo!()
             }
             _ => {

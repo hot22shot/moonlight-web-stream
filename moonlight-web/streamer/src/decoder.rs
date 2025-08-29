@@ -71,6 +71,11 @@ impl TrackSampleDecoder {
             let _ = sender.try_send(sample);
         }
     }
+    pub fn blocking_send_sample(&self, sample: Sample) {
+        if let Some(sender) = self.sender.as_ref() {
+            let _ = sender.blocking_send(sample);
+        }
+    }
 }
 
 async fn sample_sender(track: Arc<TrackLocalStaticSample>, mut receiver: Receiver<Sample>) {
