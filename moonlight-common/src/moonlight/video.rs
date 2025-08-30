@@ -54,6 +54,21 @@ pub enum VideoFormat {
 }
 
 impl VideoFormat {
+    pub fn all() -> [Self; 10] {
+        [
+            VideoFormat::H264,
+            VideoFormat::H264High8_444,
+            VideoFormat::H265,
+            VideoFormat::H265Main10,
+            VideoFormat::H265Rext8_444,
+            VideoFormat::H265Rext10_444,
+            VideoFormat::Av1Main8,
+            VideoFormat::Av1Main10,
+            VideoFormat::Av1High8_444,
+            VideoFormat::Av1High10_444,
+        ]
+    }
+
     pub fn contained_in(&self, supported_video_formats: SupportedVideoFormats) -> bool {
         let Some(single_format) = SupportedVideoFormats::from_bits(*self as u32) else {
             return false;

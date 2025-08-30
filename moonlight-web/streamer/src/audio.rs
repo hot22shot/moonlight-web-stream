@@ -7,12 +7,32 @@ use moonlight_common::moonlight::{
     stream::Capabilities,
 };
 use webrtc::{
-    api::media_engine::MIME_TYPE_OPUS, media::Sample,
-    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
+    api::media_engine::{MIME_TYPE_OPUS, MediaEngine},
+    media::Sample,
+    rtp_transceiver::rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType},
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
 use crate::{StreamConnection, decoder::TrackSampleDecoder};
+
+pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrtc::Error> {
+    media_engine.register_codec(
+        RTCRtpCodecParameters {
+            capability: RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_OPUS.to_owned(),
+                clock_rate: 48000,
+                channels: 2,
+                sdp_fmtp_line: "minptime=10;useinbandfec=1".to_owned(),
+                rtcp_feedback: vec![],
+            },
+            payload_type: 111,
+            ..Default::default()
+        },
+        RTPCodecType::Audio,
+    )?;
+
+    Ok(())
+}
 
 pub struct OpusTrackSampleAudioDecoder {
     decoder: TrackSampleDecoder,

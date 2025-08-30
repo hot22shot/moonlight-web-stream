@@ -9,7 +9,7 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use log::{error, info};
+use log::{debug, error, info};
 use moonlight_common::moonlight::{
     stream::Capabilities,
     video::{
@@ -17,12 +17,13 @@ use moonlight_common::moonlight::{
     },
 };
 use webrtc::{
-    api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC},
+    api::media_engine::{MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
     media::Sample,
-    rtcp::payload_feedbacks::{
-        full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
+    rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication,
+    rtp_transceiver::{
+        RTCPFeedback,
+        rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType},
     },
-    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
@@ -35,6 +36,29 @@ use crate::{
 mod annexb;
 mod h264;
 mod h265;
+
+pub fn register_video_codecs(
+    media_engine: &mut MediaEngine,
+    supported_video_formats: SupportedVideoFormats,
+) -> Result<(), webrtc::Error> {
+    for format in VideoFormat::all() {
+        if !format.contained_in(supported_video_formats) {
+            continue;
+        }
+
+        let Some(codec) = video_format_to_codec(format) else {
+            continue;
+        };
+        debug!(
+            "Registering Video Format {format:?}, Codec: {:?}",
+            codec.capability
+        );
+
+        media_engine.register_codec(codec, RTPCodecType::Video)?;
+    }
+
+    Ok(())
+}
 
 enum VideoCodec {
     H264 {
@@ -65,8 +89,7 @@ impl TrackSampleVideoDecoder {
     ) -> Self {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
-            // TODO: implement other formats?
-            supported_formats: supported_formats & SupportedVideoFormats::MASK_H264,
+            supported_formats,
             clock_rate: 90000,
             video_codec: None,
             needs_idr: Default::default(),
@@ -97,30 +120,28 @@ impl VideoDecoder for TrackSampleVideoDecoder {
 
         // TODO: send width / height?
 
-        let mime_type = video_format_to_mime_type(format);
+        let Some(codec) = video_format_to_codec(format) else {
+            error!("Failed to get video codec with format {format:?}");
+            return -1;
+        };
 
         let needs_idr = self.needs_idr.clone();
         if let Err(err) = self.decoder.blocking_create_track(
             TrackLocalStaticSample::new(
-                RTCRtpCodecCapability {
-                    // TODO: is it possible to make the video channel unreliable?
-                    mime_type: mime_type.clone(),
-                    clock_rate: self.clock_rate,
-                    ..Default::default()
-                },
+                codec.capability.clone(),
                 "video".to_string(),
                 "moonlight".to_string(),
             ),
             move |packet| {
                 let packet = packet.as_any();
 
-                if packet.is::<PictureLossIndication>() || packet.is::<FullIntraRequest>() {
+                if packet.is::<PictureLossIndication>() {
                     needs_idr.store(true, Ordering::Release);
                 }
             },
         ) {
             error!(
-                "Failed to create video track with format {format:?} and mime \"{mime_type}\": {err:?}"
+                "Failed to create video track with format {format:?} and codec \"{codec:?}\": {err:?}"
             );
             return -1;
         }
@@ -215,40 +236,23 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     full_frame.extend_from_slice(buffer.data);
                 }
 
-                match unit.frame_type {
-                    FrameType::Idr => {
-                        let data = Bytes::from(full_frame);
+                let reader = Cursor::new(full_frame);
+                nal_reader.reset(reader);
 
-                        // We need this to be delivered
-                        self.decoder.blocking_send_sample(Sample {
-                            data,
-                            timestamp,
-                            duration: Duration::from_secs_f32(frame_time),
-                            packet_timestamp,
-                            prev_dropped_packets,
-                            prev_padding_packets: 0,
-                        });
-                    }
-                    FrameType::PFrame => {
-                        let reader = Cursor::new(full_frame);
-                        nal_reader.reset(reader);
+                while let Ok(Some(nal)) = nal_reader.next_nal() {
+                    let data = trim_bytes_to_range(
+                        nal.full,
+                        nal.header_range.start..nal.payload_range.end,
+                    );
 
-                        while let Ok(Some(nal)) = nal_reader.next_nal() {
-                            let data = trim_bytes_to_range(
-                                nal.full,
-                                nal.header_range.start..nal.payload_range.end,
-                            );
-
-                            self.decoder.blocking_send_sample(Sample {
-                                data: data.freeze(),
-                                timestamp,
-                                duration: Duration::from_secs_f32(frame_time),
-                                packet_timestamp,
-                                ..Default::default() // <-- Must be default
-                            });
-                        }
-                    }
-                };
+                    self.decoder.blocking_send_sample(Sample {
+                        data: data.freeze(),
+                        timestamp,
+                        duration: Duration::from_secs_f32(frame_time),
+                        packet_timestamp,
+                        ..Default::default() // <-- Must be default
+                    });
+                }
             }
             // -- AV1
             Some(VideoCodec::Av1 {}) => {
@@ -284,18 +288,102 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     }
 }
 
-fn video_format_to_mime_type(format: VideoFormat) -> String {
+fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
+    let rtcp_feedback = vec![
+        RTCPFeedback {
+            typ: "nack".to_string(),
+            parameter: "".to_string(),
+        },
+        RTCPFeedback {
+            typ: "nack".to_string(),
+            parameter: "pli".to_string(),
+        },
+    ];
+
     match format {
-        VideoFormat::H264 => MIME_TYPE_H264.to_string(),
-        VideoFormat::H264High8_444 => MIME_TYPE_H264.to_string(),
-        VideoFormat::H265 => MIME_TYPE_HEVC.to_string(),
-        VideoFormat::H265Main10 => MIME_TYPE_HEVC.to_string(),
-        VideoFormat::H265Rext8_444 => MIME_TYPE_HEVC.to_string(),
-        VideoFormat::H265Rext10_444 => MIME_TYPE_HEVC.to_string(),
-        VideoFormat::Av1Main8 => MIME_TYPE_AV1.to_string(),
-        VideoFormat::Av1Main10 => MIME_TYPE_AV1.to_string(),
-        VideoFormat::Av1High8_444 => MIME_TYPE_AV1.to_string(),
-        VideoFormat::Av1High10_444 => MIME_TYPE_AV1.to_string(),
+        // -- H264 Constrained Baseline Profile
+        VideoFormat::H264 => Some(RTCRtpCodecParameters {
+            capability: RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_H264.to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line:
+                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+                        .to_owned(),
+                rtcp_feedback: rtcp_feedback.clone(),
+            },
+            payload_type: 123,
+            ..Default::default()
+        }),
+        // -- H264 High Profile
+        VideoFormat::H264High8_444 => Some(RTCRtpCodecParameters {
+            capability: RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_H264.to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line:
+                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640032"
+                        .to_owned(),
+                rtcp_feedback: rtcp_feedback.clone(),
+            },
+            payload_type: 124,
+            ..Default::default()
+        }),
+
+        // -- H265 Main Profile
+        VideoFormat::H265 => Some(RTCRtpCodecParameters {
+            capability: RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_HEVC.to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line: "profile-id=1;tier-flag=0;level-id=120;tx-mode=SRST".to_owned(),
+                rtcp_feedback: rtcp_feedback.clone(),
+            },
+            payload_type: 126,
+            ..Default::default()
+        }),
+        // -- H265 Main10 Profile
+        VideoFormat::H265Main10 => Some(RTCRtpCodecParameters {
+            capability: RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_HEVC.to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line: "profile-id=1;tier-flag=0;level-id=93;tx-mode=SRST".to_owned(),
+                rtcp_feedback: rtcp_feedback.clone(),
+            },
+            payload_type: 127,
+            ..Default::default()
+        }),
+        // -- H265 RExt 4:4:4 8-bit
+        VideoFormat::H265Rext8_444 => Some(RTCRtpCodecParameters {
+            capability: RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_HEVC.to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line: "profile-id=4;tier-flag=0;level-id=120;tx-mode=SRST".to_owned(),
+                rtcp_feedback: rtcp_feedback.clone(),
+            },
+            payload_type: 128,
+            ..Default::default()
+        }),
+        // -- H265 RExt 4:4:4 10-bit
+        VideoFormat::H265Rext10_444 => Some(RTCRtpCodecParameters {
+            capability: RTCRtpCodecCapability {
+                mime_type: MIME_TYPE_HEVC.to_owned(),
+                clock_rate: 90000,
+                channels: 0,
+                sdp_fmtp_line: "profile-id=5;tier-flag=0;level-id=93;tx-mode=SRST".to_owned(),
+                rtcp_feedback: rtcp_feedback.clone(),
+            },
+            payload_type: 129,
+            ..Default::default()
+        }),
+
+        // -- Av1: TODO
+        VideoFormat::Av1Main8
+        | VideoFormat::Av1Main10
+        | VideoFormat::Av1High8_444
+        | VideoFormat::Av1High10_444 => None,
     }
 }
 

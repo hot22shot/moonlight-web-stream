@@ -20,6 +20,7 @@ use moonlight_common::{
     moonlight::{
         MoonlightInstance,
         stream::{ColorRange, HostFeatures, MoonlightStream},
+        video::SupportedVideoFormats,
     },
     network::reqwest::ReqwestMoonlightHost,
     pair::ClientAuth,
@@ -36,8 +37,10 @@ use tokio::{
 };
 use webrtc::{
     api::{
-        API, APIBuilder, interceptor_registry::register_default_interceptors,
-        media_engine::MediaEngine, setting_engine::SettingEngine,
+        API, APIBuilder,
+        interceptor_registry::register_default_interceptors,
+        media_engine::{MIME_TYPE_HEVC, MIME_TYPE_OPUS, MediaEngine},
+        setting_engine::SettingEngine,
     },
     data_channel::RTCDataChannel,
     ice::udp_network::{EphemeralUDP, UDPNetwork},
@@ -60,14 +63,14 @@ use common::api_bindings::{
 };
 
 use crate::{
-    audio::OpusTrackSampleAudioDecoder,
+    audio::{OpusTrackSampleAudioDecoder, register_audio_codecs},
     connection::StreamConnectionListener,
     convert::{
         from_webrtc_ice, from_webrtc_sdp, into_webrtc_ice, into_webrtc_ice_candidate,
         into_webrtc_network_type,
     },
     input::StreamInput,
-    video::TrackSampleVideoDecoder,
+    video::{TrackSampleVideoDecoder, register_video_codecs},
 };
 
 mod audio;
@@ -209,12 +212,13 @@ async fn main() {
             .collect(),
     );
 
+    // -- Register media codecs
     let mut api_media = MediaEngine::default();
-    // TODO: only register supported codecs
-    api_media
-        .register_default_codecs()
-        .expect("failed to register webrtc codecs");
+    register_audio_codecs(&mut api_media).expect("failed to register audio codecs");
+    register_video_codecs(&mut api_media, stream_settings.video_supported_formats)
+        .expect("failed to register video codecs");
 
+    // -- Build Api
     let mut api_registry = Registry::new();
 
     // Use the default set of Interceptors

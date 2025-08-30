@@ -14,22 +14,24 @@ export type VideoCodecSupport = {
 } & Record<string, boolean>
 
 const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string }> = [
+    // TODO: check the sdp fmtp line
     { key: "H264", mimeType: "video/H264" },
-    { key: "H265", mimeType: "video/H265" },
-    { key: "AV1_MAIN8", mimeType: "video/AV1" },
+    // { key: "H265", mimeType: "video/H265" },
+    // { key: "AV1_MAIN8", mimeType: "video/AV1" },
 ]
 
 const VIDEO_DECODER_CODECS: Array<{ key: string } & VideoDecoderConfig> = [
     { key: "H264_HIGH8_444", codec: "avc1.4d400c", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
-    // No major browser currently supports WebRTC h265, but it might support h265 video
-    { key: "H265", codec: "hvc1.1.6.L93.B0" },
+    // No major browser currently supports WebRTC h265, but it might support h265 video without webrtc so we don't check that
+    // { key: "H265", codec: "hvc1.1.6.L93.B0" },
     // { key: "H265_MAIN10", codec: "hvc1.2.4.L120.90" },
     // { key: "H265_REXT8_444", codec: "hvc1.6.6.L93.90", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
     // { key: "H265_REXT10_444", codec: "hvc1.6.10.L120.90", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
-    { key: "AV1_MAIN8", codec: "av01.0.04M.08" },
-    { key: "AV1_MAIN10", codec: "av01.0.04M.10" },
-    { key: "AV1_HIGH8_444", codec: "av01.0.08M.08", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
-    { key: "AV1_HIGH10_444", codec: "av01.0.08M.10", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } }
+    // TODO: Av1
+    // { key: "AV1_MAIN8", codec: "av01.0.04M.08" },
+    // { key: "AV1_MAIN10", codec: "av01.0.04M.10" },
+    // { key: "AV1_HIGH8_444", codec: "av01.0.08M.08", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
+    // { key: "AV1_HIGH10_444", codec: "av01.0.08M.10", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } }
 ]
 
 export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
