@@ -36,13 +36,14 @@ mod annexb;
 mod h264;
 mod h265;
 
-enum Reader {
+enum VideoCodec {
     H264 {
         nal_reader: H264Reader<Cursor<Vec<u8>>>,
     },
     H265 {
         nal_reader: H265Reader<Cursor<Vec<u8>>>,
     },
+    Av1 {},
 }
 
 pub struct TrackSampleVideoDecoder {
@@ -50,7 +51,7 @@ pub struct TrackSampleVideoDecoder {
     supported_formats: SupportedVideoFormats,
     clock_rate: u32,
     // Video important
-    current_state: Option<Reader>,
+    video_codec: Option<VideoCodec>,
     needs_idr: Arc<AtomicBool>,
     frame_time: f32,
     last_frame_number: i32,
@@ -67,7 +68,7 @@ impl TrackSampleVideoDecoder {
             // TODO: implement other formats?
             supported_formats: supported_formats & SupportedVideoFormats::MASK_H264,
             clock_rate: 90000,
-            current_state: None,
+            video_codec: None,
             needs_idr: Default::default(),
             frame_time: 0.0,
             last_frame_number: 0,
@@ -127,7 +128,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         match format {
             // -- H264
             VideoFormat::H264 | VideoFormat::H264High8_444 => {
-                self.current_state = Some(Reader::H264 {
+                self.video_codec = Some(VideoCodec::H264 {
                     nal_reader: H264Reader::new(Cursor::new(Vec::new()), 0),
                 });
             }
@@ -136,7 +137,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             | VideoFormat::H265Main10
             | VideoFormat::H265Rext8_444
             | VideoFormat::H265Rext10_444 => {
-                self.current_state = Some(Reader::H265 {
+                self.video_codec = Some(VideoCodec::H265 {
                     nal_reader: H265Reader::new(Cursor::new(Vec::new()), 0),
                 });
             }
@@ -164,9 +165,9 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
         self.last_frame_number = unit.frame_number;
 
-        match &mut self.current_state {
+        match &mut self.video_codec {
             // -- H264
-            Some(Reader::H264 { nal_reader }) => {
+            Some(VideoCodec::H264 { nal_reader }) => {
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);
@@ -208,7 +209,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 };
             }
             // -- H265
-            Some(Reader::H265 { nal_reader }) => {
+            Some(VideoCodec::H265 { nal_reader }) => {
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);
@@ -250,9 +251,14 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 };
             }
             // -- AV1
-            // _ => {
-            //     todo!()
-            // }
+            Some(VideoCodec::Av1 {}) => {
+                let mut full_frame = Vec::new();
+                for buffer in unit.buffers {
+                    full_frame.extend_from_slice(buffer.data);
+                }
+
+                log::info!("{:?}", &full_frame[0..10]);
+            }
             None => {
                 // this shouldn't happen
                 unreachable!()
