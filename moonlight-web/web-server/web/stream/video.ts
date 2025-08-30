@@ -26,7 +26,7 @@ const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string, fmtpLine: Arra
 
 const VIDEO_DECODER_CODECS: Array<{ key: string } & VideoDecoderConfig> = [
     { key: "H264_HIGH8_444", codec: "avc1.4d400c", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
-    // No major browser currently supports WebRTC h265, but it might support h265 video without webrtc so we don't check that
+    // TODO? No major browser currently supports WebRTC h265, but it might support h265 video without webrtc so we don't check that
     // { key: "H265", codec: "hvc1.1.6.L93.B0" },
     // { key: "H265_MAIN10", codec: "hvc1.2.4.L120.90" },
     // { key: "H265_REXT8_444", codec: "hvc1.6.6.L93.90", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
