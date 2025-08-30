@@ -110,7 +110,7 @@ class ViewerApp implements Component {
         })
 
         let supportedVideoFormats = getStandardVideoFormats()
-        if (!settings.forceH264) {
+        if (settings.dontForceH264) {
             supportedVideoFormats = await getSupportedVideoFormats()
         }
 
