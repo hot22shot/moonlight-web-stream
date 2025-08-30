@@ -7,7 +7,7 @@ import { setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./comp
 import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { getSupportedVideoFormats } from "./stream/video.js";
+import { getStandardVideoFormats, getSupportedVideoFormats, VideoCodecSupport } from "./stream/video.js";
 import { StreamCapabilities } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 
@@ -104,12 +104,15 @@ class ViewerApp implements Component {
         let viewerWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
         let viewerHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
 
-        const supportedVideoFormats = await getSupportedVideoFormats()
-
         const settings = getLocalStreamSettings() ?? defaultStreamSettings()
         setSidebarStyle({
             edge: settings.sidebarEdge,
         })
+
+        let supportedVideoFormats = getStandardVideoFormats()
+        if (!settings.forceH264) {
+            supportedVideoFormats = await getSupportedVideoFormats()
+        }
 
         this.stream = new Stream(this.api, hostId, appId, settings, supportedVideoFormats, [viewerWidth, viewerHeight])
 

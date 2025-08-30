@@ -13,10 +13,14 @@ export type VideoCodecSupport = {
     AV1_HIGH10_444: boolean
 } & Record<string, boolean>
 
-const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string }> = [
+const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string, fmtpLine: Array<string> }> = [
     // TODO: check the sdp fmtp line
-    { key: "H264", mimeType: "video/H264" },
-    // { key: "H265", mimeType: "video/H265" },
+    { key: "H264", mimeType: "video/H264", fmtpLine: ["packetization-mode=1", "profile-level-id=42e01f"] },
+    { key: "H264_HIGH8_444", mimeType: "video/H264", fmtpLine: ["packetization-mode=1", "profile-level-id=640032"] },
+    { key: "H265", mimeType: "video/H265", fmtpLine: ["profile-id=1", "tier-flag=0", "level-id=120", "tx-mode=SRST"] },
+    { key: "H265_MAIN10", mimeType: "video/H265", fmtpLine: ["profile-id=1", "tier-flag=0", "level-id=93", "tx-mode=SRST"] },
+    { key: "H265_REXT8_444", mimeType: "video/H265", fmtpLine: ["profile-id=4", "tier-flag=0", "level-id=120", "tx-mode=SRST"] },
+    { key: "H265_REXT10_444", mimeType: "video/H265", fmtpLine: ["profile-id=5", "tier-flag=0", "level-id=93", "tx-mode=SRST"] }
     // { key: "AV1_MAIN8", mimeType: "video/AV1" },
 ]
 
@@ -34,8 +38,8 @@ const VIDEO_DECODER_CODECS: Array<{ key: string } & VideoDecoderConfig> = [
     // { key: "AV1_HIGH10_444", codec: "av01.0.08M.10", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } }
 ]
 
-export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
-    let support: VideoCodecSupport = {
+export function getStandardVideoFormats() {
+    return {
         H264: true,              // assumed universal
         H264_HIGH8_444: false,
         H265: false,
@@ -47,12 +51,27 @@ export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
         AV1_HIGH8_444: false,
         AV1_HIGH10_444: false
     }
+}
+
+export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
+    let support: VideoCodecSupport = getStandardVideoFormats()
 
     let capabilities = RTCRtpReceiver.getCapabilities("video")
     if ("getCapabilities" in RTCRtpReceiver && typeof RTCRtpReceiver.getCapabilities == "function" && (capabilities = RTCRtpReceiver.getCapabilities("video"))) {
         for (const capCodec of capabilities.codecs) {
             for (const codec of CAPABILITIES_CODECS) {
-                if (capCodec.mimeType == codec.mimeType) {
+                let compatible = true
+
+                if (capCodec.mimeType != codec.mimeType) {
+                    compatible = false
+                }
+                for (const fmtpLineAttrib of codec.fmtpLine) {
+                    if (!capCodec.sdpFmtpLine?.includes(fmtpLineAttrib)) {
+                        compatible = false
+                    }
+                }
+
+                if (compatible) {
                     support[codec.key] = true
                 }
             }

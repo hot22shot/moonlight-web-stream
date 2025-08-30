@@ -14,6 +14,7 @@ export type StreamSettings = {
         height: number
     },
     fps: number
+    forceH264: boolean
     playAudioLocal: boolean
     audioSampleQueueSize: number
     controllerConfig: ControllerConfig
@@ -31,6 +32,7 @@ export function defaultStreamSettings(): StreamSettings {
             width: 1920,
             height: 1080,
         },
+        forceH264: false,
         playAudioLocal: false,
         audioSampleQueueSize: 20,
         controllerConfig: {
@@ -74,6 +76,7 @@ export class StreamSettingsComponent implements Component {
     private bitrate: InputComponent
     private packetSize: InputComponent
     private fps: InputComponent
+    private forceH264: InputComponent
 
     private videoSize: SelectComponent
     private videoSizeWidth: InputComponent
@@ -183,6 +186,15 @@ export class StreamSettingsComponent implements Component {
         this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSampleQueueSize.mount(this.divElement)
 
+        // Force H264
+        this.forceH264 = new InputComponent("forceH264", "checkbox", "Force H264", {
+            defaultValue: defaultSettings.forceH264.toString(),
+            checked: settings?.forceH264
+        })
+        this.forceH264.addChangeListener(this.onSettingsChange.bind(this))
+        this.forceH264.mount(this.divElement)
+
+
         // Audio local
         this.audioHeader.innerText = "Audio"
         this.divElement.appendChild(this.audioHeader)
@@ -261,6 +273,7 @@ export class StreamSettingsComponent implements Component {
             height: parseInt(this.videoSizeHeight.getValue())
         }
         settings.videoSampleQueueSize = parseInt(this.videoSampleQueueSize.getValue())
+        settings.forceH264 = this.forceH264.isChecked()
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()
         settings.audioSampleQueueSize = parseInt(this.audioSampleQueueSize.getValue())
