@@ -101,6 +101,7 @@ impl VideoDecoder for GStreamerVideoHandler {
         redraw_rate: u32,
         flags: i32,
     ) -> i32 {
+        println!("Starting Stream: format: {format:?}, video: {width}x{height}x{redraw_rate}");
         let _ = (format, width, height, redraw_rate, flags);
         0
     }
