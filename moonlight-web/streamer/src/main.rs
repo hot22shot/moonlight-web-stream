@@ -551,10 +551,7 @@ impl StreamConnection {
     async fn on_ws_message(&self, message: StreamClientMessage) {
         match message {
             StreamClientMessage::Signaling(StreamSignalingMessage::Description(description)) => {
-                debug!(
-                    "[Signaling] Received Remote Description: {:?}",
-                    description.ty
-                );
+                debug!("[Signaling] Received Remote Description: {:?}", description);
 
                 let description = match &description.ty {
                     RtcSdpType::Offer => RTCSessionDescription::offer(description.sdp),
@@ -588,7 +585,7 @@ impl StreamConnection {
 
                     debug!(
                         "[Signaling] Sending Local Description: {:?}",
-                        local_description.sdp_type
+                        local_description
                     );
 
                     let _ = send_ws_message(
