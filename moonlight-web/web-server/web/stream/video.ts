@@ -18,7 +18,8 @@ const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string, fmtpLine: Arra
     { key: "H264", mimeType: "video/H264", fmtpLine: ["packetization-mode=1", "profile-level-id=42e01f"] },
     { key: "H264_HIGH8_444", mimeType: "video/H264", fmtpLine: ["packetization-mode=1", "profile-level-id=640032"] },
     // TODO: set level id
-    { key: "H265", mimeType: "video/H265", fmtpLine: ["profile-id=1", "tier-flag=0", "tx-mode=SRST"] },
+    // { key: "H265", mimeType: "video/H265", fmtpLine: ["profile-id=1", "tier-flag=0", "tx-mode=SRST"] },
+    { key: "H265", mimeType: "video/H265", fmtpLine: [] },
     { key: "H265_MAIN10", mimeType: "video/H265", fmtpLine: ["profile-id=2", "tier-flag=0", "tx-mode=SRST"] },
     { key: "H265_REXT8_444", mimeType: "video/H265", fmtpLine: ["profile-id=4", "tier-flag=0", "tx-mode=SRST"] },
     { key: "H265_REXT10_444", mimeType: "video/H265", fmtpLine: ["profile-id=5", "tier-flag=0", "tx-mode=SRST"] }
