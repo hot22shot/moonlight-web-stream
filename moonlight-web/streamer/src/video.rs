@@ -8,7 +8,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use log::{debug, error, info};
 use moonlight_common::moonlight::{
     stream::Capabilities,
@@ -30,7 +30,7 @@ use webrtc::{
 use crate::{
     StreamConnection,
     decoder::TrackSampleDecoder,
-    video::{h264::H264Reader, h265::H265Reader},
+    video::{annexb::AnnexBStartCode, h264::H264Reader, h265::H265Reader},
 };
 
 mod annexb;
@@ -240,10 +240,17 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 nal_reader.reset(reader);
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    let data = trim_bytes_to_range(
+                    let nal_data = trim_bytes_to_range(
                         nal.full,
                         nal.header_range.start..nal.payload_range.end,
                     );
+
+                    log::debug!("NAL: {:?}", nal.header);
+
+                    // TODO: use pushfront on nal or if already b3 use it
+                    let mut data = BytesMut::new();
+                    data.put(AnnexBStartCode::B3.code());
+                    data.put(nal_data);
 
                     self.decoder.blocking_send_sample(Sample {
                         data: data.freeze(),
@@ -330,7 +337,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
             ..Default::default()
         }),
 
-        // TODO: h265 requires resolution in the level-id field
+        // TODO: h265 requires resolution in the level-id field, set it based on resolution and fps
         // -- H265 Main Profile
         VideoFormat::H265 => Some(RTCRtpCodecParameters {
             capability: RTCRtpCodecCapability {
@@ -338,7 +345,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                 clock_rate: 90000,
                 channels: 0,
                 // They're the same
-                // sdp_fmtp_line: "profile-id=1;tier-flag=0;level-id=120;tx-mode=SRST".to_owned(),
+                // sdp_fmtp_line: "profile-id=1;level-id=93;tier-flag=0;tx-mode=1".to_owned(),
                 sdp_fmtp_line: "".to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
