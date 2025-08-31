@@ -505,7 +505,7 @@ impl StreamConnection {
     }
 
     async fn on_negotiation_needed(&self) {
-        self.renegotiate().await;
+        // Do nothing
     }
     async fn renegotiate(&self) {
         let local_description = match self.peer.create_offer(None).await {
