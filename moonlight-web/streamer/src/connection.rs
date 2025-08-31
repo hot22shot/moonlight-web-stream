@@ -64,7 +64,7 @@ impl ConnectionListener for StreamConnectionListener {
         // Renegotate because we now have the audio and video streams
         let stream = self.stream.clone();
         self.stream.runtime.spawn(async move {
-            stream.renegotiate().await;
+            stream.send_offer().await;
         });
     }
 

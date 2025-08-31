@@ -123,7 +123,7 @@ async fn main() {
         match ipc_receiver.recv().await {
             Some(ServerIpcMessage::Init {
                 server_config,
-                mut stream_settings,
+                stream_settings,
                 host_address,
                 host_http_port,
                 host_unique_id,
@@ -139,7 +139,6 @@ async fn main() {
                         .iter_names()
                         .collect::<Vec<_>>()
                 );
-                stream_settings.video_supported_formats &= SupportedVideoFormats::MASK_AV1;
 
                 break (
                     server_config,
@@ -492,35 +491,15 @@ impl StreamConnection {
     }
 
     // -- Handle Signaling
-    async fn make_answer(&self) -> Option<RTCSessionDescription> {
-        let local_description = match self.peer.create_answer(None).await {
-            Err(err) => {
-                warn!("[Signaling]: failed to create answer: {err:?}");
-                return None;
-            }
-            Ok(value) => value,
-        };
-
-        if let Err(err) = self
-            .peer
-            .set_local_description(local_description.clone())
-            .await
-        {
-            warn!("[Signaling]: failed to set local description: {err:?}");
-            return None;
-        }
-
-        Some(local_description)
-    }
-
     async fn on_negotiation_needed(&self) {
         // Do nothing
     }
-    async fn renegotiate(&self) {
-        let local_description = match self.peer.create_offer(None).await {
+
+    async fn send_answer(&self) -> bool {
+        let local_description = match self.peer.create_answer(None).await {
             Err(err) => {
-                warn!("[Signaling]: failed to create offer: {err:?}");
-                return;
+                warn!("[Signaling]: failed to create answer: {err:?}");
+                return false;
             }
             Ok(value) => value,
         };
@@ -531,10 +510,15 @@ impl StreamConnection {
             .await
         {
             warn!("[Signaling]: failed to set local description: {err:?}");
-            return;
+            return false;
         }
 
-        send_ws_message(
+        debug!(
+            "[Signaling] Sending Local Description as Answer: {:?}",
+            local_description.sdp
+        );
+
+        let _ = send_ws_message(
             &mut self.ipc_sender.clone(),
             StreamServerMessage::Signaling(StreamSignalingMessage::Description(
                 RtcSessionDescription {
@@ -544,6 +528,44 @@ impl StreamConnection {
             )),
         )
         .await;
+
+        true
+    }
+    async fn send_offer(&self) -> bool {
+        let local_description = match self.peer.create_offer(None).await {
+            Err(err) => {
+                warn!("[Signaling]: failed to create offer: {err:?}");
+                return false;
+            }
+            Ok(value) => value,
+        };
+
+        if let Err(err) = self
+            .peer
+            .set_local_description(local_description.clone())
+            .await
+        {
+            warn!("[Signaling]: failed to set local description: {err:?}");
+            return false;
+        }
+
+        debug!(
+            "[Signaling] Sending Local Description as Offer: {:?}",
+            local_description.sdp
+        );
+
+        let _ = send_ws_message(
+            &mut self.ipc_sender.clone(),
+            StreamServerMessage::Signaling(StreamSignalingMessage::Description(
+                RtcSessionDescription {
+                    ty: from_webrtc_sdp(local_description.sdp_type),
+                    sdp: local_description.sdp,
+                },
+            )),
+        )
+        .await;
+
+        true
     }
 
     async fn on_ipc_message(&self, message: ServerIpcMessage) {
@@ -588,25 +610,7 @@ impl StreamConnection {
 
                 // Send an answer (local description) if we got an offer
                 if remote_ty == RTCSdpType::Offer {
-                    let Some(local_description) = self.make_answer().await else {
-                        return;
-                    };
-
-                    debug!(
-                        "[Signaling] Sending Local Description: {:?}",
-                        local_description
-                    );
-
-                    let _ = send_ws_message(
-                        &mut self.ipc_sender.clone(),
-                        StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                            RtcSessionDescription {
-                                ty: from_webrtc_sdp(local_description.sdp_type),
-                                sdp: local_description.sdp,
-                            },
-                        )),
-                    )
-                    .await;
+                    self.send_answer().await;
                 }
             }
             StreamClientMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
