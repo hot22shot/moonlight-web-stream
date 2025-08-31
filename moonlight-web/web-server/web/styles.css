@@ -7,7 +7,6 @@ body {
 /* Prevent pull down refresh when Streaming */
 html.stream,
 body.stream {
-    background-color: rgb(0, 0, 0);
     overscroll-behavior: none !important;
 }
 
