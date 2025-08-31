@@ -257,33 +257,83 @@ class ViewerApp implements Component {
 class ConnectionInfoModal implements Modal<void> {
 
     private eventTarget = new EventTarget()
+
+    private root = document.createElement("div")
+
     private text = document.createElement("p")
 
+    private debugDetailButton = document.createElement("button")
+    private debugDetail = "" // We store this seperate because line breaks don't work when the element is not mounted on the dom
+    private debugDetailDisplay = document.createElement("div")
+
     constructor() {
+        this.root.classList.add("modal-video-connect")
+
         this.text.innerText = "Connecting"
+        this.root.appendChild(this.text)
+
+        this.debugDetailButton.innerText = "Show Logs"
+        this.debugDetailButton.addEventListener("click", this.onDebugDetailClick.bind(this))
+        this.root.appendChild(this.debugDetailButton)
+
+        this.debugDetailDisplay.classList.add("textlike")
+        this.debugDetailDisplay.classList.add("modal-video-connect-debug")
+    }
+
+    private onDebugDetailClick() {
+        let debugDetailCurrentlyShown = this.root.contains(this.debugDetailDisplay)
+
+        if (debugDetailCurrentlyShown) {
+            this.debugDetailButton.innerText = "Show Logs"
+            this.root.removeChild(this.debugDetailDisplay)
+        } else {
+            this.debugDetailButton.innerText = "Hide Logs"
+            this.root.appendChild(this.debugDetailDisplay)
+            this.debugDetailDisplay.innerText = this.debugDetail
+        }
+    }
+
+    private debugLog(line: string) {
+        this.debugDetail += `${line}\n`
+        this.debugDetailDisplay.innerText = this.debugDetail
+        console.info(`[Stream]: ${line}`)
     }
 
     onInfo(event: InfoEvent) {
         const data = event.detail
 
         if (data.type == "stageStarting") {
-            this.text.innerText = `Starting Stage: ${data.stage}`
+            const text = `Starting Stage: ${data.stage}`
+            this.text.innerText = text
+            this.debugLog(text)
         } else if (data.type == "stageComplete") {
-            this.text.innerText = `Completed Stage: ${data.stage}`
+            const text = `Completed Stage: ${data.stage}`
+            this.text.innerText = text
+            this.debugLog(text)
         } else if (data.type == "stageFailed") {
-            this.text.innerText = `Failed Stage: ${data.stage} with error ${data.errorCode}`
+            const text = `Failed Stage: ${data.stage} with error ${data.errorCode}`
+            this.text.innerText = text
+            this.debugLog(text)
         } else if (data.type == "connectionComplete") {
-            this.text.innerText = `Connection Complete`
+            const text = `Connection Complete`
+            this.text.innerText = text
+            this.debugLog(text)
 
             this.eventTarget.dispatchEvent(new Event("ml-connected"))
+        } else if (data.type == "addDebugLine") {
+            this.debugLog(data.line)
         }
         // Reopen the modal cause we might already be closed at this point
         else if (data.type == "connectionTerminated") {
-            this.text.innerText = `Connection Terminated with code ${data.errorCode}`
+            const text = `Connection Terminated with code ${data.errorCode}`
+            this.text.innerText = text
+            this.debugLog(text)
 
             showModal(this)
         } else if (data.type == "error") {
-            this.text.innerText = `Error: ${data.message}`
+            const text = `Error: ${data.message}`
+            this.text.innerText = text
+            this.debugLog(text)
 
             showModal(this)
         }
@@ -296,10 +346,10 @@ class ConnectionInfoModal implements Modal<void> {
     }
 
     mount(parent: HTMLElement): void {
-        parent.appendChild(this.text)
+        parent.appendChild(this.root)
     }
     unmount(parent: HTMLElement): void {
-        parent.removeChild(this.text)
+        parent.removeChild(this.root)
     }
 }
 

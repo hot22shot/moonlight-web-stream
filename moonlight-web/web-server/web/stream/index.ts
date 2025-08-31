@@ -11,7 +11,8 @@ export type InfoEvent = CustomEvent<
     { type: "stageFailed", stage: string, errorCode: number } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "connectionStatus", status: ConnectionStatus } |
-    { type: "connectionTerminated", errorCode: number }
+    { type: "connectionTerminated", errorCode: number } |
+    { type: "addDebugLine", line: string }
 >
 export type InfoEventListener = (event: InfoEvent) => void
 
@@ -31,7 +32,7 @@ export class Stream {
 
     private peer: RTCPeerConnection
 
-    constructor(api: Api, hostId: number, appId: number, settings: StreamSettings, supported_video_formats: VideoCodecSupport, viewerScreenSize: [number, number]) {
+    constructor(api: Api, hostId: number, appId: number, settings: StreamSettings, supportedVideoFormats: VideoCodecSupport, viewerScreenSize: [number, number]) {
         this.api = api
         this.hostId = hostId
         this.appId = appId
@@ -64,6 +65,7 @@ export class Stream {
             width = viewerScreenSize[0]
             height = viewerScreenSize[1]
         }
+        const fps = this.settings.fps
 
         this.sendWsMessage({
             AuthenticateAndInit: {
@@ -72,13 +74,13 @@ export class Stream {
                 app_id: this.appId,
                 bitrate: this.settings.bitrate,
                 packet_size: this.settings.packetSize,
-                fps: this.settings.fps,
+                fps,
                 width,
                 height,
                 video_sample_queue_size: this.settings.videoSampleQueueSize,
                 play_audio_local: this.settings.playAudioLocal,
                 audio_sample_queue_size: this.settings.audioSampleQueueSize,
-                video_supported_formats: createSupportedVideoFormatsBits(supported_video_formats),
+                video_supported_formats: createSupportedVideoFormatsBits(supportedVideoFormats),
                 video_colorspace: "Rec709", // TODO <---
                 video_color_range_full: true, // TODO <---
             }
@@ -100,6 +102,36 @@ export class Stream {
             controllerConfig: settings.controllerConfig
         })
         this.input = new StreamInput(this.peer, streamInputConfig)
+
+        // Dispatch info for next frame so that listeners can be registers
+        setTimeout(() => {
+            this.debugLog("Requesting Stream with attributes: {")
+            // Width, Height, Fps
+            this.debugLog(`  Width ${width}`)
+            this.debugLog(`  Height ${height}`)
+            this.debugLog(`  Fps: ${fps}`)
+
+            // Supported Video Formats
+            const supportedVideoFormatsText = []
+            for (const item in supportedVideoFormats) {
+                if (supportedVideoFormats[item]) {
+                    supportedVideoFormatsText.push(item)
+                }
+            }
+            this.debugLog(`  Supported Video Formats: ${createPrettyList(supportedVideoFormatsText)}`)
+
+            this.debugLog("}")
+        })
+    }
+
+    private debugLog(message: string) {
+        for (const line of message.split("\n")) {
+            const event: InfoEvent = new CustomEvent("stream-info", {
+                detail: { type: "addDebugLine", line }
+            })
+
+            this.eventTarget.dispatchEvent(event)
+        }
     }
 
     private async onMessage(message: StreamServerMessage | StreamServerGeneralMessage) {
@@ -163,6 +195,11 @@ export class Stream {
             this.peer.setConfiguration({
                 iceServers,
             })
+
+
+            this.debugLog(`Using WebRTC Ice Servers: ${createPrettyList(
+                iceServers.map(server => server.urls).reduce((list, url) => list.concat(url), [])
+            )}`)
         }
         // -- Signaling
         else if ("Signaling" in message) {
@@ -183,6 +220,7 @@ export class Stream {
                     usernameFragment: candidateRaw.username_fragment
                 }
 
+                this.debugLog(`Adding Ice Candidate: ${candidate.candidate}`)
                 await this.handleSignaling(null, candidate)
             }
         }
@@ -326,4 +364,20 @@ export class Stream {
     getInput(): StreamInput {
         return this.input
     }
+}
+
+function createPrettyList(list: Array<string>): string {
+    let isFirst = true
+    let text = "["
+    for (const item of list) {
+        if (!isFirst) {
+            text += ", "
+        }
+        isFirst = false
+
+        text += list
+    }
+    text += "]"
+
+    return text
 }
