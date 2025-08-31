@@ -99,7 +99,7 @@ impl VideoDecoder for GStreamerVideoHandler {
         width: u32,
         height: u32,
         redraw_rate: u32,
-        flags: (),
+        flags: i32,
     ) -> i32 {
         let _ = (format, width, height, redraw_rate, flags);
         0
@@ -125,7 +125,7 @@ impl VideoDecoder for GStreamerVideoHandler {
 
                 buffer_mut.copy_from_slice(0, buffer.data).unwrap();
 
-                let pts_ns = unit.presentation_time as u64 * 1_000_000;
+                let pts_ns = unit.presentation_time.as_nanos() as u64;
                 buffer_mut.set_pts(ClockTime::from_nseconds(pts_ns));
                 buffer_mut.set_dts(ClockTime::from_nseconds(pts_ns));
 
@@ -172,11 +172,9 @@ impl GStreamerAudioHandler {
         let audiodec = ElementFactory::make_with_name("opusdec", Some("audio decode")).unwrap();
         spawn({
             let audiodec = audiodec.clone();
-            move || {
-                loop {
-                    std::thread::sleep(Duration::from_secs(1));
-                    println!("{:?}", audiodec.property::<Structure>("stats"))
-                }
+            move || loop {
+                std::thread::sleep(Duration::from_secs(1));
+                println!("{:?}", audiodec.property::<Structure>("stats"))
             }
         });
 
@@ -210,7 +208,7 @@ impl AudioDecoder for GStreamerAudioHandler {
         &mut self,
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
-        ar_flags: (),
+        ar_flags: i32,
     ) -> i32 {
         println!("Stream Config: {:?}", stream_config);
         // self.audio_config = Some(audio_config);

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use moonlight_common::{
-    PairStatus,
+    PairPin, PairStatus,
     moonlight::{
         MoonlightInstance,
         debug::DebugHandler,
@@ -36,7 +36,6 @@ async fn main() {
 
     // Initialize Moonlight
     let moonlight = MoonlightInstance::global().unwrap();
-    let crypto = moonlight.crypto();
 
     // Create a host
     // - client_info = None -> Generates a client
@@ -67,12 +66,12 @@ async fn main() {
         let auth = generate_new_client().unwrap();
 
         // Generate pin for pairing
-        let pin = crypto.generate_pin();
+        let pin = PairPin::generate().unwrap();
 
         println!("Pin: {pin}, Device Name: {device_name}");
 
         // Pair to the host
-        host.pair(&crypto, &auth, device_name.to_string(), pin)
+        host.pair(&auth, device_name.to_string(), pin)
             .await
             .unwrap();
 
@@ -124,7 +123,6 @@ async fn main() {
     let stream = host
         .start_stream(
             &moonlight,
-            &crypto,
             app_id,
             1920,
             1080,
