@@ -252,6 +252,7 @@ export class Stream {
     }
     private sendLocalDescription() {
         const description = this.peer.localDescription as RTCSessionDescription;
+        this.debugLog(`Sending Local Description of type ${description.type}`)
 
         this.sendWsMessage({
             Signaling: {
@@ -288,7 +289,11 @@ export class Stream {
 
         const stream = event.streams[0]
         if (stream) {
-            stream.getTracks().forEach(track => this.mediaStream.addTrack(track))
+            stream.getTracks().forEach(track => {
+                this.debugLog(`Adding Media Track ${track.label}`)
+
+                this.mediaStream.addTrack(track)
+            })
         }
     }
     private onConnectionStateChange(event: Event) {
@@ -305,6 +310,8 @@ export class Stream {
     }
 
     private onDataChannel(event: RTCDataChannelEvent) {
+        this.debugLog(`Received Data Channel ${event.channel.label}`)
+
         if (event.channel.label == "general") {
             event.channel.addEventListener("message", this.onGeneralDataChannelMessage.bind(this))
         }
@@ -324,6 +331,8 @@ export class Stream {
     private wsSendBuffer: Array<string> = []
 
     private onWsOpen() {
+        this.debugLog(`Web Socket Open`)
+
         for (const raw of this.wsSendBuffer.splice(0, this.wsSendBuffer.length)) {
             this.ws.send(raw)
         }
@@ -349,6 +358,8 @@ export class Stream {
     }
 
     private onError(event: Event) {
+        this.debugLog(`Web Socket or WebRtcPeer Error`)
+
         console.error("Stream Error", event)
     }
 
@@ -378,7 +389,7 @@ function createPrettyList(list: Array<string>): string {
         }
         isFirst = false
 
-        text += list
+        text += item
     }
     text += "]"
 
