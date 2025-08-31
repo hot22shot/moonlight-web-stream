@@ -123,7 +123,7 @@ async fn main() {
         match ipc_receiver.recv().await {
             Some(ServerIpcMessage::Init {
                 server_config,
-                stream_settings,
+                mut stream_settings,
                 host_address,
                 host_http_port,
                 host_unique_id,
@@ -132,6 +132,15 @@ async fn main() {
                 server_certificate_pem,
                 app_id,
             }) => {
+                debug!(
+                    "Client supported codecs: {:?}",
+                    stream_settings
+                        .video_supported_formats
+                        .iter_names()
+                        .collect::<Vec<_>>()
+                );
+                stream_settings.video_supported_formats &= SupportedVideoFormats::MASK_AV1;
+
                 break (
                     server_config,
                     stream_settings,
