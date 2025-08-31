@@ -220,7 +220,6 @@ export class Stream {
                     usernameFragment: candidateRaw.username_fragment
                 }
 
-                this.debugLog(`Adding Ice Candidate: ${candidate.candidate}`)
                 await this.handleSignaling(null, candidate)
             }
         }
@@ -235,6 +234,8 @@ export class Stream {
     }
     private async handleSignaling(description: RTCSessionDescriptionInit | null, candidate: RTCIceCandidateInit | null) {
         if (description) {
+            this.debugLog(`Received Remote Description of type ${description.type}`)
+
             await this.peer.setRemoteDescription(description)
 
             if (description.type === "offer") {
@@ -244,6 +245,8 @@ export class Stream {
                 await this.sendLocalDescription()
             }
         } else if (candidate) {
+            this.debugLog(`Adding Ice Candidate: ${candidate.candidate}`)
+
             this.peer.addIceCandidate(candidate)
         }
     }
