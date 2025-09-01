@@ -301,12 +301,25 @@ impl StreamInput {
             let Some(id_gamepads) = ActiveGamepads::from_id(id) else {
                 return;
             };
-            {
+            let new_active_gamepads = {
                 let mut active_gamepads = connection.input.active_gamepads.write().await;
                 active_gamepads.remove(id_gamepads);
+                *active_gamepads
             };
 
-            // TODO: is there some removal event?
+            if let Some(stream) = connection.stream.read().await.as_ref() {
+                let _ = stream.send_multi_controller(
+                    id,
+                    new_active_gamepads,
+                    ControllerButtons::empty(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                );
+            }
         }
     }
     async fn on_controller_input_message(

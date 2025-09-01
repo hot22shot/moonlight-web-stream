@@ -590,6 +590,11 @@ export class StreamInput {
     onGamepadDisconnect(event: GamepadEvent) {
         const index = this.gamepads.indexOf(event.gamepad.index)
         if (index != -1) {
+            const id = this.gamepads[index]
+            if (id != null) {
+                this.sendControllerRemove(id)
+            }
+
             this.gamepads[index] = null
         }
     }
