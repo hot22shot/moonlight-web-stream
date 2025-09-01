@@ -4,7 +4,6 @@ import { ControllerConfig, convertStandardButton as convertStandardControllerBut
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
-// TODO: mouse speed based on screen size
 // TODO: scroll speed increase and smooth or not smooth option?
 
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
@@ -60,6 +59,8 @@ export class StreamInput {
     private connected = false
     private config: StreamInputConfig
     private capabilities: StreamCapabilities = { touch: true }
+    // Size of the streamer device
+    private streamerSize: [number, number] = [0, 0]
 
     private keyboard: RTCDataChannel | null = null
     private mouse: RTCDataChannel | null = null
@@ -114,9 +115,6 @@ export class StreamInput {
         return this.config
     }
 
-    setCapabilities(capabilities: StreamCapabilities) {
-        this.capabilities = capabilities
-    }
     getCapabilities(): StreamCapabilities {
         return this.capabilities
     }
@@ -127,9 +125,11 @@ export class StreamInput {
     }
 
     // -- On Stream Start
-    onStreamStart() {
+    onStreamStart(capabilities: StreamCapabilities, streamerSize: [number, number]) {
         this.connected = true
 
+        this.capabilities = capabilities
+        this.streamerSize = streamerSize
         this.registerBufferedControllers()
     }
 
@@ -194,13 +194,13 @@ export class StreamInput {
     }
     onMouseMove(event: MouseEvent, rect: DOMRect) {
         if (this.config.mouseMode == "relative") {
-            this.sendMouseMove(event.movementX, event.movementY)
+            this.sendMouseMoveClientCoordinates(event.movementX, event.movementY, rect)
         } else if (this.config.mouseMode == "follow") {
             this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect)
         } else if (this.config.mouseMode == "pointAndDrag") {
             if (event.buttons) {
                 // some button pressed
-                this.sendMouseMove(event.movementX, event.movementY)
+                this.sendMouseMoveClientCoordinates(event.movementX, event.movementY, rect)
             }
         }
     }
@@ -216,6 +216,12 @@ export class StreamInput {
         this.buffer.putI16(movementY)
 
         trySendChannel(this.mouse, this.buffer)
+    }
+    sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
+        const scaledMovementX = movementX / rect.width * this.streamerSize[0];
+        const scaledMovementY = movementY / rect.height * this.streamerSize[1];
+
+        this.sendMouseMove(scaledMovementX, scaledMovementY)
     }
     sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number) {
         this.buffer.reset()
@@ -377,7 +383,7 @@ export class StreamInput {
                 const movementY = touch.clientY - oldTouch.y;
 
                 if (this.touchMouseAction == "default") {
-                    this.sendMouseMove(movementX, movementY)
+                    this.sendMouseMoveClientCoordinates(movementX, movementY, rect)
 
                     const distance = this.calcTouchOriginDistance(touch, oldTouch)
                     if (this.config.touchMode == "pointAndDrag" && distance > TOUCH_AS_CLICK_MAX_DISTANCE) {

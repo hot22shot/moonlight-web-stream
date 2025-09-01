@@ -202,6 +202,8 @@ export class Stream {
             this.eventTarget.dispatchEvent(event)
         } else if ("ConnectionComplete" in message) {
             const capabilities = message.ConnectionComplete.capabilities
+            const width = message.ConnectionComplete.width
+            const height = message.ConnectionComplete.height
 
             const event: InfoEvent = new CustomEvent("stream-info", {
                 detail: { type: "connectionComplete", capabilities }
@@ -209,8 +211,7 @@ export class Stream {
 
             this.eventTarget.dispatchEvent(event)
 
-            this.input?.setCapabilities(capabilities)
-            this.input.onStreamStart()
+            this.input.onStreamStart(capabilities, [width, height])
         }
         // -- WebRTC Config
         else if ("WebRtcConfig" in message) {

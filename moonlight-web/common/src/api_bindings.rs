@@ -264,20 +264,37 @@ pub struct StreamCapabilities {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
-    WebRtcConfig { ice_servers: Vec<RtcIceServer> },
+    WebRtcConfig {
+        ice_servers: Vec<RtcIceServer>,
+    },
     Signaling(StreamSignalingMessage),
     // Optional Info
-    UpdateApp { app: App },
+    UpdateApp {
+        app: App,
+    },
     InternalServerError,
     HostNotFound,
     AppNotFound,
     HostNotPaired,
     AlreadyStreaming,
-    StageStarting { stage: String },
-    StageComplete { stage: String },
-    StageFailed { stage: String, error_code: i32 },
-    ConnectionComplete { capabilities: StreamCapabilities },
-    ConnectionTerminated { error_code: i32 },
+    StageStarting {
+        stage: String,
+    },
+    StageComplete {
+        stage: String,
+    },
+    StageFailed {
+        stage: String,
+        error_code: i32,
+    },
+    ConnectionComplete {
+        capabilities: StreamCapabilities,
+        width: u32,
+        height: u32,
+    },
+    ConnectionTerminated {
+        error_code: i32,
+    },
     PeerDisconnect,
 }
 

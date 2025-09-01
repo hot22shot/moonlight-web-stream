@@ -110,12 +110,18 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn setup(
         &mut self,
         format: VideoFormat,
-        _width: u32,
-        _height: u32,
+        width: u32,
+        height: u32,
         redraw_rate: u32,
         _flags: i32,
     ) -> i32 {
         info!("[Stream] Streaming with format: {format:?}");
+
+        {
+            let mut video_size = self.decoder.stream.video_size.blocking_lock();
+
+            *video_size = (width, height);
+        }
 
         if !format.contained_in(self.supported_formats()) {
             error!(

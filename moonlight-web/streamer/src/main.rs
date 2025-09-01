@@ -281,6 +281,8 @@ struct StreamConnection {
     pub general_channel: Arc<RTCDataChannel>,
     // Input
     pub input: StreamInput,
+    // Video
+    pub video_size: Mutex<(u32, u32)>,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
     pub terminate: Notify,
@@ -325,6 +327,7 @@ impl StreamConnection {
             peer: peer.clone(),
             ipc_sender,
             general_channel,
+            video_size: Mutex::new((0, 0)),
             input,
             stream: Default::default(),
             terminate: Notify::new(),
@@ -687,10 +690,23 @@ impl StreamConnection {
             touch: host_features.contains(HostFeatures::PEN_TOUCH_EVENTS),
         };
 
+        let (width, height) = {
+            let video_size = self.video_size.lock().await;
+            if *video_size == (0, 0) {
+                (self.settings.width, self.settings.height)
+            } else {
+                *video_size
+            }
+        };
+
         spawn(async move {
             ipc_sender
                 .send(StreamerIpcMessage::WebSocket(
-                    StreamServerMessage::ConnectionComplete { capabilities },
+                    StreamServerMessage::ConnectionComplete {
+                        capabilities,
+                        width,
+                        height,
+                    },
                 ))
                 .await;
         });
