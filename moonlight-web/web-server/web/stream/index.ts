@@ -151,6 +151,8 @@ export class Stream {
         // Maybe we already received data
         if (this.remoteDescription) {
             await this.handleRemoteDescription(this.remoteDescription)
+        } else {
+            await this.onNegotiationNeeded()
         }
         await this.tryDequeueIceCandidates()
     }

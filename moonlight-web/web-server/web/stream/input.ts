@@ -86,6 +86,7 @@ export class StreamInput {
                 controller?.close()
             }
         }
+        this.peer = peer
 
         this.keyboard = peer.createDataChannel("keyboard")
 
@@ -96,8 +97,6 @@ export class StreamInput {
 
         this.controllers = peer.createDataChannel("controllers")
         this.controllers.addEventListener("message", this.onControllerMessage)
-
-        this.peer = peer
     }
 
     setConfig(config: StreamInputConfig) {
