@@ -89,6 +89,7 @@ input[type=number] {
     border-radius: 2px;
     border: 1px solid rgba(255, 255, 255, 0.4);
     /* multiline */
+    overflow-x: auto;
     overflow-y: auto;
     white-space: pre-wrap;
 
@@ -498,6 +499,7 @@ input[type=number] {
 }
 
 .modal-video-connect .modal-video-connect-debug {
+    max-width: 75vw;
     max-height: 40vh;
 }
 
