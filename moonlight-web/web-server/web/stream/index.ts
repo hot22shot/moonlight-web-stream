@@ -125,7 +125,7 @@ export class Stream {
         }
     }
 
-    private createPeer(configuration: RTCConfiguration) {
+    private async createPeer(configuration: RTCConfiguration) {
         this.debugLog(`Creating Client Peer`)
 
         if (this.peer) {
@@ -142,17 +142,17 @@ export class Stream {
 
         this.peer.addEventListener("track", this.onTrack.bind(this))
         this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
-        this.peer.addEventListener("iceconnectionstatechange", this.onConnectionStateChange.bind(this))
+
+        this.peer.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this))
+        this.peer.addEventListener("iceconnectionstatechange", this.onIceConnectionStateChange.bind(this))
 
         this.input.setPeer(this.peer)
 
         // Maybe we already received data
         if (this.remoteDescription) {
-            this.handleRemoteDescription(this.remoteDescription)
+            await this.handleRemoteDescription(this.remoteDescription)
         }
-        for (const candidate of this.iceCandidateQueue.splice(this.iceCandidateQueue.length)) {
-            this.handleIceCandidate(candidate)
-        }
+        await this.tryDequeueIceCandidates()
     }
 
     private async onMessage(message: StreamServerMessage | StreamServerGeneralMessage) {
@@ -277,11 +277,18 @@ export class Stream {
 
             await this.sendLocalDescription()
         }
+
+        await this.tryDequeueIceCandidates()
     }
 
     private iceCandidateQueue: Array<RTCIceCandidateInit> = []
+    private async tryDequeueIceCandidates() {
+        for (const candidate of this.iceCandidateQueue.splice(0)) {
+            await this.handleIceCandidate(candidate)
+        }
+    }
     private async handleIceCandidate(candidate: RTCIceCandidateInit) {
-        if (!this.peer) {
+        if (!this.peer || !this.remoteDescription) {
             this.debugLog(`Received Ice Candidate and queuing it: ${candidate.candidate}`)
             this.iceCandidateQueue.push(candidate)
             return
@@ -343,11 +350,12 @@ export class Stream {
             })
         }
     }
-    private onConnectionStateChange(event: Event) {
+    private onConnectionStateChange() {
         if (!this.peer) {
             this.debugLog("OnConnectionStateChange without a peer")
             return
         }
+        this.debugLog(`Changing Peer State to ${this.peer.connectionState}`)
 
         if (this.peer.connectionState == "failed" || this.peer.connectionState == "disconnected" || this.peer.connectionState == "closed") {
             const customEvent: InfoEvent = new CustomEvent("stream-info", {
@@ -359,6 +367,13 @@ export class Stream {
 
             this.eventTarget.dispatchEvent(customEvent)
         }
+    }
+    private onIceConnectionStateChange() {
+        if (!this.peer) {
+            this.debugLog("OnIceConnectionStateChange without a peer")
+            return
+        }
+        this.debugLog(`Changing Peer Ice State to ${this.peer.iceConnectionState}`)
     }
 
     private onDataChannel(event: RTCDataChannelEvent) {
@@ -385,7 +400,7 @@ export class Stream {
     private onWsOpen() {
         this.debugLog(`Web Socket Open`)
 
-        for (const raw of this.wsSendBuffer.splice(0, this.wsSendBuffer.length)) {
+        for (const raw of this.wsSendBuffer.splice(0)) {
             this.ws.send(raw)
         }
     }

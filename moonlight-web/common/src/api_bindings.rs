@@ -243,7 +243,9 @@ pub enum StreamClientMessage {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceServer {
     pub urls: Vec<String>,
+    #[serde(default)]
     pub username: String,
+    #[serde(default)]
     pub credential: String,
 }
 
