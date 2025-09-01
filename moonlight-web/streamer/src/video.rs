@@ -8,10 +8,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use log::{debug, error, info};
 use moonlight_common::stream::{
-    bindings::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
+    bindings::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
     video::VideoDecoder,
 };
 use webrtc::{
@@ -143,7 +143,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 if packet.is::<PictureLossIndication>() {
                     needs_idr.store(true, Ordering::Release);
                 }
-                if let Some(max_bitrate) = packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
+                if let Some(_max_bitrate) = packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
                 {
                     // TODO: set moonlight bitrate if possible?
                     // TODO: make this an option
@@ -196,7 +196,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         let timestamp = SystemTime::UNIX_EPOCH + unit.presentation_time;
         let packet_timestamp =
             (unit.frame_number as f32 * self.frame_time * self.clock_rate as f32) as u32;
-        let prev_dropped_packets = (unit.frame_number - self.last_frame_number) as u16;
         self.last_frame_number = unit.frame_number;
 
         match &mut self.video_codec {
@@ -207,40 +206,22 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     full_frame.extend_from_slice(buffer.data);
                 }
 
-                // TODO: do we need this match?
-                match unit.frame_type {
-                    FrameType::Idr => {
-                        let data = Bytes::from(full_frame);
+                nal_reader.reset(Cursor::new(full_frame));
 
-                        // We need this to be delivered
-                        self.decoder.blocking_send_sample(Sample {
-                            data,
-                            timestamp,
-                            duration,
-                            packet_timestamp,
-                            prev_dropped_packets,
-                            prev_padding_packets: 0,
-                        });
-                    }
-                    FrameType::PFrame => {
-                        nal_reader.reset(Cursor::new(full_frame));
+                while let Ok(Some(nal)) = nal_reader.next_nal() {
+                    let data = trim_bytes_to_range(
+                        nal.full,
+                        nal.header_range.start..nal.payload_range.end,
+                    );
 
-                        while let Ok(Some(nal)) = nal_reader.next_nal() {
-                            let data = trim_bytes_to_range(
-                                nal.full,
-                                nal.header_range.start..nal.payload_range.end,
-                            );
-
-                            self.decoder.blocking_send_sample(Sample {
-                                data: data.freeze(),
-                                timestamp,
-                                duration,
-                                packet_timestamp,
-                                ..Default::default() // <-- Must be default
-                            });
-                        }
-                    }
-                };
+                    self.decoder.blocking_send_sample(Sample {
+                        data: data.freeze(),
+                        timestamp,
+                        duration,
+                        packet_timestamp,
+                        ..Default::default() // <-- Must be default
+                    });
+                }
             }
             // -- H265
             Some(VideoCodec::H265 { nal_reader }) => {
@@ -256,8 +237,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         nal.full,
                         nal.header_range.start..nal.payload_range.end,
                     );
-
-                    log::debug!("NAL: {:?}", nal.header);
 
                     // TODO: use pushfront on nal or if already b3 use it
                     let mut data = BytesMut::new();
