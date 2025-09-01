@@ -91,13 +91,13 @@ async fn main() {
         create_process_ipc::<ServerIpcMessage, StreamerIpcMessage>(stdin(), stdout()).await;
 
     // Send stage
-    let _ = send_ws_message(
-        &mut ipc_sender,
-        StreamServerMessage::StageComplete {
-            stage: "Launch Streamer".to_string(),
-        },
-    )
-    .await;
+    ipc_sender
+        .send(StreamerIpcMessage::WebSocket(
+            StreamServerMessage::StageComplete {
+                stage: "Launch Streamer".to_string(),
+            },
+        ))
+        .await;
 
     let (
         server_config,
@@ -147,13 +147,13 @@ async fn main() {
     };
 
     // Send stage
-    let _ = send_ws_message(
-        &mut ipc_sender,
-        StreamServerMessage::StageStarting {
-            stage: "Setup WebRTC Peer".to_string(),
-        },
-    )
-    .await;
+    ipc_sender
+        .send(StreamerIpcMessage::WebSocket(
+            StreamServerMessage::StageStarting {
+                stage: "Setup WebRTC Peer".to_string(),
+            },
+        ))
+        .await;
 
     // -- Create the host and pair it
     let mut host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
@@ -246,22 +246,22 @@ async fn main() {
     .expect("failed to create connection");
 
     // Send stage
-    let _ = send_ws_message(
-        &mut ipc_sender,
-        StreamServerMessage::StageComplete {
-            stage: "Setup WebRTC Peer".to_string(),
-        },
-    )
-    .await;
+    ipc_sender
+        .send(StreamerIpcMessage::WebSocket(
+            StreamServerMessage::StageComplete {
+                stage: "Setup WebRTC Peer".to_string(),
+            },
+        ))
+        .await;
 
     // Send stage
-    let _ = send_ws_message(
-        &mut ipc_sender,
-        StreamServerMessage::StageStarting {
-            stage: "WebRTC Peer Negotiation".to_string(),
-        },
-    )
-    .await;
+    ipc_sender
+        .send(StreamerIpcMessage::WebSocket(
+            StreamServerMessage::StageStarting {
+                stage: "WebRTC Peer Negotiation".to_string(),
+            },
+        ))
+        .await;
 
     connection.terminate.notified().await;
 }
@@ -297,18 +297,18 @@ impl StreamConnection {
         config: RTCConfiguration,
     ) -> Result<Arc<Self>, anyhow::Error> {
         // Send WebRTC Info
-        let _ = send_ws_message(
-            &mut ipc_sender,
-            StreamServerMessage::WebRtcConfig {
-                ice_servers: config
-                    .ice_servers
-                    .iter()
-                    .cloned()
-                    .map(from_webrtc_ice)
-                    .collect(),
-            },
-        )
-        .await;
+        ipc_sender
+            .send(StreamerIpcMessage::WebSocket(
+                StreamServerMessage::WebRtcConfig {
+                    ice_servers: config
+                        .ice_servers
+                        .iter()
+                        .cloned()
+                        .map(from_webrtc_ice)
+                        .collect(),
+                },
+            ))
+            .await;
 
         let peer = Arc::new(api.new_peer_connection(config).await?);
 
@@ -449,16 +449,17 @@ impl StreamConnection {
             local_description.sdp
         );
 
-        let _ = send_ws_message(
-            &mut self.ipc_sender.clone(),
-            StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                RtcSessionDescription {
-                    ty: from_webrtc_sdp(local_description.sdp_type),
-                    sdp: local_description.sdp,
-                },
-            )),
-        )
-        .await;
+        self.ipc_sender
+            .clone()
+            .send(StreamerIpcMessage::WebSocket(
+                StreamServerMessage::Signaling(StreamSignalingMessage::Description(
+                    RtcSessionDescription {
+                        ty: from_webrtc_sdp(local_description.sdp_type),
+                        sdp: local_description.sdp,
+                    },
+                )),
+            ))
+            .await;
 
         true
     }
@@ -485,16 +486,17 @@ impl StreamConnection {
             local_description.sdp
         );
 
-        let _ = send_ws_message(
-            &mut self.ipc_sender.clone(),
-            StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                RtcSessionDescription {
-                    ty: from_webrtc_sdp(local_description.sdp_type),
-                    sdp: local_description.sdp,
-                },
-            )),
-        )
-        .await;
+        self.ipc_sender
+            .clone()
+            .send(StreamerIpcMessage::WebSocket(
+                StreamServerMessage::Signaling(StreamSignalingMessage::Description(
+                    RtcSessionDescription {
+                        ty: from_webrtc_sdp(local_description.sdp_type),
+                        sdp: local_description.sdp,
+                    },
+                )),
+            ))
+            .await;
 
         true
     }
@@ -590,7 +592,10 @@ impl StreamConnection {
             },
         ));
 
-        let _ = send_ws_message(&mut self.ipc_sender.clone(), message).await;
+        self.ipc_sender
+            .clone()
+            .send(StreamerIpcMessage::WebSocket(message))
+            .await;
     }
 
     // -- Data Channels
@@ -602,13 +607,13 @@ impl StreamConnection {
     async fn start_stream(self: &Arc<Self>) -> Result<(), anyhow::Error> {
         // Send stage
         let mut ipc_sender = self.ipc_sender.clone();
-        let _ = send_ws_message(
-            &mut ipc_sender,
-            StreamServerMessage::StageStarting {
-                stage: "Moonlight Stream".to_string(),
-            },
-        )
-        .await;
+        ipc_sender
+            .send(StreamerIpcMessage::WebSocket(
+                StreamServerMessage::StageStarting {
+                    stage: "Moonlight Stream".to_string(),
+                },
+            ))
+            .await;
 
         let mut host = self.info.host.lock().await;
 
@@ -660,11 +665,11 @@ impl StreamConnection {
                 #[allow(clippy::single_match)]
                 match err {
                     HostError::Moonlight(MoonlightError::ConnectionAlreadyExists) => {
-                        let _ = send_ws_message(
-                            &mut self.ipc_sender.clone(),
-                            StreamServerMessage::AlreadyStreaming,
-                        )
-                        .await;
+                        ipc_sender
+                            .send(StreamerIpcMessage::WebSocket(
+                                StreamServerMessage::AlreadyStreaming,
+                            ))
+                            .await;
                     }
                     _ => {}
                 }
@@ -683,11 +688,11 @@ impl StreamConnection {
         };
 
         spawn(async move {
-            let _ = send_ws_message(
-                &mut ipc_sender,
-                StreamServerMessage::ConnectionComplete { capabilities },
-            )
-            .await;
+            ipc_sender
+                .send(StreamerIpcMessage::WebSocket(
+                    StreamServerMessage::ConnectionComplete { capabilities },
+                ))
+                .await;
         });
 
         drop(gamepads);
@@ -703,7 +708,11 @@ impl StreamConnection {
 
         let mut ipc_sender = self.ipc_sender.clone();
         spawn(async move {
-            send_ws_message(&mut ipc_sender, StreamServerMessage::PeerDisconnect).await;
+            ipc_sender
+                .send(StreamerIpcMessage::WebSocket(
+                    StreamServerMessage::PeerDisconnect,
+                ))
+                .await;
         });
 
         let general_channel = self.general_channel.clone();
@@ -732,9 +741,4 @@ impl StreamConnection {
         info!("Terminating Self");
         self.terminate.notify_waiters();
     }
-}
-
-// TODO: remove this fn
-async fn send_ws_message(sender: &mut IpcSender<StreamerIpcMessage>, message: StreamServerMessage) {
-    sender.send(StreamerIpcMessage::WebSocket(message)).await;
 }

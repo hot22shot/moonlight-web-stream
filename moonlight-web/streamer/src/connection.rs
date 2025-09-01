@@ -6,8 +6,11 @@ use moonlight_common::stream::{
     connection::ConnectionListener,
 };
 
-use crate::{StreamConnection, send_ws_message, serialize_json};
-use common::api_bindings::{StreamServerGeneralMessage, StreamServerMessage};
+use crate::{StreamConnection, serialize_json};
+use common::{
+    api_bindings::{StreamServerGeneralMessage, StreamServerMessage},
+    ipc::StreamerIpcMessage,
+};
 
 pub struct StreamConnectionListener {
     stream: Arc<StreamConnection>,
@@ -21,30 +24,30 @@ impl StreamConnectionListener {
 
 impl ConnectionListener for StreamConnectionListener {
     fn stage_starting(&mut self, stage: Stage) {
-        let mut ws_sender = self.stream.ipc_sender.clone();
+        let mut ipc_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
-            let _ = send_ws_message(
-                &mut ws_sender,
-                StreamServerMessage::StageStarting {
-                    stage: stage.name().to_string(),
-                },
-            )
-            .await;
+            ipc_sender
+                .send(StreamerIpcMessage::WebSocket(
+                    StreamServerMessage::StageStarting {
+                        stage: stage.name().to_string(),
+                    },
+                ))
+                .await;
         });
     }
 
     fn stage_complete(&mut self, stage: Stage) {
-        let mut ws_sender = self.stream.ipc_sender.clone();
+        let mut ipc_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
-            send_ws_message(
-                &mut ws_sender,
-                StreamServerMessage::StageComplete {
-                    stage: stage.name().to_string(),
-                },
-            )
-            .await;
+            ipc_sender
+                .send(StreamerIpcMessage::WebSocket(
+                    StreamServerMessage::StageComplete {
+                        stage: stage.name().to_string(),
+                    },
+                ))
+                .await;
         });
     }
 
@@ -52,14 +55,14 @@ impl ConnectionListener for StreamConnectionListener {
         let mut ipc_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
-            send_ws_message(
-                &mut ipc_sender,
-                StreamServerMessage::StageFailed {
-                    stage: stage.name().to_string(),
-                    error_code,
-                },
-            )
-            .await;
+            ipc_sender
+                .send(StreamerIpcMessage::WebSocket(
+                    StreamServerMessage::StageFailed {
+                        stage: stage.name().to_string(),
+                        error_code,
+                    },
+                ))
+                .await;
         });
     }
 
@@ -75,11 +78,11 @@ impl ConnectionListener for StreamConnectionListener {
         let mut ipc_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
-            send_ws_message(
-                &mut ipc_sender,
-                StreamServerMessage::ConnectionTerminated { error_code },
-            )
-            .await;
+            ipc_sender
+                .send(StreamerIpcMessage::WebSocket(
+                    StreamServerMessage::ConnectionTerminated { error_code },
+                ))
+                .await;
         });
 
         let stream = self.stream.clone();
