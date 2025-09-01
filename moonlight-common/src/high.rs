@@ -215,8 +215,8 @@ where
     #[cfg(feature = "stream")]
     pub async fn server_codec_mode_support(
         &mut self,
-    ) -> Result<crate::stream::stream::ServerCodeModeSupport, HostError<C::Error>> {
-        use crate::stream::stream::ServerCodeModeSupport;
+    ) -> Result<crate::stream::bindings::ServerCodeModeSupport, HostError<C::Error>> {
+        use crate::stream::bindings::ServerCodeModeSupport;
 
         let bits = self.server_codec_mode_support_raw().await?;
         Ok(ServerCodeModeSupport::from_bits(bits).expect("valid server code mode support"))
@@ -451,14 +451,14 @@ mod stream {
         },
         pair::PairError,
         stream::{
-            MoonlightInstance,
+            MoonlightInstance, MoonlightStream, ServerInfo,
             audio::AudioDecoder,
-            connection::ConnectionListener,
-            stream::{
-                ActiveGamepads, ColorRange, Colorspace, EncryptionFlags, MoonlightStream,
-                ServerCodeModeSupport, ServerInfo, StreamConfiguration, StreamingConfig,
+            bindings::{
+                ActiveGamepads, ColorRange, Colorspace, EncryptionFlags, ServerCodeModeSupport,
+                StreamConfiguration, StreamingConfig, SupportedVideoFormats,
             },
-            video::{SupportedVideoFormats, VideoDecoder},
+            connection::ConnectionListener,
+            video::VideoDecoder,
         },
     };
 

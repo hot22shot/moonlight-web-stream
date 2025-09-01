@@ -1,56 +1,8 @@
 use std::{ffi::c_void, slice, sync::Mutex};
 
-use moonlight_common_sys::limelight::{
-    _AUDIO_RENDERER_CALLBACKS, AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT,
-    POPUS_MULTISTREAM_CONFIGURATION,
-};
+use moonlight_common_sys::limelight::{_AUDIO_RENDERER_CALLBACKS, POPUS_MULTISTREAM_CONFIGURATION};
 
-use crate::stream::stream::Capabilities;
-
-/// This structure provides the Opus multistream decoder parameters required to successfully
-/// decode the audio stream being sent from the computer. See opus_multistream_decoder_init docs
-/// for details about these fields.
-///
-/// The supplied mapping array is indexed according to the following output channel order:
-/// 0 - Front Left
-/// 1 - Front Right
-/// 2 - Center
-/// 3 - LFE
-/// 4 - Back Left
-/// 5 - Back Right
-/// 6 - Side Left
-/// 7 - Side Right
-///
-/// If the mapping order does not match the channel order of the audio renderer, you may swap
-/// the values in the mismatched indices until the mapping array matches the desired channel order.
-#[derive(Debug)]
-pub struct OpusMultistreamConfig {
-    pub sample_rate: u32,
-    pub channel_count: u32,
-    pub streams: u32,
-    pub coupled_streams: u32,
-    pub samples_per_frame: u32,
-    pub mapping: [u8; AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT as usize],
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct AudioConfig(pub u32);
-
-impl AudioConfig {
-    /// Specifies that the audio stream should be encoded in stereo (default)
-    pub const STEREO: AudioConfig = Self::new(2, 0x03);
-    /// Specifies that the audio stream should be in 5.1 surround sound if the PC is able
-    pub const SURROUND_51: AudioConfig = Self::new(6, 0x3F);
-    /// Specifies that the audio stream should be in 7.1 surround sound if the PC is able
-    pub const SURROUND_71: AudioConfig = Self::new(8, 0x63F);
-
-    /// Specifies an audio configuration by channel count and channel mask
-    /// See https://docs.microsoft.com/en-us/windows-hardware/drivers/audio/channel-mask for channelMask values
-    /// NOTE: Not all combinations are supported by GFE and/or this library.
-    pub const fn new(channel_count: u32, channel_mask: u32) -> Self {
-        Self(channel_mask << 16 | channel_count << 8 | 0xCA)
-    }
-}
+use crate::stream::bindings::{AudioConfig, Capabilities, OpusMultistreamConfig};
 
 pub trait AudioDecoder {
     /// This callback initializes the audio renderer. The audio configuration parameter

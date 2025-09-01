@@ -1,74 +1,10 @@
-use std::{ffi::CStr, sync::Mutex};
+use std::sync::Mutex;
 
-use bitflags::bitflags;
-use moonlight_common_sys::limelight::{
-    _CONNECTION_LISTENER_CALLBACKS, CONN_STATUS_OKAY, CONN_STATUS_POOR, DS_EFFECT_LEFT_TRIGGER,
-    DS_EFFECT_PAYLOAD_SIZE, DS_EFFECT_RIGHT_TRIGGER, LiGetStageName, ML_ERROR_FRAME_CONVERSION,
-    ML_ERROR_GRACEFUL_TERMINATION, ML_ERROR_NO_VIDEO_FRAME, ML_ERROR_NO_VIDEO_TRAFFIC,
-    ML_ERROR_PROTECTED_CONTENT, ML_ERROR_UNEXPECTED_EARLY_TERMINATION, STAGE_AUDIO_STREAM_INIT,
-    STAGE_AUDIO_STREAM_START, STAGE_CONTROL_STREAM_INIT, STAGE_CONTROL_STREAM_START,
-    STAGE_INPUT_STREAM_INIT, STAGE_INPUT_STREAM_START, STAGE_MAX, STAGE_NAME_RESOLUTION,
-    STAGE_NONE, STAGE_PLATFORM_INIT, STAGE_RTSP_HANDSHAKE, STAGE_VIDEO_STREAM_INIT,
-    STAGE_VIDEO_STREAM_START,
-};
+use moonlight_common_sys::limelight::_CONNECTION_LISTENER_CALLBACKS;
 use num::FromPrimitive;
-use num_derive::FromPrimitive;
 use printf_compat::{format, output};
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, FromPrimitive)]
-pub enum Stage {
-    None = STAGE_NONE,
-    PlatformInit = STAGE_PLATFORM_INIT,
-    NameResolution = STAGE_NAME_RESOLUTION,
-    AudioStreamInit = STAGE_AUDIO_STREAM_INIT,
-    RtspHandshake = STAGE_RTSP_HANDSHAKE,
-    ControlStreamInit = STAGE_CONTROL_STREAM_INIT,
-    VideoStreamInit = STAGE_VIDEO_STREAM_INIT,
-    InputStreamInit = STAGE_INPUT_STREAM_INIT,
-    ControlStreamStart = STAGE_CONTROL_STREAM_START,
-    VideoStreamStart = STAGE_VIDEO_STREAM_START,
-    AudioStreamStart = STAGE_AUDIO_STREAM_START,
-    InputStreamStart = STAGE_INPUT_STREAM_START,
-    Max = STAGE_MAX,
-}
-
-impl Stage {
-    pub fn name(&self) -> &str {
-        unsafe {
-            let raw_c_str = LiGetStageName(*self as i32);
-            let c_str = CStr::from_ptr(raw_c_str);
-            c_str.to_str().expect("convert stage name into utf8")
-        }
-    }
-}
-
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, FromPrimitive)]
-pub enum ConnectionStatus {
-    Ok = CONN_STATUS_OKAY,
-    Poor = CONN_STATUS_POOR,
-}
-
-bitflags! {
-    #[derive(Debug, Clone, Copy)]
-    pub struct DualSenseEffect: u32 {
-        const PAYLOAD_SIZE = DS_EFFECT_PAYLOAD_SIZE;
-        const RIGHT_TRIGGER = DS_EFFECT_RIGHT_TRIGGER;
-        const LEFT_TRIGGER = DS_EFFECT_LEFT_TRIGGER;
-    }
-}
-
-#[repr(i32)]
-#[derive(Debug, Clone, Copy)]
-pub enum TerminationError {
-    Graceful = ML_ERROR_GRACEFUL_TERMINATION as i32,
-    NoVideoTraffic = ML_ERROR_NO_VIDEO_TRAFFIC,
-    NoVideoFrame = ML_ERROR_NO_VIDEO_FRAME,
-    UnexpectedEarlyTermination = ML_ERROR_UNEXPECTED_EARLY_TERMINATION,
-    ProtectedContent = ML_ERROR_PROTECTED_CONTENT,
-    FrameConversion = ML_ERROR_FRAME_CONVERSION,
-}
+use crate::stream::bindings::{ConnectionStatus, Stage};
 
 pub trait ConnectionListener {
     /// This callback is invoked to indicate that a stage of initialization is about to begin

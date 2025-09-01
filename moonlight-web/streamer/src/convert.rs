@@ -8,16 +8,6 @@ use webrtc::{
     peer_connection::sdp::sdp_type::RTCSdpType,
 };
 
-pub fn into_webrtc_sdp(value: RtcSdpType) -> RTCSdpType {
-    match value {
-        RtcSdpType::Offer => RTCSdpType::Offer,
-        RtcSdpType::Answer => RTCSdpType::Answer,
-        RtcSdpType::Pranswer => RTCSdpType::Pranswer,
-        RtcSdpType::Rollback => RTCSdpType::Rollback,
-        RtcSdpType::Unspecified => RTCSdpType::Unspecified,
-    }
-}
-
 pub fn from_webrtc_sdp(value: RTCSdpType) -> RtcSdpType {
     match value {
         RTCSdpType::Offer => RtcSdpType::Offer,

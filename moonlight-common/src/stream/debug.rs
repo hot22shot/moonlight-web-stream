@@ -1,10 +1,13 @@
 use log::info;
 
 use crate::stream::{
-    audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
-    connection::{ConnectionListener, ConnectionStatus, Stage},
-    stream::Capabilities,
-    video::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat},
+    audio::AudioDecoder,
+    bindings::{
+        AudioConfig, Capabilities, ConnectionStatus, DecodeResult, OpusMultistreamConfig, Stage,
+        SupportedVideoFormats, VideoDecodeUnit, VideoFormat,
+    },
+    connection::ConnectionListener,
+    video::VideoDecoder,
 };
 
 pub struct NullHandler;
