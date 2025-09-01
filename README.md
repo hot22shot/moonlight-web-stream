@@ -200,7 +200,6 @@ This will set the port range on the web server used to communicate when using We
 
 ### WebRTC Ice Servers
 A list of ice server for webrtc to use.
-Is force set to empty if WebRTC Nat 1 To 1 Ice Candidate Type is set to host.
 
 ```json
 {
@@ -224,7 +223,6 @@ Is force set to empty if WebRTC Nat 1 To 1 Ice Candidate Type is set to host.
 ### WebRTC Nat 1 to 1 ips
 This will advertise the ip as an ice candidate on the web server.
 It's recommended to set this but stun servers should figure out the public ip.
-Is force set the WebRTC ice servers to empty if the Ice Candidate Type is set to host.
 
 - host -> This is the ip address of the server and the client can connect to
 - srflx -> This is the public ip address of this server, like a ice candidate added from a stun server.
