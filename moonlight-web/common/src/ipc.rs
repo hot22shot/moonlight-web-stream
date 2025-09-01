@@ -79,7 +79,7 @@ where
         IpcReceiver {
             errored: false,
             vec: Vec::new(),
-            read: Box::pin(stdout),
+            read: Box::pin(BufReader::new(stdout)),
             phantom: Default::default(),
         },
     )
@@ -152,7 +152,9 @@ where
     Message: Encode + Send + 'static,
 {
     pub async fn send(&mut self, message: Message) {
-        let _ = self.sender.send(message).await;
+        if self.sender.send(message).await.is_err() {
+            warn!("[Ipc]: failed to send message");
+        }
     }
 }
 

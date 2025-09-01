@@ -7,7 +7,7 @@ use common::{
     ipc::{IpcReceiver, IpcSender, ServerIpcMessage, StreamerIpcMessage, create_process_ipc},
     serialize_json,
 };
-use log::{LevelFilter, debug, warn};
+use log::{LevelFilter, debug, info, warn};
 use moonlight_common::{
     MoonlightError,
     high::HostError,
@@ -701,6 +701,8 @@ impl StreamConnection {
     }
 
     async fn stop(&self) {
+        debug!("[Stream]: Stopping...");
+
         let mut ipc_sender = self.ipc_sender.clone();
         spawn(async move {
             send_ws_message(&mut ipc_sender, StreamServerMessage::PeerDisconnect).await;
@@ -729,6 +731,7 @@ impl StreamConnection {
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;
 
+        info!("Terminating Self");
         self.terminate.notify_waiters();
     }
 }

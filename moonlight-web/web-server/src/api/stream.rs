@@ -228,7 +228,11 @@ pub async fn start_host(
             while let Some(message) = ipc_receiver.recv().await {
                 match message {
                     StreamerIpcMessage::WebSocket(message) => {
-                        let _ = send_ws_message(&mut session, message).await;
+                        if let Err(Closed) = send_ws_message(&mut session, message).await {
+                            warn!(
+                                "[Ipc]: Tried to send a ws message but the socket is already closed"
+                            );
+                        }
                     }
                     StreamerIpcMessage::Stop => {
                         break;
