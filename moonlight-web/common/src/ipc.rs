@@ -37,6 +37,7 @@ pub enum ServerIpcMessage {
 #[derive(Debug, Encode, Decode)]
 pub enum StreamerIpcMessage {
     WebSocket(StreamServerMessage),
+    Stop,
 }
 
 // We're using the:
@@ -126,7 +127,7 @@ where
             warn!("[Ipc]: failed to write message length: {err:?}");
             return;
         };
-        if let Err(err) = write.write(&vec).await {
+        if let Err(err) = write.write_all(&vec).await {
             warn!("[Ipc]: failed to write message length: {err:?}");
             return;
         };

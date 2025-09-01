@@ -230,6 +230,9 @@ pub async fn start_host(
                     StreamerIpcMessage::WebSocket(message) => {
                         let _ = send_ws_message(&mut session, message).await;
                     }
+                    StreamerIpcMessage::Stop => {
+                        break;
+                    }
                 }
             }
 

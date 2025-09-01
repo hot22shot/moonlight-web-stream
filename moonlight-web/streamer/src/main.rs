@@ -1,26 +1,19 @@
-use std::{
-    str::FromStr,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::{str::FromStr, sync::Arc};
 
 use common::{
     StreamSettings,
+    api_bindings::StreamServerGeneralMessage,
     config::PortRange,
     ipc::{IpcReceiver, IpcSender, ServerIpcMessage, StreamerIpcMessage, create_process_ipc},
     serialize_json,
 };
-use log::{LevelFilter, debug, info, warn};
+use log::{LevelFilter, debug, warn};
 use moonlight_common::{
     MoonlightError,
     high::HostError,
     moonlight::{
         MoonlightInstance,
         stream::{ColorRange, HostFeatures, MoonlightStream},
-        video::SupportedVideoFormats,
     },
     network::reqwest::ReqwestMoonlightHost,
     pair::ClientAuth,
@@ -33,14 +26,11 @@ use tokio::{
     spawn,
     sync::{Mutex, Notify, RwLock},
     task::spawn_blocking,
-    time::sleep,
 };
 use webrtc::{
     api::{
-        API, APIBuilder,
-        interceptor_registry::register_default_interceptors,
-        media_engine::{MIME_TYPE_HEVC, MIME_TYPE_OPUS, MediaEngine},
-        setting_engine::SettingEngine,
+        API, APIBuilder, interceptor_registry::register_default_interceptors,
+        media_engine::MediaEngine, setting_engine::SettingEngine,
     },
     data_channel::RTCDataChannel,
     ice::udp_network::{EphemeralUDP, UDPNetwork},
@@ -273,21 +263,7 @@ async fn main() {
     )
     .await;
 
-    // TODO: remove the stages!
-    connection.stages.connected.when_reached().await;
-
-    // Send stage
-    let _ = send_ws_message(
-        &mut ipc_sender,
-        StreamServerMessage::StageComplete {
-            stage: "WebRTC Peer Negotiation".to_string(),
-        },
-    )
-    .await;
-
-    connection.stages.stop.when_reached().await;
-
-    sleep(Duration::from_secs(1)).await;
+    connection.terminate.notified().await;
 }
 
 struct StreamInfo {
@@ -295,51 +271,11 @@ struct StreamInfo {
     app_id: u32,
 }
 
-struct StreamStage {
-    name: &'static str,
-    notify: Notify,
-    state: AtomicBool,
-}
-
-impl StreamStage {
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            notify: Notify::new(),
-            state: AtomicBool::new(false),
-        }
-    }
-
-    pub fn is_reached(&self) -> bool {
-        self.state.load(Ordering::Acquire)
-    }
-    pub async fn when_reached(&self) {
-        let future = self.notify.notified();
-        if self.is_reached() {
-            return;
-        }
-
-        future.await;
-    }
-
-    pub fn set_reached(&self) {
-        info!("[Stream]: signal \"{}\" called", self.name);
-        self.state.store(true, Ordering::Release);
-        self.notify.notify_waiters();
-    }
-}
-
-struct StreamStages {
-    pub connected: StreamStage,
-    pub stop: StreamStage,
-}
-
 struct StreamConnection {
     pub runtime: Handle,
     pub moonlight: MoonlightInstance,
     pub info: StreamInfo,
     pub settings: StreamSettings,
-    pub stages: Arc<StreamStages>,
     pub peer: Arc<RTCPeerConnection>,
     pub ipc_sender: IpcSender<StreamerIpcMessage>,
     pub general_channel: Arc<RTCDataChannel>,
@@ -347,6 +283,7 @@ struct StreamConnection {
     pub input: StreamInput,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
+    pub terminate: Notify,
 }
 
 impl StreamConnection {
@@ -375,11 +312,6 @@ impl StreamConnection {
 
         let peer = Arc::new(api.new_peer_connection(config).await?);
 
-        let stages = Arc::new(StreamStages {
-            connected: StreamStage::new("connected"),
-            stop: StreamStage::new("stop"),
-        });
-
         // -- Input
         let input = StreamInput::new();
 
@@ -390,12 +322,12 @@ impl StreamConnection {
             moonlight,
             info,
             settings,
-            stages,
             peer: peer.clone(),
             ipc_sender,
             general_channel,
             input,
             stream: Default::default(),
+            terminate: Notify::new(),
         });
 
         // -- Connection state
@@ -469,9 +401,8 @@ impl StreamConnection {
 
     // -- Handle Connection State
     async fn on_ice_connection_state_change(self: &Arc<Self>, state: RTCIceConnectionState) {
+        #[allow(clippy::collapsible_if)]
         if matches!(state, RTCIceConnectionState::Connected) {
-            self.stages.connected.set_reached();
-
             if let Err(err) = self.start_stream().await {
                 warn!("[Stream]: failed to start stream: {err:?}");
 
@@ -637,11 +568,6 @@ impl StreamConnection {
     }
 
     async fn on_ice_candidate(&self, candidate: Option<RTCIceCandidate>) {
-        debug!(
-            "[Signaling] Sending Ice Candidate, is last: {}",
-            candidate.is_none()
-        );
-
         let Some(candidate) = candidate else {
             return;
         };
@@ -649,6 +575,11 @@ impl StreamConnection {
         let Ok(candidate_json) = candidate.to_json() else {
             return;
         };
+
+        debug!(
+            "[Signaling] Sending Ice Candidate: {}",
+            candidate_json.candidate
+        );
 
         let message = StreamServerMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
             RtcIceCandidate {
@@ -770,14 +701,17 @@ impl StreamConnection {
     }
 
     async fn stop(&self) {
-        self.stages.stop.set_reached();
-
-        // Sometimes we don't connect before failing
-        self.stages.connected.set_reached();
-
         let mut ipc_sender = self.ipc_sender.clone();
         spawn(async move {
             send_ws_message(&mut ipc_sender, StreamServerMessage::PeerDisconnect).await;
+        });
+
+        let general_channel = self.general_channel.clone();
+        spawn(async move {
+            if let Some(message) = serialize_json(&StreamServerGeneralMessage::ConnectionTerminated)
+            {
+                let _ = general_channel.send_text(message).await;
+            }
         });
 
         let stream = {
@@ -791,6 +725,11 @@ impl StreamConnection {
         {
             warn!("[Stream]: failed to stop stream: {err}");
         };
+
+        let mut ipc_sender = self.ipc_sender.clone();
+        ipc_sender.send(StreamerIpcMessage::Stop).await;
+
+        self.terminate.notify_waiters();
     }
 }
 

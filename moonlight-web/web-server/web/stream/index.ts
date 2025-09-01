@@ -43,6 +43,7 @@ export class Stream {
         this.ws = new WebSocket(`${api.host_url}/host/stream`)
         this.ws.addEventListener("error", this.onError.bind(this))
         this.ws.addEventListener("open", this.onWsOpen.bind(this))
+        this.ws.addEventListener("close", this.onWsClose.bind(this))
         this.ws.addEventListener("message", this.onRawWsMessage.bind(this))
 
         let width, height
@@ -336,6 +337,9 @@ export class Stream {
         for (const raw of this.wsSendBuffer.splice(0, this.wsSendBuffer.length)) {
             this.ws.send(raw)
         }
+    }
+    private onWsClose() {
+        this.debugLog(`Web Socket Closed`)
     }
 
     private sendWsMessage(message: StreamClientMessage) {
