@@ -126,8 +126,6 @@ impl StreamInput {
     fn on_touch_message(stream: &MoonlightStream, message: DataChannelMessage) {
         let mut buffer = ByteBuffer::new(message.data);
 
-        // TODO: call clear when js says there are no more pointers
-
         let event_type = match buffer.get_u8() {
             0 => TouchEventType::Down,
             1 => TouchEventType::Move,
