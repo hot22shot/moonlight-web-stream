@@ -38,6 +38,18 @@ export function showErrorPopup(message: string, fatal: boolean = false) {
     }, ERROR_REMOVAL_TIME_MS)
 }
 
+function handleError(event: ErrorEvent) {
+    // TODO: better message
+    showErrorPopup(`Error: ${event.error}`)
+}
+function handleRejection(event: PromiseRejectionEvent) {
+    // TODO: better message
+    showErrorPopup(`Error: ${event.reason}`)
+}
+
+window.addEventListener("error", handleError)
+window.addEventListener("rejectionhandled", handleRejection)
+
 class ErrorComponent implements Component {
     private messageElement: HTMLElement = document.createElement("p")
     private imageElement: HTMLImageElement = document.createElement("img")
