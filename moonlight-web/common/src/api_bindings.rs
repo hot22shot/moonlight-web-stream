@@ -1,4 +1,3 @@
-use bincode::{Decode, Encode};
 use moonlight_common::ServerState;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -71,7 +70,7 @@ pub struct DetailedHost {
     pub server_codec_mode_support: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct App {
     pub app_id: u32,
@@ -184,7 +183,7 @@ pub struct PostCancelResponse {
     pub success: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
 #[ts(export, export_to = EXPORT_PATH)]
 #[serde(rename_all = "lowercase")]
 pub enum RtcSdpType {
@@ -195,14 +194,14 @@ pub enum RtcSdpType {
     Unspecified,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcSessionDescription {
     pub ty: RtcSdpType,
     pub sdp: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceCandidate {
     pub candidate: String,
@@ -211,14 +210,14 @@ pub struct RtcIceCandidate {
     pub username_fragment: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamSignalingMessage {
     Description(RtcSessionDescription),
     AddIceCandidate(RtcIceCandidate),
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamClientMessage {
     AuthenticateAndInit {
@@ -240,7 +239,7 @@ pub enum StreamClientMessage {
     Signaling(StreamSignalingMessage),
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Clone, Default, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceServer {
     pub urls: Vec<String>,
@@ -248,13 +247,13 @@ pub struct RtcIceServer {
     pub credential: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct StreamCapabilities {
     pub touch: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
     WebRtcConfig { ice_servers: Vec<RtcIceServer> },
@@ -811,7 +810,7 @@ ts_consts!(
     pub const CAPABILITY_TRIGGER_RUMBLE: u16 = moonlight_common::moonlight::stream::ControllerCapabilities::TRIGGER_RUMBLE.bits();
 );
 
-#[derive(Serialize, Deserialize, Debug, TS, Encode, Decode)]
+#[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamColorspace {
     Rec601,

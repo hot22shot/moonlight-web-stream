@@ -37,8 +37,8 @@ tokio = { version = "1.46.1", default-features = false, features = [
 pem = { workspace = true, optional = true }
 openssl = { workspace = true }
 
-# bincode
-bincode = { workspace = true, features = ["derive"], optional = true }
+# Serde Serialization
+serde = { workspace = true, optional = true }
 
 [features]
 default = ["high", "moonlight", "backend_reqwest"]
@@ -71,7 +71,7 @@ backend_reqwest = [
     "dep:bytes",
 ]
 
-bincode = ["dep:bincode"]
+serde = ["dep:serde"]
 
 [lints]
 workspace = true

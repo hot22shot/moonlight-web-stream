@@ -12,7 +12,7 @@ use num_derive::FromPrimitive;
 
 use crate::moonlight::stream::{Capabilities, Colorspace};
 
-#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SupportedVideoFormats(u32);
 

@@ -1,14 +1,13 @@
-use bincode::{Decode, Encode};
 use log::warn;
 use moonlight_common::moonlight::{stream::Colorspace, video::SupportedVideoFormats};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub mod api_bindings;
 pub mod api_bindings_consts;
 pub mod config;
 pub mod ipc;
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StreamSettings {
     pub bitrate: u32,
     pub packet_size: u32,

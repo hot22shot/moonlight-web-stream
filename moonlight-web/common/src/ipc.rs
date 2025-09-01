@@ -1,14 +1,16 @@
 use std::{marker::PhantomData, pin::Pin};
 
 use log::warn;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, Stdin, Stdout},
+    io::{
+        AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, Lines,
+        Stdin, Stdout,
+    },
     process::{ChildStderr, ChildStdin, ChildStdout},
     spawn,
     sync::mpsc::{Receiver, Sender, channel},
 };
-
-use bincode::{Decode, Encode, config::Configuration as BincodeConfig, decode_from_slice};
 
 use crate::{
     StreamSettings,
@@ -17,7 +19,7 @@ use crate::{
 };
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ServerIpcMessage {
     Init {
         server_config: Config,
@@ -34,7 +36,7 @@ pub enum ServerIpcMessage {
     Stop,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum StreamerIpcMessage {
     WebSocket(StreamServerMessage),
     Stop,
@@ -45,8 +47,6 @@ pub enum StreamerIpcMessage {
 // Stdout: message passing
 // Stderr: logging
 
-const BINCODE_CONFIG: BincodeConfig = bincode::config::standard();
-
 pub async fn create_child_ipc<Message, ChildMessage>(
     log_prefix: String,
     stdin: ChildStdin,
@@ -54,8 +54,8 @@ pub async fn create_child_ipc<Message, ChildMessage>(
     stderr: Option<ChildStderr>,
 ) -> (IpcSender<Message>, IpcReceiver<ChildMessage>)
 where
-    Message: Send + Encode + 'static,
-    ChildMessage: Decode<()>,
+    Message: Send + Serialize + 'static,
+    ChildMessage: DeserializeOwned,
 {
     if let Some(stderr) = stderr {
         spawn(async move {
@@ -78,8 +78,7 @@ where
         IpcSender { sender },
         IpcReceiver {
             errored: false,
-            vec: Vec::new(),
-            read: Box::pin(BufReader::new(stdout)),
+            read: create_lines(stdout),
             phantom: Default::default(),
         },
     )
@@ -90,8 +89,8 @@ pub async fn create_process_ipc<ParentMessage, Message>(
     stdout: Stdout,
 ) -> (IpcSender<Message>, IpcReceiver<ParentMessage>)
 where
-    ParentMessage: Decode<()>,
-    Message: Send + Encode + 'static,
+    ParentMessage: DeserializeOwned,
+    Message: Send + Serialize + 'static,
 {
     let (sender, receiver) = channel::<Message>(10);
 
@@ -103,31 +102,32 @@ where
         IpcSender { sender },
         IpcReceiver {
             errored: false,
-            vec: Vec::new(),
-            read: Box::pin(stdin),
+            read: create_lines(stdin),
             phantom: Default::default(),
         },
     )
 }
+fn create_lines(
+    read: impl AsyncRead + Send + Unpin + 'static,
+) -> Lines<Box<dyn AsyncBufRead + Send + Unpin + 'static>> {
+    (Box::new(BufReader::new(read)) as Box<dyn AsyncBufRead + Send + Unpin + 'static>).lines()
+}
 
 async fn ipc_sender<Message>(mut write: impl AsyncWriteExt + Unpin, mut receiver: Receiver<Message>)
 where
-    Message: Encode,
+    Message: Serialize,
 {
     while let Some(value) = receiver.recv().await {
-        let vec = match bincode::encode_to_vec(&value, BINCODE_CONFIG) {
+        let mut json = match serde_json::to_string(&value) {
             Ok(value) => value,
             Err(err) => {
                 warn!("[Ipc]: failed to encode message: {err:?}");
                 continue;
             }
         };
+        json.push('\n');
 
-        if let Err(err) = write.write_u32(vec.len() as u32).await {
-            warn!("[Ipc]: failed to write message length: {err:?}");
-            return;
-        };
-        if let Err(err) = write.write_all(&vec).await {
+        if let Err(err) = write.write_all(json.as_bytes()).await {
             warn!("[Ipc]: failed to write message length: {err:?}");
             return;
         };
@@ -154,7 +154,7 @@ impl<Message> Clone for IpcSender<Message> {
 
 impl<Message> IpcSender<Message>
 where
-    Message: Encode + Send + 'static,
+    Message: Serialize + Send + 'static,
 {
     pub async fn send(&mut self, message: Message) {
         if self.sender.send(message).await.is_err() {
@@ -165,42 +165,35 @@ where
 
 pub struct IpcReceiver<Message> {
     errored: bool,
-    vec: Vec<u8>,
-    read: Pin<Box<dyn AsyncRead + Send + 'static>>,
+    read: Lines<Box<dyn AsyncBufRead + Send + Unpin>>,
     phantom: PhantomData<Message>,
 }
 
 impl<Message> IpcReceiver<Message>
 where
-    Message: Decode<()>,
+    Message: DeserializeOwned,
 {
     pub async fn recv(&mut self) -> Option<Message> {
         if self.errored {
             return None;
         }
 
-        let len = match self.read.read_u32().await {
-            Ok(value) => value,
+        let line = match self.read.next_line().await {
+            Ok(Some(value)) => value,
+            Ok(None) => return None,
             Err(err) => {
                 self.errored = true;
-                warn!("[Ipc]: failed to read u32: {err:?}");
+
+                warn!("[Ipc]: failed to read next line {err:?}");
 
                 return None;
             }
         };
 
-        self.vec.resize(len as usize, 0);
-        if let Err(err) = self.read.read_exact(&mut self.vec).await {
-            self.errored = true;
-            warn!("[Ipc]: failed to read message: {err:?}");
-
-            return None;
-        }
-
-        match decode_from_slice(&self.vec, BINCODE_CONFIG) {
-            Ok((value, _)) => Some(value),
+        match serde_json::from_str::<Message>(&line) {
+            Ok(value) => Some(value),
             Err(err) => {
-                warn!("[Ipc]: failed to decode message: {err:?}");
+                warn!("[Ipc]: failed to deserialize message: {err:?}");
 
                 None
             }

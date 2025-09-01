@@ -1,11 +1,10 @@
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 use crate::api_bindings::RtcIceServer;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub credentials: String,
     #[serde(default = "data_path_default")]
@@ -31,7 +30,7 @@ pub struct Config {
     pub streamer_path: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WebRtcNetworkType {
     #[serde(rename = "udp4")]
     Udp4,
@@ -43,13 +42,13 @@ pub enum WebRtcNetworkType {
     Tcp6,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebRtcNat1To1Mapping {
     pub ips: Vec<String>,
     pub ice_candidate_type: WebRtcNat1To1IceCandidateType,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WebRtcNat1To1IceCandidateType {
     #[serde(rename = "srflx")]
     Srflx,
@@ -57,13 +56,13 @@ pub enum WebRtcNat1To1IceCandidateType {
     Host,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigSsl {
     pub private_key_pem: String,
     pub certificate_pem: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortRange {
     pub min: u16,
     pub max: u16,

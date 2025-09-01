@@ -5,11 +5,10 @@ edition = "2024"
 license.workspace = true
 
 [dependencies]
-# TODO: try to avoid using the moonlight stream,network feature
 moonlight-common = { workspace = true, features = [
-    "bincode",
     "network",
     "moonlight",
+    "serde",
 ] }
 
 tokio = { workspace = true, features = [
@@ -22,8 +21,6 @@ tokio = { workspace = true, features = [
 
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-bincode = { workspace = true }
 
 log = { workspace = true }
 
