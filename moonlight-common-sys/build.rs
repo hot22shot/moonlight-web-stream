@@ -43,9 +43,18 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
         return None;
     }
 
-    // builds into $OUT_DIR
-    // TODO: also rerun when other vars change
+    // Rerun when changed
     println!("cargo::rerun-if-changed=moonlight-common-c");
+    println!("cargo::rerun-if-env-changed=DEP_OPENSSL_ROOT");
+    println!("cargo::rerun-if-env-changed=OPENSSL_ROOT_DIR");
+    println!("cargo::rerun-if-env-changed=DEP_OPENSSL_INCLUDE");
+    println!("cargo::rerun-if-env-changed=OPENSSL_INCLUDE");
+    println!("cargo::rerun-if-env-changed=OPENSSL_INCLUDE_DIR");
+    println!("cargo::rerun-if-env-changed=DEP_OPENSSL_LIB");
+    println!("cargo::rerun-if-env-changed=OPENSSL_LIB_DIR");
+    println!("cargo::rerun-if-env-changed=OPENSSL_CRYPTO_LIBRARY");
+
+    // builds into $OUT_DIR
     let mut config = cmake::Config::new("moonlight-common-c");
     config.define("BUILD_SHARED_LIBS", "OFF");
     config.define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
