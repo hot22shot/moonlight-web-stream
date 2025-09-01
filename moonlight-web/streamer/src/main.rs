@@ -673,8 +673,6 @@ impl StreamConnection {
             }
         };
 
-        self.input.on_stream_start(&stream).await;
-
         let host_features = stream.host_features().unwrap_or_else(|err| {
             warn!("[Stream]: failed to get host features: {err:?}");
             HostFeatures::empty()

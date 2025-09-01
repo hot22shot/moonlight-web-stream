@@ -57,6 +57,7 @@ export class StreamInput {
 
     private buffer: ByteBuffer = new ByteBuffer(1024)
 
+    private connected = false
     private config: StreamInputConfig
     private capabilities: StreamCapabilities = { touch: true }
 
@@ -123,6 +124,13 @@ export class StreamInput {
     // -- External Event Listeners
     addScreenKeyboardVisibleEvent(listener: (event: ScreenKeyboardSetVisibleEvent) => void) {
         this.eventTarget.addEventListener("ml-screenkeyboardvisible", listener as any)
+    }
+
+    // -- On Stream Start
+    onStreamStart() {
+        this.connected = true
+
+        this.registerBufferedControllers()
     }
 
     // -- Keyboard
@@ -493,10 +501,28 @@ export class StreamInput {
     }
 
     // -- Controller
+    // Wait for stream to connect and then send controllers
+    private bufferedControllers: Array<number> = []
+    private registerBufferedControllers() {
+        const gamepads = navigator.getGamepads()
+
+        for (const index of this.bufferedControllers.splice(0)) {
+            const gamepad = gamepads[index]
+            if (gamepad) {
+                this.onGamepadConnect(gamepad)
+            }
+        }
+    }
+
     private gamepads: Array<number | null> = []
     private gamepadRumbleInterval: number | null = null
 
     onGamepadConnect(gamepad: Gamepad) {
+        if (!this.connected) {
+            this.bufferedControllers.push(gamepad.index)
+            return
+        }
+
         if (this.gamepads.indexOf(gamepad.index) != -1) {
             return
         }

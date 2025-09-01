@@ -123,26 +123,6 @@ impl StreamInput {
         })
     }
 
-    pub async fn on_stream_start(&self, stream: &MoonlightStream) {
-        // TODO: remove this fn and the gamepads: wait until stream started in frontend
-
-        // Add known gamepads
-        let gamepads = self.active_gamepads.read().await;
-        for i in 0..16 {
-            let bit = 1 << i;
-            if gamepads.bits() & bit != 0 {
-                // TODO: find out ty, buttons, capabilities
-                let _ = stream.send_controller_arrival(
-                    i as u8,
-                    *gamepads,
-                    ControllerType::Unknown,
-                    ControllerButtons::all(),
-                    ControllerCapabilities::empty(),
-                );
-            }
-        }
-    }
-
     fn on_touch_message(stream: &MoonlightStream, message: DataChannelMessage) {
         let mut buffer = ByteBuffer::new(message.data);
 
@@ -309,7 +289,6 @@ impl StreamInput {
             };
 
             if let Some(stream) = connection.stream.read().await.as_ref() {
-                // TODO: controller type?
                 let _ = stream.send_controller_arrival(
                     id,
                     active_gamepads,

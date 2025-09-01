@@ -210,6 +210,7 @@ export class Stream {
             this.eventTarget.dispatchEvent(event)
 
             this.input?.setCapabilities(capabilities)
+            this.input.onStreamStart()
         }
         // -- WebRTC Config
         else if ("WebRtcConfig" in message) {
