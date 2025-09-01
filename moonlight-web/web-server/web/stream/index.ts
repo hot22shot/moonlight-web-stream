@@ -322,6 +322,7 @@ export class Stream {
         if (!candidateJson || !candidateJson?.candidate) {
             return;
         }
+        this.debugLog(`Sending Ice Candidate: ${candidateJson.candidate}`)
 
         const candidate: RtcIceCandidate = {
             candidate: candidateJson?.candidate,
