@@ -303,15 +303,15 @@ class ConnectionInfoModal implements Modal<void> {
         const data = event.detail
 
         if (data.type == "stageStarting") {
-            const text = `Starting Stage: ${data.stage}`
+            const text = `Server: Starting Stage: ${data.stage}`
             this.text.innerText = text
             this.debugLog(text)
         } else if (data.type == "stageComplete") {
-            const text = `Completed Stage: ${data.stage}`
+            const text = `Server: Completed Stage: ${data.stage}`
             this.text.innerText = text
             this.debugLog(text)
         } else if (data.type == "stageFailed") {
-            const text = `Failed Stage: ${data.stage} with error ${data.errorCode}`
+            const text = `Server: Failed Stage: ${data.stage} with error ${data.errorCode}`
             this.text.innerText = text
             this.debugLog(text)
         } else if (data.type == "connectionComplete") {
@@ -325,13 +325,13 @@ class ConnectionInfoModal implements Modal<void> {
         }
         // Reopen the modal cause we might already be closed at this point
         else if (data.type == "connectionTerminated") {
-            const text = `Connection Terminated with code ${data.errorCode}`
+            const text = `Server: Connection Terminated with code ${data.errorCode}`
             this.text.innerText = text
             this.debugLog(text)
 
             showModal(this)
         } else if (data.type == "error") {
-            const text = `Error: ${data.message}`
+            const text = `Server: Error: ${data.message}`
             this.text.innerText = text
             this.debugLog(text)
 

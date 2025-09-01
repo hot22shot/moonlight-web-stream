@@ -50,7 +50,7 @@ export class StreamInput {
 
     private eventTarget = new EventTarget()
 
-    private peer: RTCPeerConnection
+    private peer: RTCPeerConnection | null = null
 
     private buffer: ByteBuffer = new ByteBuffer(1024)
 
@@ -65,27 +65,39 @@ export class StreamInput {
 
     private touchSupported: boolean | null = null
 
-    constructor(peer: RTCPeerConnection, config?: StreamInputConfig) {
-        this.peer = peer
+    constructor(config?: StreamInputConfig, peer?: RTCPeerConnection,) {
+        if (peer) {
+            this.setPeer(peer)
+        }
 
         this.config = defaultStreamInputConfig()
         if (config) {
             this.setConfig(config)
         }
-
-        this.createChannels()
     }
 
-    private createChannels() {
-        this.keyboard = this.peer.createDataChannel("keyboard")
+    setPeer(peer: RTCPeerConnection) {
+        if (this.peer) {
+            this.keyboard?.close()
+            this.mouse?.close()
+            this.touch?.close()
+            this.controllers?.close()
+            for (const controller of this.controllerInputs.splice(this.controllerInputs.length)) {
+                controller?.close()
+            }
+        }
 
-        this.mouse = this.peer.createDataChannel("mouse")
+        this.keyboard = peer.createDataChannel("keyboard")
 
-        this.touch = this.peer.createDataChannel("touch")
+        this.mouse = peer.createDataChannel("mouse")
+
+        this.touch = peer.createDataChannel("touch")
         this.touch.onmessage = this.onTouchMessage.bind(this)
 
-        this.controllers = this.peer.createDataChannel("controllers")
+        this.controllers = peer.createDataChannel("controllers")
         this.controllers.addEventListener("message", this.onControllerMessage)
+
+        this.peer = peer
     }
 
     setConfig(config: StreamInputConfig) {
@@ -761,10 +773,10 @@ export class StreamInput {
     }
     private tryOpenControllerChannel(id: number) {
         if (!this.controllerInputs[id]) {
-            this.controllerInputs[id] = this.peer.createDataChannel(`controller${id}`, {
+            this.controllerInputs[id] = this.peer?.createDataChannel(`controller${id}`, {
                 maxRetransmits: 0,
                 ordered: true,
-            })
+            }) ?? null
         }
     }
 
