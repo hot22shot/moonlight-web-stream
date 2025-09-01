@@ -131,6 +131,11 @@ where
             warn!("[Ipc]: failed to write message length: {err:?}");
             return;
         };
+
+        if let Err(err) = write.flush().await {
+            warn!("[Ipc]: failed to flush: {err:?}");
+            return;
+        }
     }
 }
 

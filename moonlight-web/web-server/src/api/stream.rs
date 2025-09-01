@@ -14,7 +14,7 @@ use common::{
     ipc::{ServerIpcMessage, StreamerIpcMessage, create_child_ipc},
     serialize_json,
 };
-use log::{info, warn};
+use log::{debug, info, warn};
 use moonlight_common::{PairStatus, moonlight::video::SupportedVideoFormats};
 use tokio::{process::Command, spawn, time::sleep};
 
@@ -235,10 +235,12 @@ pub async fn start_host(
                         }
                     }
                     StreamerIpcMessage::Stop => {
+                        debug!("[Ipc]: ipc receiver stopped by streamer");
                         break;
                     }
                 }
             }
+            info!("[Ipc]: ipc receiver is closed");
 
             // close the websocket when the streamer crashed / disconnected / whatever
             let _ = session.close(None).await;
