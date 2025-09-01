@@ -1,4 +1,12 @@
-// TODO: Make it possible to specify this in the bindings
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Utf8Error {
+    #[error("buffer doesn't contain valid utf8 chunks")]
+    InvalidChunks,
+    #[error("buffer is too small")]
+    BufferTooSmall,
+}
 
 pub struct ByteBuffer<T> {
     position: usize,
@@ -54,19 +62,17 @@ where
         }
     }
 
-    // TODO: better error?
-    // TODO: is this correct?
-    pub fn get_utf8(&mut self, characters: usize) -> Result<&str, ()> {
+    pub fn get_utf8(&mut self, characters: usize) -> Result<&str, Utf8Error> {
         if characters == 0 {
             return Ok("");
         }
 
         let Some(chunk) = &self.buffer.as_ref()[self.position..].utf8_chunks().next() else {
-            return Err(());
+            return Err(Utf8Error::InvalidChunks);
         };
         let Some((end_char_index, end_char)) = chunk.valid().char_indices().nth(characters - 1)
         else {
-            return Err(());
+            return Err(Utf8Error::BufferTooSmall);
         };
         let output = &chunk.valid()[0..end_char_index + (end_char.len_utf8())];
 

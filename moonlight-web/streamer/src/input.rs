@@ -56,8 +56,6 @@ impl StreamInput {
                     connection.clone(),
                     Self::on_touch_message,
                 ));
-
-                // TODO: send supported on open
                 return true;
             }
             "keyboard" => {
@@ -126,6 +124,8 @@ impl StreamInput {
     }
 
     pub async fn on_stream_start(&self, stream: &MoonlightStream) {
+        // TODO: remove this fn and the gamepads: wait until stream started in frontend
+
         // Add known gamepads
         let gamepads = self.active_gamepads.read().await;
         for i in 0..16 {
