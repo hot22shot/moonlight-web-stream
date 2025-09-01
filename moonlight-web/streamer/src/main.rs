@@ -11,12 +11,12 @@ use log::{LevelFilter, debug, info, warn};
 use moonlight_common::{
     MoonlightError,
     high::HostError,
-    moonlight::{
+    network::reqwest::ReqwestMoonlightHost,
+    pair::ClientAuth,
+    stream::{
         MoonlightInstance,
         stream::{ColorRange, HostFeatures, MoonlightStream},
     },
-    network::reqwest::ReqwestMoonlightHost,
-    pair::ClientAuth,
 };
 use pem::Pem;
 use simplelog::{ColorChoice, TermLogger, TerminalMode};

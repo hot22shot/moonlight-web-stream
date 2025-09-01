@@ -1,6 +1,6 @@
 use log::info;
 
-use crate::moonlight::{
+use crate::stream::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
     connection::{ConnectionListener, ConnectionStatus, Stage},
     stream::Capabilities,

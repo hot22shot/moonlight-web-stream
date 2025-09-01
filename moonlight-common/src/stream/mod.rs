@@ -7,7 +7,7 @@ use moonlight_common_sys::limelight::{LiGetLaunchUrlQueryParameters, LiInterrupt
 
 use crate::{
     MoonlightError,
-    moonlight::{
+    stream::{
         audio::AudioDecoder,
         connection::ConnectionListener,
         stream::{MoonlightStream, ServerInfo, StreamConfiguration},

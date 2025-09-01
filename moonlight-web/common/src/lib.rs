@@ -1,5 +1,5 @@
 use log::warn;
-use moonlight_common::moonlight::{stream::Colorspace, video::SupportedVideoFormats};
+use moonlight_common::stream::{stream::Colorspace, video::SupportedVideoFormats};
 use serde::{Deserialize, Serialize};
 
 pub mod api_bindings;

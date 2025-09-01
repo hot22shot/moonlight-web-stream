@@ -10,7 +10,7 @@ use std::{
 
 use bytes::{BufMut, Bytes, BytesMut};
 use log::{debug, error, info};
-use moonlight_common::moonlight::{
+use moonlight_common::stream::{
     stream::Capabilities,
     video::{
         DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat,

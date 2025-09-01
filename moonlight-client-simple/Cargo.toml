@@ -10,7 +10,7 @@ moonlight-common-sys = { workspace = true }
 moonlight-common = { workspace = true, features = [
     "high",
     "backend_reqwest",
-    "moonlight",
+    "stream",
 ] }
 tokio = { version = "1.46.1", features = ["full"] }
 

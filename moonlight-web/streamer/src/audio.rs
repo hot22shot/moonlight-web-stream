@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use log::error;
-use moonlight_common::moonlight::{
+use moonlight_common::stream::{
     audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
     stream::Capabilities,
 };

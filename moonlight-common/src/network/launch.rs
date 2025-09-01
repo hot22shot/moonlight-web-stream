@@ -6,12 +6,12 @@ use uuid::fmt::Hyphenated;
 
 use crate::network::{fmt_write_to_buffer, u32_to_str};
 use crate::{
-    moonlight::MoonlightInstance,
     network::{
         ApiError, ClientInfo,
         request_client::{DynamicQueryParams, QueryBuilder, RequestClient, query_param},
         xml_child_text, xml_root_node,
     },
+    stream::MoonlightInstance,
 };
 
 #[derive(Debug, Clone)]

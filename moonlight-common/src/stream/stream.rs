@@ -35,7 +35,7 @@ use num_derive::FromPrimitive;
 
 use crate::{
     MoonlightError, ServerVersion,
-    moonlight::{
+    stream::{
         Handle,
         audio::{self, AudioDecoder},
         connection::{self, ConnectionListener},

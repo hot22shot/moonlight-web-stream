@@ -34,8 +34,8 @@ pub enum MoonlightError {
 #[cfg(feature = "network")]
 pub mod network;
 
-#[cfg(feature = "moonlight")]
-pub mod moonlight;
+#[cfg(feature = "stream")]
+pub mod stream;
 
 #[cfg(feature = "high")]
 pub mod high;

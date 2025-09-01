@@ -3,7 +3,9 @@ use std::{ffi::CStr, sync::Mutex};
 use bitflags::bitflags;
 use moonlight_common_sys::limelight::{
     _CONNECTION_LISTENER_CALLBACKS, CONN_STATUS_OKAY, CONN_STATUS_POOR, DS_EFFECT_LEFT_TRIGGER,
-    DS_EFFECT_PAYLOAD_SIZE, DS_EFFECT_RIGHT_TRIGGER, LiGetStageName, STAGE_AUDIO_STREAM_INIT,
+    DS_EFFECT_PAYLOAD_SIZE, DS_EFFECT_RIGHT_TRIGGER, LiGetStageName, ML_ERROR_FRAME_CONVERSION,
+    ML_ERROR_GRACEFUL_TERMINATION, ML_ERROR_NO_VIDEO_FRAME, ML_ERROR_NO_VIDEO_TRAFFIC,
+    ML_ERROR_PROTECTED_CONTENT, ML_ERROR_UNEXPECTED_EARLY_TERMINATION, STAGE_AUDIO_STREAM_INIT,
     STAGE_AUDIO_STREAM_START, STAGE_CONTROL_STREAM_INIT, STAGE_CONTROL_STREAM_START,
     STAGE_INPUT_STREAM_INIT, STAGE_INPUT_STREAM_START, STAGE_MAX, STAGE_NAME_RESOLUTION,
     STAGE_NONE, STAGE_PLATFORM_INIT, STAGE_RTSP_HANDSHAKE, STAGE_VIDEO_STREAM_INIT,
@@ -48,7 +50,6 @@ pub enum ConnectionStatus {
     Poor = CONN_STATUS_POOR,
 }
 
-// TODO: what is this used for: set_adaptive_triggers
 bitflags! {
     #[derive(Debug, Clone, Copy)]
     pub struct DualSenseEffect: u32 {
@@ -56,6 +57,17 @@ bitflags! {
         const RIGHT_TRIGGER = DS_EFFECT_RIGHT_TRIGGER;
         const LEFT_TRIGGER = DS_EFFECT_LEFT_TRIGGER;
     }
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy)]
+pub enum TerminationError {
+    Graceful = ML_ERROR_GRACEFUL_TERMINATION as i32,
+    NoVideoTraffic = ML_ERROR_NO_VIDEO_TRAFFIC,
+    NoVideoFrame = ML_ERROR_NO_VIDEO_FRAME,
+    UnexpectedEarlyTermination = ML_ERROR_UNEXPECTED_EARLY_TERMINATION,
+    ProtectedContent = ML_ERROR_PROTECTED_CONTENT,
+    FrameConversion = ML_ERROR_FRAME_CONVERSION,
 }
 
 pub trait ConnectionListener {
@@ -79,6 +91,7 @@ pub trait ConnectionListener {
     /// non-zero, it means the termination was probably unexpected (loss of network,
     /// crash, or similar conditions). This will not be invoked as a result of a call
     /// to LiStopConnection() or LiInterruptConnection().
+    /// HINT: Use TerminationError
     fn connection_terminated(&mut self, error_code: i32);
 
     /// This callback is invoked to log debug message
@@ -283,7 +296,6 @@ pub(crate) unsafe fn raw_callbacks() -> _CONNECTION_LISTENER_CALLBACKS {
         stageFailed: Some(stage_failed),
         connectionStarted: Some(connection_started),
         connectionTerminated: Some(connection_terminated),
-        // TODO: log message
         logMessage: Some(log_message),
         rumble: Some(controller_rumble),
         connectionStatusUpdate: Some(connection_status_update),

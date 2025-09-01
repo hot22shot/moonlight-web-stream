@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 moonlight-common = { workspace = true, features = [
     "network",
-    "moonlight",
+    "stream",
     "serde",
 ] }
 

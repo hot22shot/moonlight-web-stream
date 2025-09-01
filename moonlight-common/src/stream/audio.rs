@@ -5,7 +5,7 @@ use moonlight_common_sys::limelight::{
     POPUS_MULTISTREAM_CONFIGURATION,
 };
 
-use crate::moonlight::stream::Capabilities;
+use crate::stream::stream::Capabilities;
 
 /// This structure provides the Opus multistream decoder parameters required to successfully
 /// decode the audio stream being sent from the computer. See opus_multistream_decoder_init docs

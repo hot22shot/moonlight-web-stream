@@ -1,11 +1,10 @@
-use std::{marker::PhantomData, pin::Pin};
+use std::marker::PhantomData;
 
 use log::warn;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{
     io::{
-        AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, Lines,
-        Stdin, Stdout,
+        AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader, Lines, Stdin, Stdout,
     },
     process::{ChildStderr, ChildStdin, ChildStdout},
     spawn,

@@ -2,7 +2,7 @@ use std::{pin::Pin, sync::Arc};
 
 use bytes::Bytes;
 use log::{debug, warn};
-use moonlight_common::moonlight::{
+use moonlight_common::stream::{
     input::TouchEventType,
     stream::{
         ActiveGamepads, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction,

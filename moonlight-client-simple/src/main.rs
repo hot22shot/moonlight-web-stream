@@ -2,13 +2,13 @@ use std::time::Duration;
 
 use moonlight_common::{
     PairPin, PairStatus,
-    moonlight::{
+    network::reqwest::ReqwestMoonlightHost,
+    pair::{ClientAuth, generate_new_client},
+    stream::{
         MoonlightInstance,
         debug::DebugHandler,
         stream::{ActiveGamepads, ColorRange, Colorspace},
     },
-    network::reqwest::ReqwestMoonlightHost,
-    pair::{ClientAuth, generate_new_client},
 };
 
 use tokio::{

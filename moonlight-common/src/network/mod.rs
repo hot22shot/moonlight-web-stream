@@ -41,7 +41,7 @@ pub enum ApiError<RequestError> {
     Utf8Error(#[from] FromUtf8Error),
 }
 
-#[cfg(feature = "moonlight")]
+#[cfg(feature = "stream")]
 pub mod launch;
 pub mod pair;
 pub mod request_client;

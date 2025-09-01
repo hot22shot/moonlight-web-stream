@@ -10,7 +10,7 @@ use moonlight_common_sys::limelight::{
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
 
-use crate::moonlight::stream::{Capabilities, Colorspace};
+use crate::stream::stream::{Capabilities, Colorspace};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default)]

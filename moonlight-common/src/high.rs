@@ -212,11 +212,11 @@ where
         Ok(info.server_codec_mode_support)
     }
 
-    #[cfg(feature = "moonlight")]
+    #[cfg(feature = "stream")]
     pub async fn server_codec_mode_support(
         &mut self,
-    ) -> Result<crate::moonlight::stream::ServerCodeModeSupport, HostError<C::Error>> {
-        use crate::moonlight::stream::ServerCodeModeSupport;
+    ) -> Result<crate::stream::stream::ServerCodeModeSupport, HostError<C::Error>> {
+        use crate::stream::stream::ServerCodeModeSupport;
 
         let bits = self.server_codec_mode_support_raw().await?;
         Ok(ServerCodeModeSupport::from_bits(bits).expect("valid server code mode support"))
@@ -436,7 +436,7 @@ where
     }
 }
 
-#[cfg(feature = "moonlight")]
+#[cfg(feature = "stream")]
 mod stream {
     use openssl::rand::rand_bytes;
     use tokio::task::spawn_blocking;
@@ -444,7 +444,13 @@ mod stream {
 
     use crate::{
         high::{HostError, MoonlightHost, StreamConfigError},
-        moonlight::{
+        network::{
+            ClientInfo,
+            launch::{ClientStreamRequest, host_launch, host_resume},
+            request_client::RequestClient,
+        },
+        pair::PairError,
+        stream::{
             MoonlightInstance,
             audio::AudioDecoder,
             connection::ConnectionListener,
@@ -454,12 +460,6 @@ mod stream {
             },
             video::{SupportedVideoFormats, VideoDecoder},
         },
-        network::{
-            ClientInfo,
-            launch::{ClientStreamRequest, host_launch, host_resume},
-            request_client::RequestClient,
-        },
-        pair::PairError,
     };
 
     impl<C> MoonlightHost<C>
