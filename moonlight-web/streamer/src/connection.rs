@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use log::info;
-use moonlight_common::stream::connection::{ConnectionListener, ConnectionStatus, Stage};
+use moonlight_common::stream::{
+    bindings::{ConnectionStatus, Stage},
+    connection::ConnectionListener,
+};
 
 use crate::{StreamConnection, send_ws_message, serialize_json};
 use common::api_bindings::{StreamServerGeneralMessage, StreamServerMessage};

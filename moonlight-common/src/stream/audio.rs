@@ -25,7 +25,9 @@ pub trait AudioDecoder {
     fn decode_and_play_sample(&mut self, data: &[u8]);
 
     fn config(&self) -> AudioConfig;
-    fn capabilities(&self) -> Capabilities;
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::empty()
+    }
 }
 
 static GLOBAL_AUDIO_DECODER: Mutex<Option<Box<dyn AudioDecoder + Send + 'static>>> =

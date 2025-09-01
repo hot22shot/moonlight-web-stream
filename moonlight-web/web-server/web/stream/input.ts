@@ -4,6 +4,9 @@ import { ControllerConfig, convertStandardButton as convertStandardControllerBut
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
+// TODO: mouse speed based on screen size
+// TODO: scroll speed increase and smooth or not smooth option?
+
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
 // Time till it's registered as a click, else it might be scrolling
 const TOUCH_AS_CLICK_MIN_TIME_MS = 100

@@ -32,7 +32,9 @@ pub trait VideoDecoder {
     fn stop(&mut self);
 
     fn supported_formats(&self) -> SupportedVideoFormats;
-    fn capabilities(&self) -> Capabilities;
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::empty()
+    }
 }
 
 static GLOBAL_VIDEO_DECODER: Mutex<Option<Box<dyn VideoDecoder + Send + 'static>>> =

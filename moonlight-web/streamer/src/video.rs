@@ -11,10 +11,8 @@ use std::{
 use bytes::{BufMut, Bytes, BytesMut};
 use log::{debug, error, info};
 use moonlight_common::stream::{
-    stream::Capabilities,
-    video::{
-        DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat,
-    },
+    bindings::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
+    video::VideoDecoder,
 };
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
@@ -127,8 +125,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             return -1;
         }
 
-        // TODO: send width / height?
-
         let Some(codec) = video_format_to_codec(format) else {
             error!("Failed to get video codec with format {format:?}");
             return -1;
@@ -211,6 +207,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     full_frame.extend_from_slice(buffer.data);
                 }
 
+                // TODO: do we need this match?
                 match unit.frame_type {
                     FrameType::Idr => {
                         let data = Bytes::from(full_frame);
@@ -317,9 +314,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
 
     fn supported_formats(&self) -> SupportedVideoFormats {
         self.supported_formats
-    }
-    fn capabilities(&self) -> Capabilities {
-        Capabilities::empty()
     }
 }
 

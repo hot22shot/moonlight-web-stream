@@ -3,13 +3,13 @@ use std::{pin::Pin, sync::Arc};
 use bytes::Bytes;
 use log::{debug, warn};
 use moonlight_common::stream::{
-    input::TouchEventType,
-    stream::{
+    MoonlightStream,
+    bindings::{
         ActiveGamepads, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction,
-        KeyFlags, KeyModifiers, MoonlightStream, MouseButton, MouseButtonAction,
+        KeyFlags, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType,
     },
 };
-use num_traits::FromPrimitive;
+use num::FromPrimitive;
 use tokio::sync::RwLock;
 use webrtc::data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage};
 

@@ -1,4 +1,10 @@
-use moonlight_common::ServerState;
+use moonlight_common::{
+    ServerState,
+    stream::bindings::{
+        Colorspace, ControllerButtons, ControllerCapabilities, KeyModifiers, MouseButton,
+        SupportedVideoFormats,
+    },
+};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -282,9 +288,9 @@ pub enum ConnectionStatus {
     Poor,
 }
 
-impl From<moonlight_common::stream::connection::ConnectionStatus> for ConnectionStatus {
-    fn from(value: moonlight_common::stream::connection::ConnectionStatus) -> Self {
-        use moonlight_common::stream::connection::ConnectionStatus;
+impl From<moonlight_common::stream::bindings::ConnectionStatus> for ConnectionStatus {
+    fn from(value: moonlight_common::stream::bindings::ConnectionStatus) -> Self {
+        use moonlight_common::stream::bindings::ConnectionStatus;
         match value {
             ConnectionStatus::Ok => Self::Ok,
             ConnectionStatus::Poor => Self::Poor,
@@ -762,54 +768,54 @@ ts_consts!(
 ts_consts!(
     pub StreamKeyModifiers(export_bindings_key_modifiers: EXPORT_PATH):
 
-    pub const MASK_SHIFT: i8 = moonlight_common::stream::stream::KeyModifiers::SHIFT.bits();
-    pub const MASK_CTRL: i8 = moonlight_common::stream::stream::KeyModifiers::CTRL.bits();
-    pub const MASK_ALT: i8 = moonlight_common::stream::stream::KeyModifiers::ALT.bits();
-    pub const MASK_META: i8 = moonlight_common::stream::stream::KeyModifiers::META.bits();
+    pub const MASK_SHIFT: i8 = KeyModifiers::SHIFT.bits();
+    pub const MASK_CTRL: i8 = KeyModifiers::CTRL.bits();
+    pub const MASK_ALT: i8 = KeyModifiers::ALT.bits();
+    pub const MASK_META: i8 = KeyModifiers::META.bits();
 );
 
 // Mouse Buttons
 ts_consts!(
     pub StreamMouseButton(export_bindings_mouse_buttons: EXPORT_PATH):
 
-    pub const LEFT: i32 = moonlight_common::stream::stream::MouseButton::Left as i32;
-    pub const MIDDLE: i32 = moonlight_common::stream::stream::MouseButton::Middle as i32;
-    pub const RIGHT: i32 = moonlight_common::stream::stream::MouseButton::Right as i32;
+    pub const LEFT: i32 = MouseButton::Left as i32;
+    pub const MIDDLE: i32 = MouseButton::Middle as i32;
+    pub const RIGHT: i32 = MouseButton::Right as i32;
 );
 
 // Controller Buttons
 ts_consts!(
     pub StreamControllerButton(export_bindings_controller_buttons: EXPORT_PATH):
 
-    pub const BUTTON_A: u32       = moonlight_common::stream::stream::ControllerButtons::A.bits();
-    pub const BUTTON_B: u32       = moonlight_common::stream::stream::ControllerButtons::B.bits();
-    pub const BUTTON_X: u32       = moonlight_common::stream::stream::ControllerButtons::X.bits();
-    pub const BUTTON_Y: u32       = moonlight_common::stream::stream::ControllerButtons::Y.bits();
-    pub const BUTTON_UP: u32      = moonlight_common::stream::stream::ControllerButtons::UP.bits();
-    pub const BUTTON_DOWN: u32    = moonlight_common::stream::stream::ControllerButtons::DOWN.bits();
-    pub const BUTTON_LEFT: u32    = moonlight_common::stream::stream::ControllerButtons::LEFT.bits();
-    pub const BUTTON_RIGHT: u32   = moonlight_common::stream::stream::ControllerButtons::RIGHT.bits();
-    pub const BUTTON_LB: u32      = moonlight_common::stream::stream::ControllerButtons::LB.bits();
-    pub const BUTTON_RB: u32      = moonlight_common::stream::stream::ControllerButtons::RB.bits();
-    pub const BUTTON_PLAY: u32    = moonlight_common::stream::stream::ControllerButtons::PLAY.bits();
-    pub const BUTTON_BACK: u32    = moonlight_common::stream::stream::ControllerButtons::BACK.bits();
-    pub const BUTTON_LS_CLK: u32  = moonlight_common::stream::stream::ControllerButtons::LS_CLK.bits();
-    pub const BUTTON_RS_CLK: u32  = moonlight_common::stream::stream::ControllerButtons::RS_CLK.bits();
-    pub const BUTTON_SPECIAL: u32 = moonlight_common::stream::stream::ControllerButtons::SPECIAL.bits();
-    pub const BUTTON_PADDLE1: u32 = moonlight_common::stream::stream::ControllerButtons::PADDLE1.bits();
-    pub const BUTTON_PADDLE2: u32 = moonlight_common::stream::stream::ControllerButtons::PADDLE2.bits();
-    pub const BUTTON_PADDLE3: u32 = moonlight_common::stream::stream::ControllerButtons::PADDLE3.bits();
-    pub const BUTTON_PADDLE4: u32 = moonlight_common::stream::stream::ControllerButtons::PADDLE4.bits();
-    pub const BUTTON_TOUCHPAD: u32 = moonlight_common::stream::stream::ControllerButtons::TOUCHPAD.bits();
-    pub const BUTTON_MISC: u32     = moonlight_common::stream::stream::ControllerButtons::MISC.bits();
+    pub const BUTTON_A: u32       = ControllerButtons::A.bits();
+    pub const BUTTON_B: u32       = ControllerButtons::B.bits();
+    pub const BUTTON_X: u32       = ControllerButtons::X.bits();
+    pub const BUTTON_Y: u32       = ControllerButtons::Y.bits();
+    pub const BUTTON_UP: u32      = ControllerButtons::UP.bits();
+    pub const BUTTON_DOWN: u32    = ControllerButtons::DOWN.bits();
+    pub const BUTTON_LEFT: u32    = ControllerButtons::LEFT.bits();
+    pub const BUTTON_RIGHT: u32   = ControllerButtons::RIGHT.bits();
+    pub const BUTTON_LB: u32      = ControllerButtons::LB.bits();
+    pub const BUTTON_RB: u32      = ControllerButtons::RB.bits();
+    pub const BUTTON_PLAY: u32    = ControllerButtons::PLAY.bits();
+    pub const BUTTON_BACK: u32    = ControllerButtons::BACK.bits();
+    pub const BUTTON_LS_CLK: u32  = ControllerButtons::LS_CLK.bits();
+    pub const BUTTON_RS_CLK: u32  = ControllerButtons::RS_CLK.bits();
+    pub const BUTTON_SPECIAL: u32 = ControllerButtons::SPECIAL.bits();
+    pub const BUTTON_PADDLE1: u32 = ControllerButtons::PADDLE1.bits();
+    pub const BUTTON_PADDLE2: u32 = ControllerButtons::PADDLE2.bits();
+    pub const BUTTON_PADDLE3: u32 = ControllerButtons::PADDLE3.bits();
+    pub const BUTTON_PADDLE4: u32 = ControllerButtons::PADDLE4.bits();
+    pub const BUTTON_TOUCHPAD: u32 =ControllerButtons::TOUCHPAD.bits();
+    pub const BUTTON_MISC: u32     =ControllerButtons::MISC.bits();
 );
 
 // Controller Buttons
 ts_consts!(
     pub StreamControllerCapabilities(export_bindings_controller_capabilities: EXPORT_PATH):
 
-    pub const CAPABILITY_RUMBLE: u16 = moonlight_common::stream::stream::ControllerCapabilities::RUMBLE.bits();
-    pub const CAPABILITY_TRIGGER_RUMBLE: u16 = moonlight_common::stream::stream::ControllerCapabilities::TRIGGER_RUMBLE.bits();
+    pub const CAPABILITY_RUMBLE: u16 = ControllerCapabilities::RUMBLE.bits();
+    pub const CAPABILITY_TRIGGER_RUMBLE: u16 = ControllerCapabilities::TRIGGER_RUMBLE.bits();
 );
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -820,10 +826,8 @@ pub enum StreamColorspace {
     Rec2020,
 }
 
-impl From<StreamColorspace> for moonlight_common::stream::stream::Colorspace {
+impl From<StreamColorspace> for Colorspace {
     fn from(value: StreamColorspace) -> Self {
-        use moonlight_common::stream::stream::Colorspace;
-
         match value {
             StreamColorspace::Rec601 => Colorspace::Rec601,
             StreamColorspace::Rec709 => Colorspace::Rec709,
@@ -836,14 +840,14 @@ impl From<StreamColorspace> for moonlight_common::stream::stream::Colorspace {
 ts_consts!(
     pub StreamSupportedVideoFormats(export_bindings_supported_video_formats: EXPORT_PATH):
 
-    pub const H264: u32 = moonlight_common::stream::video::SupportedVideoFormats::H264.bits();
-    pub const H264_HIGH8_444: u32 = moonlight_common::stream::video::SupportedVideoFormats::H264_HIGH8_444.bits();
-    pub const H265: u32 = moonlight_common::stream::video::SupportedVideoFormats::H265.bits();
-    pub const H265_MAIN10: u32 = moonlight_common::stream::video::SupportedVideoFormats::H265_MAIN10.bits();
-    pub const H265_REXT8_444: u32 = moonlight_common::stream::video::SupportedVideoFormats::H265_REXT8_444.bits();
-    pub const H265_REXT10_444: u32 = moonlight_common::stream::video::SupportedVideoFormats::H265_REXT10_444.bits();
-    pub const AV1_MAIN8: u32 = moonlight_common::stream::video::SupportedVideoFormats::AV1_MAIN8.bits();
-    pub const AV1_MAIN10: u32 = moonlight_common::stream::video::SupportedVideoFormats::AV1_MAIN10.bits();
-    pub const AV1_HIGH8_444: u32 = moonlight_common::stream::video::SupportedVideoFormats::AV1_HIGH8_444.bits();
-    pub const AV1_HIGH10_444: u32 = moonlight_common::stream::video::SupportedVideoFormats::AV1_HIGH10_444.bits();
+    pub const H264: u32 = SupportedVideoFormats::H264.bits();
+    pub const H264_HIGH8_444: u32 = SupportedVideoFormats::H264_HIGH8_444.bits();
+    pub const H265: u32 = SupportedVideoFormats::H265.bits();
+    pub const H265_MAIN10: u32 = SupportedVideoFormats::H265_MAIN10.bits();
+    pub const H265_REXT8_444: u32 = SupportedVideoFormats::H265_REXT8_444.bits();
+    pub const H265_REXT10_444: u32 = SupportedVideoFormats::H265_REXT10_444.bits();
+    pub const AV1_MAIN8: u32 = SupportedVideoFormats::AV1_MAIN8.bits();
+    pub const AV1_MAIN10: u32 = SupportedVideoFormats::AV1_MAIN10.bits();
+    pub const AV1_HIGH8_444: u32 = SupportedVideoFormats::AV1_HIGH8_444.bits();
+    pub const AV1_HIGH10_444: u32 = SupportedVideoFormats::AV1_HIGH10_444.bits();
 );

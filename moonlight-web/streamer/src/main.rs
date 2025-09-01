@@ -14,8 +14,8 @@ use moonlight_common::{
     network::reqwest::ReqwestMoonlightHost,
     pair::ClientAuth,
     stream::{
-        MoonlightInstance,
-        stream::{ColorRange, HostFeatures, MoonlightStream},
+        MoonlightInstance, MoonlightStream,
+        bindings::{ColorRange, HostFeatures},
     },
 };
 use pem::Pem;

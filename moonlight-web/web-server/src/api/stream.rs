@@ -15,7 +15,7 @@ use common::{
     serialize_json,
 };
 use log::{debug, info, warn};
-use moonlight_common::{PairStatus, stream::video::SupportedVideoFormats};
+use moonlight_common::{PairStatus, stream::bindings::SupportedVideoFormats};
 use tokio::{process::Command, spawn, time::sleep};
 
 use crate::data::RuntimeApiData;

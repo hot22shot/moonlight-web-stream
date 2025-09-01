@@ -3,8 +3,8 @@ use std::{sync::Arc, time::Duration};
 use bytes::Bytes;
 use log::error;
 use moonlight_common::stream::{
-    audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
-    stream::Capabilities,
+    audio::AudioDecoder,
+    bindings::{AudioConfig, OpusMultistreamConfig},
 };
 use webrtc::{
     api::media_engine::{MIME_TYPE_OPUS, MediaEngine},
@@ -101,9 +101,5 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
 
     fn config(&self) -> AudioConfig {
         AudioConfig::STEREO
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities::empty()
     }
 }
