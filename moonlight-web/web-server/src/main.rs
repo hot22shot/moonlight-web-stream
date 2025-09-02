@@ -120,7 +120,7 @@ async fn main2() -> Result<(), anyhow::Error> {
         server.bind(bind_address)?.run().await?;
     }
 
-    exit().await
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
