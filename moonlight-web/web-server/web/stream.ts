@@ -54,6 +54,8 @@ class ViewerApp implements Component {
     private api: Api
 
     private sidebar: ViewerSidebar
+
+    private div = document.createElement("div")
     private videoElement = document.createElement("video")
 
     private stream: Stream | null = null
@@ -76,19 +78,20 @@ class ViewerApp implements Component {
         this.videoElement.disablePictureInPicture = true
         this.videoElement.playsInline = true
         this.videoElement.muted = true
+        this.div.appendChild(this.videoElement)
 
         // Configure input
         document.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
         document.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
 
-        document.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
-        document.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
-        document.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
-        document.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
+        this.div.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
+        this.div.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
+        this.div.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
+        this.div.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
 
-        document.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
-        document.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
-        document.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
+        this.div.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
+        this.div.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
+        this.div.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
 
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
@@ -239,11 +242,10 @@ class ViewerApp implements Component {
     }
 
     mount(parent: HTMLElement): void {
-        parent.appendChild(this.videoElement)
-
+        parent.appendChild(this.div)
     }
     unmount(parent: HTMLElement): void {
-        parent.removeChild(this.videoElement)
+        parent.removeChild(this.div)
     }
 
     getElement(): HTMLElement {
@@ -356,6 +358,8 @@ class ConnectionInfoModal implements Modal<void> {
 class ViewerSidebar implements Component, Sidebar {
     private app: ViewerApp
 
+    private div = document.createElement("div")
+
     private keyboardButton = document.createElement("button")
     private screenKeyboard = new ScreenKeyboard()
 
@@ -381,10 +385,12 @@ class ViewerSidebar implements Component, Sidebar {
             setSidebarExtended(false)
             this.screenKeyboard.show()
         })
+        this.div.appendChild(this.keyboardButton)
 
         this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
         this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
         this.screenKeyboard.addTextListener(this.onText.bind(this))
+        this.div.appendChild(this.screenKeyboard.getHiddenElement())
 
         // Pointer Lock
         this.lockMouseButton.innerText = "Lock Mouse"
@@ -393,6 +399,7 @@ class ViewerSidebar implements Component, Sidebar {
 
             await app.getElement().requestPointerLock()
         })
+        this.div.appendChild(this.lockMouseButton)
 
         // Fullscreen
         this.fullscreenButton.innerText = "Fullscreen"
@@ -416,6 +423,7 @@ class ViewerSidebar implements Component, Sidebar {
                 }
             }
         })
+        this.div.appendChild(this.fullscreenButton)
 
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [
@@ -427,6 +435,7 @@ class ViewerSidebar implements Component, Sidebar {
             preSelectedOption: this.config.mouseMode
         })
         this.mouseMode.addChangeListener(this.onMouseModeChange.bind(this))
+        this.mouseMode.mount(this.div)
 
         // Select Touch Mode
         this.touchMode = new SelectComponent("mouseMode", [
@@ -438,6 +447,7 @@ class ViewerSidebar implements Component, Sidebar {
             preSelectedOption: this.config.touchMode
         })
         this.touchMode.addChangeListener(this.onTouchModeChange.bind(this))
+        this.touchMode.mount(this.div)
     }
 
     onCapabilitiesChange(capabilities: StreamCapabilities) {
@@ -479,19 +489,9 @@ class ViewerSidebar implements Component, Sidebar {
     }
 
     mount(parent: HTMLElement): void {
-        parent.appendChild(this.keyboardButton)
-        parent.appendChild(this.screenKeyboard.getHiddenElement())
-        parent.appendChild(this.lockMouseButton)
-        parent.appendChild(this.fullscreenButton)
-        this.mouseMode.mount(parent)
-        this.touchMode.mount(parent)
+        parent.appendChild(this.div)
     }
     unmount(parent: HTMLElement): void {
-        parent.removeChild(this.keyboardButton)
-        parent.removeChild(this.screenKeyboard.getHiddenElement())
-        parent.removeChild(this.lockMouseButton)
-        parent.removeChild(this.fullscreenButton)
-        this.mouseMode.unmount(parent)
-        this.touchMode.unmount(parent)
+        parent.removeChild(this.div)
     }
 }
