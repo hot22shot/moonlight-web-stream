@@ -396,6 +396,7 @@ export class StreamInput {
                         }
 
                         if (!oldTouch.mouseClicked) {
+                            this.sendMousePositionClientCoordinates(oldTouch.originX, oldTouch.originY, rect)
                             this.sendMouseButton(true, StreamMouseButton.LEFT)
                             oldTouch.mouseClicked = true
                         }
