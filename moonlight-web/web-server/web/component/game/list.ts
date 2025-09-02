@@ -43,11 +43,7 @@ export class GameList extends FetchListComponent<App, Game> {
             force_refresh: forceServerRefresh || false
         })
 
-        if (apps) {
-            this.updateCache(apps)
-        } else {
-            showErrorPopup(`failed to fetch apps for host ${this.getHostId()}`)
-        }
+        this.updateCache(apps)
     }
     private createCache(data: App): GameCache {
         const cache = data as GameCache

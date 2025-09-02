@@ -110,11 +110,7 @@ export class Game implements Component {
             elements.push({
                 name: "Stop Current Session",
                 callback: async () => {
-                    const response = await apiHostCancel(this.api, { host_id: this.hostId })
-
-                    if (!response?.success) {
-                        await showMessage("failed to quit session")
-                    }
+                    await apiHostCancel(this.api, { host_id: this.hostId })
 
                     const event = new ComponentEvent("ml-gamereload", this)
                     this.divElement.dispatchEvent(event)

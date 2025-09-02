@@ -48,7 +48,7 @@ function handleRejection(event: PromiseRejectionEvent) {
 }
 
 window.addEventListener("error", handleError)
-window.addEventListener("rejectionhandled", handleRejection)
+window.addEventListener("unhandledrejection", handleRejection)
 
 class ErrorComponent implements Component {
     private messageElement: HTMLElement = document.createElement("p")

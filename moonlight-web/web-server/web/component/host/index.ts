@@ -58,17 +58,12 @@ export class Host implements Component {
             force_refresh: forceServerRefresh || false
         })
 
-        if (newCache == null) {
-            showErrorPopup(`failed to fetch host ${this.getHostId()}`)
-            return;
-        }
-
         this.updateCache(newCache)
     }
     async getCurrentGame(): Promise<number | null> {
         await this.forceFetch()
 
-        if (this.cache && isDetailedHost(this.cache)) {
+        if (this.cache && isDetailedHost(this.cache) && this.cache.current_game != 0) {
             return this.cache.current_game
         } else {
             return null
@@ -185,25 +180,12 @@ export class Host implements Component {
         const pinResponse = await apiPostPair(this.api, {
             host_id: this.getHostId()
         })
-        if (pinResponse == null) {
-            showErrorPopup("failed to pair host")
-            return
-        }
-        if ("error" in pinResponse) {
-            showErrorPopup(`failed to pair host: ${pinResponse.error}`)
-            return
-        }
 
         const messageAbort = new AbortController()
         showMessage(`Please pair your host ${this.getCache()?.name} with this pin:\nPin: ${pinResponse.pin}`, { signal: messageAbort.signal })
 
         const resultResponse = await pinResponse.result
         messageAbort.abort()
-
-        if (resultResponse == null) {
-            showErrorPopup("failed to pair to host: Make sure the Pin is correct")
-            return;
-        }
 
         this.updateCache(resultResponse)
     }

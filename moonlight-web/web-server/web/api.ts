@@ -1,9 +1,10 @@
 import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
-import { showErrorPopup } from "./component/error.js";
 import { InputComponent } from "./component/input.js";
 import { FormModal } from "./component/modal/form.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { buildUrl } from "./config_.js";
+
+const API_TIMEOUT = 3000
 
 let currentApi: Api | null = null
 
@@ -72,7 +73,7 @@ class ApiCredentialsPrompt extends FormModal<string> {
         abort.addEventListener("abort", abortController.abort.bind(abortController))
 
         return new Promise((resolve, reject) => {
-            this.credentialsFile.addChangeListener((event) => {
+            this.credentialsFile.addChangeListener(() => {
                 const files = this.credentialsFile.getFiles()
                 if (files && files.length >= 1) {
                     const file = files[0]
@@ -139,16 +140,22 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: { respo
     return [url, request]
 }
 
-export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any | null>
-export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response | null>
+export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any>
+export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response>
 
 export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: { response?: "json" | "ignore" } & ApiFetchInit) {
     const [url, request] = buildRequest(api, endpoint, method, init)
 
+    const timeoutAbort = new AbortController()
+    request.signal = timeoutAbort.signal
+    setTimeout(() => timeoutAbort.abort(
+        `failed to fetch ${method} at ${endpoint} because of timeout`
+    ), API_TIMEOUT)
+
     const response = await fetch(url, request)
 
     if (!response.ok) {
-        return null
+        throw `failed to fetch ${method} at ${endpoint} with code ${response.status}`
     }
 
     if (init?.response == "ignore") {
@@ -171,44 +178,35 @@ export async function apiAuthenticate(api: Api): Promise<boolean> {
 export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {
     const response = await fetchApi(api, "/hosts", "get")
 
-    if (response == null) {
-        showErrorPopup("failed to fetch hosts")
-        return []
-    }
-
     return (response as GetHostsResponse).hosts
 }
-export async function apiGetHost(api: Api, query: GetHostQuery): Promise<DetailedHost | null> {
+export async function apiGetHost(api: Api, query: GetHostQuery): Promise<DetailedHost> {
     const response = await fetchApi(api, "/host", "get", { query })
-
-    if (response == null) {
-        return null
-    }
 
     return (response as GetHostResponse).host
 }
-export async function apiPutHost(api: Api, data: PutHostRequest): Promise<DetailedHost | null> {
+export async function apiPutHost(api: Api, data: PutHostRequest): Promise<DetailedHost> {
     const response = await fetchApi(api, "/host", "put", { json: data })
-
-    if (response == null) {
-        return null
-    }
 
     return (response as PutHostResponse).host
 }
 export async function apiDeleteHost(api: Api, query: DeleteHostQuery): Promise<boolean> {
-    const response = await fetchApi(api, "/host", "delete", { query, response: "ignore" })
+    try {
+        await fetchApi(api, "/host", "delete", { query, response: "ignore" })
+    } catch (e) {
+        return false
+    }
 
-    return response != null
+    return true
 }
 
-export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost | null> } | { error: string } | null> {
+export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost> }> {
     const response = await fetchApi(api, "/pair", "post", {
         json: request,
         response: "ignore"
     })
-    if (response == null || response.body == null) {
-        return null
+    if (!response.body) {
+        throw "no response body in pair response"
     }
 
     const reader = response.body.getReader()
@@ -218,10 +216,10 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{
     const response1 = JSON.parse(decoder.decode(read1.value)) as PostPairResponse1
 
     if (typeof response1 == "string") {
-        return { error: response1 }
+        throw `failed to pair: ${response1}`
     }
     if (read1.done) {
-        return { error: "likely InternalServerError" }
+        throw "failed to pair: InternalServerError"
     }
 
     return {
@@ -231,7 +229,7 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{
             const response2 = JSON.parse(decoder.decode(read2.value)) as PostPairResponse2
 
             if (response2 == "PairError") {
-                return null
+                throw "failed to pair"
             } else {
                 return response2.Paired
             }
@@ -239,35 +237,25 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{
     }
 }
 
-export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App> | null> {
+export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App>> {
     const response = await fetchApi(api, "/apps", "get", { query }) as GetAppsResponse
 
-    return response?.apps
+    return response.apps
 }
 
-export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise<Blob | null> {
+export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise<Blob> {
     const response = await fetchApi(api, "/app/image", "get", {
         query,
         response: "ignore"
     })
 
-    if (!response) {
-        return null
-    }
-
-    const data = await response.blob()
-
-    return data
+    return await response.blob()
 }
 
-export async function apiHostCancel(api: Api, request: PostCancelRequest): Promise<PostCancelResponse | null> {
+export async function apiHostCancel(api: Api, request: PostCancelRequest): Promise<PostCancelResponse> {
     const response = await fetchApi(api, "/host/cancel", "POST", {
         json: request
     })
-
-    if (!response) {
-        return null
-    }
 
     return response as PostCancelResponse
 }

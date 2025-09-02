@@ -245,7 +245,7 @@ class MainApp implements Component {
         }
 
         const currentGame = await host.getCurrentGame()
-        if (currentGame != 0) {
+        if (currentGame != null) {
             gameList?.setActiveGame(currentGame)
         } else {
             gameList?.setActiveGame(null)
