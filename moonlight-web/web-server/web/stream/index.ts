@@ -148,6 +148,12 @@ export class Stream {
 
         this.input.setPeer(this.peer)
 
+        const audioTransceiver = this.peer.addTransceiver("audio", { direction: "recvonly" });
+        audioTransceiver.receiver.jitterBufferTarget = 0
+
+        const videoTransceiver = this.peer.addTransceiver("video", { direction: "recvonly" });
+        videoTransceiver.receiver.jitterBufferTarget = 0
+
         // Maybe we already received data
         if (this.remoteDescription) {
             await this.handleRemoteDescription(this.remoteDescription)
@@ -256,8 +262,7 @@ export class Stream {
             return
         }
 
-        const offer = await this.peer.createOffer()
-        await this.peer.setLocalDescription(offer)
+        await this.peer.setLocalDescription()
 
         await this.sendLocalDescription()
     }
@@ -276,8 +281,7 @@ export class Stream {
         await this.peer.setRemoteDescription(description)
 
         if (description.type === "offer") {
-            const answer = await this.peer.createAnswer()
-            await this.peer.setLocalDescription(answer)
+            await this.peer.setLocalDescription()
 
             await this.sendLocalDescription()
         }
@@ -344,8 +348,6 @@ export class Stream {
 
     // -- Track and Data Channels
     private onTrack(event: RTCTrackEvent) {
-        event.receiver.jitterBufferTarget = 0
-
         const stream = event.streams[0]
         if (stream) {
             stream.getTracks().forEach(track => {
