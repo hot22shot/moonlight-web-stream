@@ -4,9 +4,11 @@ import { ControllerConfig, extractGamepadState, GamepadState, SUPPORTED_BUTTONS 
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
-// TODO: scroll speed increase and smooth or not smooth option?
 // TODO: send keycode option
 
+// Smooth scrolling multiplier
+const TOUCH_SMOOTH_SCROLL_MULTIPLIER = 10
+// Distance until a touch is 100% a click
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
 // Time till it's registered as a click, else it might be scrolling
 const TOUCH_AS_CLICK_MIN_TIME_MS = 100
@@ -33,6 +35,7 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 export type StreamInputConfig = {
     mouseMode: "relative" | "follow" | "pointAndDrag"
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
+    scrollMode: "smooth" | "normal",
     controllerConfig: ControllerConfig
 }
 
@@ -40,6 +43,7 @@ export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
         touchMode: "pointAndDrag",
+        scrollMode: "smooth",
         controllerConfig: {
             invertAB: false,
             invertXY: false
@@ -206,7 +210,7 @@ export class StreamInput {
         }
     }
     onWheel(event: WheelEvent) {
-        this.sendMouseWheel(event.deltaX, -event.deltaY)
+        this.sendMouseWheelSmooth(event.deltaX, -event.deltaY)
     }
 
     sendMouseMove(movementX: number, movementY: number) {
@@ -256,7 +260,7 @@ export class StreamInput {
 
         trySendChannel(this.mouse, this.buffer)
     }
-    sendMouseWheel(deltaX: number, deltaY: number) {
+    sendMouseWheelSmooth(deltaX: number, deltaY: number) {
         this.buffer.reset()
 
         this.buffer.putU8(3)
@@ -399,8 +403,12 @@ export class StreamInput {
                         }
                     }
                 } else if (this.touchMouseAction == "scroll") {
-                    // inverting horizontal scroll
-                    this.sendMouseWheel(-movementX, movementY)
+                    if (this.config.scrollMode == "smooth") {
+                        // inverting horizontal scroll
+                        this.sendMouseWheelSmooth(-movementX * TOUCH_SMOOTH_SCROLL_MULTIPLIER, movementY * TOUCH_SMOOTH_SCROLL_MULTIPLIER)
+                    } else if (this.config.scrollMode == "normal") {
+                        // TODO
+                    }
                 } else if (this.touchMouseAction == "screenKeyboard") {
                     const distanceY = touch.clientY - oldTouch.originY
 
@@ -619,8 +627,6 @@ export class StreamInput {
             if (gamepad.mapping != "standard") {
                 continue
             }
-
-            // TODO: move the value code into the gamepad
 
             const state = extractGamepadState(gamepad, this.config.controllerConfig)
 
