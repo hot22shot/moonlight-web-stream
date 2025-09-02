@@ -7,7 +7,7 @@ import { convertToButton } from "./mouse.js"
 // TODO: send keycode option
 
 // Smooth scrolling multiplier
-const TOUCH_SMOOTH_SCROLL_MULTIPLIER = 10
+const TOUCH_SCROLL_MULTIPLIER = 10
 // Distance until a touch is 100% a click
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
 // Time till it's registered as a click, else it might be scrolling
@@ -35,7 +35,6 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 export type StreamInputConfig = {
     mouseMode: "relative" | "follow" | "pointAndDrag"
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
-    scrollMode: "smooth" | "normal",
     controllerConfig: ControllerConfig
 }
 
@@ -43,7 +42,6 @@ export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
         touchMode: "pointAndDrag",
-        scrollMode: "smooth",
         controllerConfig: {
             invertAB: false,
             invertXY: false
@@ -209,8 +207,8 @@ export class StreamInput {
             }
         }
     }
-    onWheel(event: WheelEvent) {
-        this.sendMouseWheelSmooth(event.deltaX, -event.deltaY)
+    onMouseWheel(event: WheelEvent) {
+        this.sendMouseWheel(event.deltaX, -event.deltaY)
     }
 
     sendMouseMove(movementX: number, movementY: number) {
@@ -260,7 +258,7 @@ export class StreamInput {
 
         trySendChannel(this.mouse, this.buffer)
     }
-    sendMouseWheelSmooth(deltaX: number, deltaY: number) {
+    sendMouseWheel(deltaX: number, deltaY: number) {
         this.buffer.reset()
 
         this.buffer.putU8(3)
@@ -403,12 +401,8 @@ export class StreamInput {
                         }
                     }
                 } else if (this.touchMouseAction == "scroll") {
-                    if (this.config.scrollMode == "smooth") {
-                        // inverting horizontal scroll
-                        this.sendMouseWheelSmooth(-movementX * TOUCH_SMOOTH_SCROLL_MULTIPLIER, movementY * TOUCH_SMOOTH_SCROLL_MULTIPLIER)
-                    } else if (this.config.scrollMode == "normal") {
-                        // TODO
-                    }
+                    // inverting horizontal scroll
+                    this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
                 } else if (this.touchMouseAction == "screenKeyboard") {
                     const distanceY = touch.clientY - oldTouch.originY
 
