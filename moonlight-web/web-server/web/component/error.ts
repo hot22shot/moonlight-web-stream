@@ -39,11 +39,9 @@ export function showErrorPopup(message: string, fatal: boolean = false) {
 }
 
 function handleError(event: ErrorEvent) {
-    // TODO: better message
     showErrorPopup(`Error: ${event.error}`)
 }
 function handleRejection(event: PromiseRejectionEvent) {
-    // TODO: better message
     showErrorPopup(`Error: ${event.reason}`)
 }
 
