@@ -187,18 +187,17 @@ impl StreamInput {
 
             let _ = stream.send_mouse_button(action, button);
         } else if ty == 3 {
+            // TODO: let the user decide if they want high res or not?
             // Mouse Wheel
             let delta_x = buffer.get_i16();
             let delta_y = buffer.get_i16();
 
             if delta_y != 0 {
                 let _ = stream.send_high_res_scroll(delta_y);
-                let _ = stream.send_scroll(delta_y as i8);
             }
 
             if delta_x != 0 {
                 let _ = stream.send_high_res_horizontal_scroll(delta_x);
-                let _ = stream.send_horizontal_scroll(delta_x as i8);
             }
         }
     }

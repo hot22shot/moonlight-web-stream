@@ -81,14 +81,14 @@ class ViewerApp implements Component {
         document.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
         document.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
 
-        this.videoElement.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
-        this.videoElement.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
-        this.videoElement.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
-        this.videoElement.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
+        document.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
+        document.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
+        document.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
+        document.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
 
-        this.videoElement.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
-        this.videoElement.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
-        this.videoElement.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
+        document.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
+        document.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
+        document.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
 
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
