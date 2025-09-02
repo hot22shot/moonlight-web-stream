@@ -62,6 +62,4 @@ foreach($target in $targets) {
     echo "------------- Finished Zipping for $target -------------"
 }
 
-cd ..
-
 echo "Finished!"
