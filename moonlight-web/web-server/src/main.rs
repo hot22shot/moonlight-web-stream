@@ -22,7 +22,7 @@ mod data;
 mod web;
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() {
     #[cfg(debug_assertions)]
     let log_level = LevelFilter::Debug;
     #[cfg(not(debug_assertions))]
@@ -36,17 +36,29 @@ async fn main() -> std::io::Result<()> {
     )
     .expect("failed to init logger");
 
+    if let Err(err) = main2().await {
+        info!("Error: {err:?}");
+    }
+
+    exit().await.expect("exit failed")
+}
+
+async fn exit() -> Result<(), anyhow::Error> {
+    info!("enter your credentials in the config (server/config.json)");
+    info!("Press Enter to close this window");
+
+    let mut line = String::new();
+    let mut reader = BufReader::new(stdin());
+
+    reader.read_line(&mut line).await?;
+
+    Ok(())
+}
+
+async fn main2() -> Result<(), anyhow::Error> {
     // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
-        // TODO: put this into an exit function!
-        info!("enter your credentials in the config (server/config.json)");
-        info!("Press Enter to close this window");
-
-        let mut line = String::new();
-        let mut reader = BufReader::new(stdin());
-
-        reader.read_line(&mut line).await?;
         return Ok(());
     }
     let config = Data::new(config);
@@ -103,10 +115,12 @@ async fn main() -> std::io::Result<()> {
             .set_certificate_chain_file(&certificate.certificate_pem)
             .expect("failed to set certificate");
 
-        server.bind_openssl(bind_address, builder)?.run().await
+        server.bind_openssl(bind_address, builder)?.run().await?;
     } else {
-        server.bind(bind_address)?.run().await
+        server.bind(bind_address)?.run().await?;
     }
+
+    exit().await
 }
 
 #[derive(Debug, Serialize)]
