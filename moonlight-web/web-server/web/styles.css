@@ -519,6 +519,7 @@ input[type=number] {
     position: absolute;
     z-index: -1000;
     resize: none;
+    translate: 200vw 200vh;
 }
 
 /* Prevent starting animation for elements */
