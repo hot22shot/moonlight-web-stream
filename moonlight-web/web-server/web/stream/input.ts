@@ -1,6 +1,6 @@
 import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton } from "../api_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
-import { ControllerConfig, convertStandardButton as convertStandardControllerButton, SUPPORTED_BUTTONS } from "./gamepad.js"
+import { ControllerConfig, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
@@ -621,25 +621,10 @@ export class StreamInput {
             }
 
             // TODO: move the value code into the gamepad
-            let buttonFlags = 0
-            for (let buttonId = 0; buttonId < gamepad.buttons.length; buttonId++) {
-                const button = gamepad.buttons[buttonId]
 
-                const buttonFlag = convertStandardControllerButton(buttonId, this.config.controllerConfig)
-                if (button.pressed && buttonFlag !== null) {
-                    buttonFlags |= buttonFlag
-                }
-            }
+            const state = extractGamepadState(gamepad, this.config.controllerConfig)
 
-            const leftTrigger = gamepad.buttons[6].value
-            const rightTrigger = gamepad.buttons[7].value
-
-            const leftStickX = gamepad.axes[0]
-            const leftStickY = gamepad.axes[1]
-            const rightStickX = gamepad.axes[2]
-            const rightStickY = gamepad.axes[3]
-
-            this.sendController(gamepadId, buttonFlags, leftTrigger, rightTrigger, leftStickX, leftStickY, rightStickX, rightStickY)
+            this.sendController(gamepadId, state)
         }
     }
 
@@ -796,17 +781,17 @@ export class StreamInput {
     // Values
     // - Trigger: range 0..1
     // - Stick: range -1..1
-    sendController(id: number, buttonFlags: number, leftTrigger: number, rightTrigger: number, leftStickX: number, leftStickY: number, rightStickX: number, rightStickY: number) {
+    sendController(id: number, state: GamepadState) {
         this.buffer.reset()
 
         this.buffer.putU8(0)
-        this.buffer.putU32(buttonFlags)
-        this.buffer.putU8(Math.max(0.0, Math.min(1.0, leftTrigger)) * U8_MAX)
-        this.buffer.putU8(Math.max(0.0, Math.min(1.0, rightTrigger)) * U8_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, leftStickX)) * I16_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -leftStickY)) * I16_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, rightStickX)) * I16_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -rightStickY)) * I16_MAX)
+        this.buffer.putU32(state.buttonFlags)
+        this.buffer.putU8(Math.max(0.0, Math.min(1.0, state.leftTrigger)) * U8_MAX)
+        this.buffer.putU8(Math.max(0.0, Math.min(1.0, state.rightTrigger)) * U8_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, state.leftStickX)) * I16_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -state.leftStickY)) * I16_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, state.rightStickX)) * I16_MAX)
+        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -state.rightStickY)) * I16_MAX)
 
         this.tryOpenControllerChannel(id)
         trySendChannel(this.controllerInputs[id], this.buffer)
