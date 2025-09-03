@@ -8,8 +8,9 @@ import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputCon
 import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { getStandardVideoFormats, getSupportedVideoFormats, VideoCodecSupport } from "./stream/video.js";
-import { StreamCapabilities } from "./api_bindings.js";
+import { StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
+import { FormModal } from "./component/modal/form.js";
 
 async function startApp() {
     const api = await getApi()
@@ -360,6 +361,8 @@ class ViewerSidebar implements Component, Sidebar {
 
     private div = document.createElement("div")
 
+    private sendKeycodeButton = document.createElement("button")
+
     private keyboardButton = document.createElement("button")
     private screenKeyboard = new ScreenKeyboard()
 
@@ -375,6 +378,29 @@ class ViewerSidebar implements Component, Sidebar {
 
     constructor(app: ViewerApp) {
         this.app = app
+
+        this.div.addEventListener("click", this.onStopPropagation.bind(this))
+        this.div.addEventListener("keydown", this.onStopPropagation.bind(this))
+        this.div.addEventListener("keyup", this.onStopPropagation.bind(this))
+        this.div.addEventListener("keypress", this.onStopPropagation.bind(this))
+        this.div.addEventListener("touchstart", this.onStopPropagation.bind(this))
+        this.div.addEventListener("touchmove", this.onStopPropagation.bind(this))
+        this.div.addEventListener("touchend", this.onStopPropagation.bind(this))
+        this.div.addEventListener("touchcancel", this.onStopPropagation.bind(this))
+
+        // Send keycode
+        this.sendKeycodeButton.innerText = "Send Keycode"
+        this.sendKeycodeButton.addEventListener("click", async () => {
+            const key = await showModal(new SendKeycodeModal())
+
+            if (key == null) {
+                return
+            }
+
+            this.app.getStream()?.getInput().sendKey(true, key, 0)
+            this.app.getStream()?.getInput().sendKey(false, key, 0)
+        })
+        this.div.appendChild(this.sendKeycodeButton)
 
         // Pop up keyboard
         this.keyboardButton.innerText = "Keyboard"
@@ -458,6 +484,11 @@ class ViewerSidebar implements Component, Sidebar {
         return this.screenKeyboard
     }
 
+    // Stop propagation so the stream doesn't get it
+    private onStopPropagation(event: Event) {
+        event.stopPropagation()
+    }
+
     // -- Keyboard
     private onText(event: TextEvent) {
         this.app.getStream()?.getInput().sendText(event.detail.text)
@@ -493,5 +524,67 @@ class ViewerSidebar implements Component, Sidebar {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
+    }
+}
+
+class SendKeycodeModal extends FormModal<number> {
+
+    private dropdownSearch: SelectComponent
+
+    constructor() {
+        super()
+
+        const keyList = []
+        for (const keyName of Object.keys(StreamKeys)) {
+            const keyValue = StreamKeys[keyName]
+
+            const PREFIX = "VK_"
+
+            let name = keyName
+            if (name.startsWith(PREFIX)) {
+                name = name.slice(PREFIX.length)
+            }
+
+            keyList.push({
+                value: keyValue.toString(),
+                name
+            })
+        }
+
+        this.dropdownSearch = new SelectComponent("winKeycode", keyList, {
+            hasSearch: true,
+            displayName: "Select Keycode"
+        })
+    }
+
+    mountForm(form: HTMLFormElement): void {
+        form.addEventListener("click", this.onStopPropagation.bind(this))
+        form.addEventListener("keydown", this.onStopPropagation.bind(this))
+        form.addEventListener("keyup", this.onStopPropagation.bind(this))
+        form.addEventListener("keypress", this.onStopPropagation.bind(this))
+        form.addEventListener("touchstart", this.onStopPropagation.bind(this))
+        form.addEventListener("touchmove", this.onStopPropagation.bind(this))
+        form.addEventListener("touchend", this.onStopPropagation.bind(this))
+        form.addEventListener("touchcancel", this.onStopPropagation.bind(this))
+
+        this.dropdownSearch.mount(form)
+    }
+
+    // Stop propagation so the stream doesn't get it
+    private onStopPropagation(event: Event) {
+        event.stopPropagation()
+    }
+
+    reset(): void {
+        this.dropdownSearch.reset()
+    }
+
+    submit(): number | null {
+        const keyString = this.dropdownSearch.getValue()
+        if (keyString == null) {
+            return null
+        }
+
+        return parseInt(keyString)
     }
 }

@@ -94,42 +94,104 @@ export class InputComponent extends ElementWithLabel {
 }
 
 export type SelectInit = {
+    // Only uses datalist if supported
+    hasSearch?: boolean
     preSelectedOption?: string
     displayName?: string,
 }
 
 export class SelectComponent extends ElementWithLabel {
 
-    private selectElement = document.createElement("select")
+    private strategy: "select" | "datalist"
+
+    private preSelectedOption: string = ""
+    private options: Array<{ value: string, name: string }>
+
+    private inputElement: null | HTMLInputElement
+    private optionRoot: HTMLSelectElement | HTMLDataListElement
 
     constructor(internalName: string, options: Array<{ value: string, name: string }>, init?: SelectInit) {
         super(internalName, init?.displayName)
 
+        if (init && init.preSelectedOption) {
+            this.preSelectedOption = init.preSelectedOption
+        }
+        this.options = options
+
+        if (init && init.hasSearch && isElementSupported("datalist")) {
+            this.strategy = "datalist"
+
+            this.optionRoot = document.createElement("datalist")
+            this.optionRoot.id = `${internalName}-list`
+
+            this.inputElement = document.createElement("input")
+            this.inputElement.type = "text"
+            this.inputElement.id = internalName
+            this.inputElement.setAttribute("list", this.optionRoot.id)
+
+            if (init && init.preSelectedOption) {
+                this.inputElement.defaultValue = init.preSelectedOption
+            }
+
+            this.div.appendChild(this.inputElement)
+            this.div.appendChild(this.optionRoot)
+        } else {
+            this.strategy = "select"
+
+            this.inputElement = null
+
+            this.optionRoot = document.createElement("select")
+            this.optionRoot.id = internalName
+
+            this.div.appendChild(this.optionRoot)
+        }
+
         for (const option of options) {
             const optionElement = document.createElement("option")
-            optionElement.innerText = option.name
-            optionElement.value = option.value
+
+            if (this.strategy == "datalist") {
+                optionElement.value = option.name
+            } else if (this.strategy == "select") {
+                optionElement.innerText = option.name
+                optionElement.value = option.value
+            }
 
             if (init && init.preSelectedOption == option.value) {
                 optionElement.selected = true
             }
 
-            this.selectElement.appendChild(optionElement)
+            this.optionRoot.appendChild(optionElement)
         }
 
-        this.div.appendChild(this.selectElement)
-
-        this.selectElement.addEventListener("change", () => {
+        this.optionRoot.addEventListener("change", () => {
             this.div.dispatchEvent(new ComponentEvent("ml-change", this))
         })
     }
 
-    getValue() {
-        return this.selectElement.value
+    reset() {
+        if (this.strategy == "datalist") {
+            const inputElement = (this.inputElement as HTMLInputElement)
+            inputElement.value = ""
+        } else {
+            const selectElement = (this.optionRoot as HTMLSelectElement)
+            selectElement.value = ""
+        }
+    }
+
+    getValue(): string | null {
+        if (this.strategy == "datalist") {
+            const name = (this.inputElement as HTMLInputElement).value
+
+            return this.options.find(option => option.name == name)?.value ?? ""
+        } else if (this.strategy == "select") {
+            return (this.optionRoot as HTMLSelectElement).value
+        }
+
+        throw "Invalid strategy for select input field"
     }
 
     setOptionEnabled(value: string, enabled: boolean) {
-        for (const optionElement of this.selectElement.options) {
+        for (const optionElement of this.optionRoot.options) {
             if (optionElement.value == value) {
                 optionElement.disabled = !enabled
             }
@@ -143,3 +205,24 @@ export class SelectComponent extends ElementWithLabel {
         this.div.removeEventListener("ml-change", listener as any)
     }
 }
+
+export function isElementSupported(tag: string) {
+    // Create a test element for the tag
+    const element = document.createElement(tag);
+
+    // Check for support of custom elements registered via
+    // `document.registerElement`
+    if (tag.indexOf('-') > -1) {
+        // Registered elements have their own constructor, while unregistered
+        // ones use the `HTMLElement` or `HTMLUnknownElement` (if invalid name)
+        // constructor (http://stackoverflow.com/a/28210364/1070244)
+        return (
+            element.constructor !== window.HTMLUnknownElement &&
+            element.constructor !== window.HTMLElement
+        );
+    }
+
+    // Obtain the element's internal [[Class]] property, if it doesn't 
+    // match the `HTMLUnknownElement` interface than it must be supported
+    return toString.call(element) !== '[object HTMLUnknownElement]';
+};
