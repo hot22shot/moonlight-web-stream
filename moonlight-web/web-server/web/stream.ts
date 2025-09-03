@@ -216,6 +216,12 @@ class ViewerApp implements Component {
         event.preventDefault()
         this.stream?.getInput().onTouchEnd(event, this.videoElement.getBoundingClientRect())
     }
+    onTouchCancel(event: TouchEvent) {
+        this.onUserInteraction()
+
+        event?.preventDefault()
+        this.stream?.getInput().onTouchCancel(event, this.videoElement.getBoundingClientRect())
+    }
     onTouchUpdate() {
         this.stream?.getInput().onTouchUpdate(this.videoElement.getBoundingClientRect())
 

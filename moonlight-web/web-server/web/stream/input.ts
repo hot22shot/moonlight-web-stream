@@ -317,7 +317,6 @@ export class StreamInput {
         }
     }
 
-    // TODO: on touch cancel?
     onTouchStart(event: TouchEvent, rect: DOMRect) {
         for (const touch of event.changedTouches) {
             this.updateTouchTracker(touch)
@@ -469,6 +468,10 @@ export class StreamInput {
         for (const touch of event.changedTouches) {
             this.touchTracker.delete(touch.identifier)
         }
+    }
+
+    onTouchCancel(event: TouchEvent, rect: DOMRect) {
+        this.onTouchEnd(event, rect)
     }
 
     private calcNormalizedPosition(clientX: number, clientY: number, rect: DOMRect): [number, number] | null {
