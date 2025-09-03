@@ -81,9 +81,6 @@ class ViewerApp implements Component {
         this.videoElement.playsInline = true
         this.videoElement.muted = true
 
-        window.addEventListener("resize", this.resizeVideo.bind(this))
-        this.resizeVideo()
-
         this.div.appendChild(this.videoElement)
 
         // Configure input
@@ -106,24 +103,6 @@ class ViewerApp implements Component {
             if (gamepad != null) {
                 this.onGamepadAdd(gamepad)
             }
-        }
-    }
-
-    // The video element doesn't stretch so we do this using js
-    // It's also important that the client bounding rect is the exact video size so don't overstretch
-    private resizeVideo() {
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        const videoRatio = this.videoElement.videoWidth / this.videoElement.videoHeight;
-        const windowRatio = vw / vh;
-
-        if (videoRatio > windowRatio) {
-            this.videoElement.style.minWidth = '100vw';
-            this.videoElement.style.minHeight = `auto`;
-        } else {
-            this.videoElement.style.minWidth = `auto`;
-            this.videoElement.style.minHeight = '100vh';
         }
     }
 
