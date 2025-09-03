@@ -8,7 +8,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use log::{debug, error, info};
 use moonlight_common::stream::{
     bindings::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
@@ -31,11 +31,7 @@ use webrtc::{
 use crate::{
     StreamConnection,
     decoder::TrackSampleDecoder,
-    video::{
-        annexb::{AnnexBSplitter, AnnexBStartCode},
-        h264::H264Reader,
-        h265::H265Reader,
-    },
+    video::{annexb::AnnexBSplitter, h264::H264Reader, h265::H265Reader},
 };
 
 mod annexb;
@@ -234,7 +230,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
                     self.decoder.blocking_send_sample(Sample {
                         // Full includes annex b prefix which this sample reader requires
-                        data: nal.full,
+                        data: nal.full.freeze(),
                         timestamp,
                         duration,
                         packet_timestamp,
