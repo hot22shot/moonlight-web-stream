@@ -232,18 +232,9 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    let nal_data = trim_bytes_to_range(
-                        nal.full,
-                        nal.header_range.start..nal.payload_range.end,
-                    );
-
-                    // TODO: use pushfront on nal or if already b3 use it
-                    let mut data = BytesMut::new();
-                    data.put(AnnexBStartCode::B3.code());
-                    data.put(nal_data);
-
                     self.decoder.blocking_send_sample(Sample {
-                        data: data.freeze(),
+                        // Full includes annex b prefix which this sample reader requires
+                        data: nal.full,
                         timestamp,
                         duration,
                         packet_timestamp,
