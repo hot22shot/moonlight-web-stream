@@ -70,6 +70,7 @@ async fn main2() -> Result<(), anyhow::Error> {
     #[cfg(not(debug_assertions))]
     let config_js_path = "./static/config.js";
 
+    // TODO: config.js should be hosted on not written and put public config js in bindings
     match serde_json::to_string(&PublicConfigJs {
         path_prefix: config.web_path_prefix.clone(),
     }) {
