@@ -215,7 +215,6 @@ export class StreamInput {
         if (this.config.mouseScrollMode == "highres") {
             this.sendMouseWheelHighRes(event.deltaX, -event.deltaY)
         } else if (this.config.mouseScrollMode == "normal") {
-            // TODO: divide
             this.sendMouseWheel(event.deltaX, -event.deltaY)
         }
     }
