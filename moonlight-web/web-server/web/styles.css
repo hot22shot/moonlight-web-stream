@@ -511,6 +511,8 @@ input[type=number] {
     transform: translate(-50%, -50%);
     max-width: 100vw;
     max-height: 100vh;
+    min-width: 100vmin;
+    min-height: 100vmin;
     width: auto;
     height: auto;
 }
