@@ -4,8 +4,6 @@ import { ControllerConfig, extractGamepadState, GamepadState, SUPPORTED_BUTTONS 
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
-// TODO: send keycode option
-
 // Smooth scrolling multiplier
 const TOUCH_SCROLL_MULTIPLIER = 10
 // Distance until a touch is 100% a click
