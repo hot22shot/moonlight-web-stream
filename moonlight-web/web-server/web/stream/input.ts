@@ -338,6 +338,19 @@ export class StreamInput {
                 const primaryTouch = this.touchTracker.get(this.primaryTouch)
                 if (primaryTouch && !primaryTouch.mouseMoved && !primaryTouch.mouseClicked) {
                     this.touchMouseAction = "scroll"
+
+                    let middleX = 0;
+                    let middleY = 0;
+                    for (const touch of this.touchTracker.values()) {
+                        middleX += touch.x;
+                        middleY += touch.y;
+                    }
+                    // Tracker size = 2 so there will only be 2 elements
+                    middleX /= 2;
+                    middleY /= 2;
+
+                    primaryTouch.mouseMoved = true
+                    this.sendMousePositionClientCoordinates(middleX, middleY, rect)
                 }
             } else if (this.touchTracker.size == 3) {
                 this.touchMouseAction = "screenKeyboard"
