@@ -44,7 +44,6 @@ async fn main() {
 }
 
 async fn exit() -> Result<(), anyhow::Error> {
-    info!("enter your credentials in the config (server/config.json)");
     info!("Press Enter to close this window");
 
     let mut line = String::new();
@@ -59,6 +58,8 @@ async fn main2() -> Result<(), anyhow::Error> {
     // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
     if config.credentials == "default" {
+        info!("Enter your credentials in the config (server/config.json)");
+
         return Ok(());
     }
     let config = Data::new(config);
