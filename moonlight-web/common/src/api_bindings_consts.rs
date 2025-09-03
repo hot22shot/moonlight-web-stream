@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! ts_consts {
-    ($struct_vis: vis $struct: ident $(( $test_name: ident : $path: expr ))? : $($vis: vis const $name: ident : $ty: ident = $const: expr;)*) => {
+    ($struct_vis: vis $struct: ident $(( $test_name: ident : $path: expr ))? $( as $record_ty: ident)? : $($vis: vis const $name: ident : $ty: ident = $const: expr;)*) => {
         $struct_vis struct $struct;
 
         #[allow(unused)]
@@ -21,8 +21,12 @@ macro_rules! ts_consts {
 
                 let mut decl = String::new();
 
-                write!(&mut decl, "const {} = ", stringify!($struct)).unwrap();
-                write!(&mut decl, "{}", Self::inline()).unwrap();
+                write!(&mut decl, "const {}", stringify!($struct)).unwrap();
+                $(
+                    let value_ty = <$record_ty as TS>::inline();
+                    write!(&mut decl, ": Record<string, {value_ty}>").unwrap();
+                )?
+                write!(&mut decl, " = {}", Self::inline()).unwrap();
                 write!(&mut decl, ";").unwrap();
 
                 decl

@@ -325,7 +325,7 @@ pub enum StreamServerGeneralMessage {
 // Virtual-Key Codes
 // https://github.com/awakecoding/Win32Keyboard/blob/master/vkcodes.h
 ts_consts!(
-    pub StreamKeys(export_bindings_keys: EXPORT_PATH):
+    pub StreamKeys(export_bindings_keys: EXPORT_PATH) as u16:
 
     /* Mouse buttons */
 
