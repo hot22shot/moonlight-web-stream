@@ -23,8 +23,8 @@ export type StreamSettings = {
 export function defaultStreamSettings(): StreamSettings {
     return {
         sidebarEdge: "left",
-        bitrate: 50000,
-        packetSize: 1024,
+        bitrate: 10000,
+        packetSize: 4096,
         fps: 60,
         videoSampleQueueSize: 6,
         videoSize: "1080p",
