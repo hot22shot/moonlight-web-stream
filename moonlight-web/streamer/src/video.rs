@@ -80,7 +80,6 @@ enum VideoCodec {
 pub struct TrackSampleVideoDecoder {
     decoder: TrackSampleDecoder,
     supported_formats: SupportedVideoFormats,
-    clock_rate: u32,
     // Video important
     video_codec: Option<VideoCodec>,
     needs_idr: Arc<AtomicBool>,
@@ -96,7 +95,6 @@ impl TrackSampleVideoDecoder {
         Self {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
             supported_formats,
-            clock_rate: 90000,
             video_codec: None,
             needs_idr: Default::default(),
             frame_rate: 0,
