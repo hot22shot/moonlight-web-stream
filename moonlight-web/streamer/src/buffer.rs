@@ -41,6 +41,16 @@ where
     pub fn get_bool(&mut self) -> bool {
         self.get_u8() != 0
     }
+
+    pub fn get_i8(&mut self) -> i8 {
+        let byte = self.get_u8();
+        if self.little_endian {
+            i8::from_le_bytes([byte])
+        } else {
+            i8::from_be_bytes([byte])
+        }
+    }
+
     pub fn get_u16(&mut self) -> u16 {
         let mut buffer = [0u8; 2];
         self.get_u8_array(&mut buffer);

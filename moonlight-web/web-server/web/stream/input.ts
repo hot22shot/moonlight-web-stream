@@ -5,7 +5,9 @@ import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 
 // Smooth scrolling multiplier
-const TOUCH_SCROLL_MULTIPLIER = 10
+const TOUCH_HIGH_RES_SCROLL_MULTIPLIER = 10
+// Normal scrolling multiplier
+const TOUCH_SCROLL_MULTIPLIER = 1
 // Distance until a touch is 100% a click
 const TOUCH_AS_CLICK_MAX_DISTANCE = 30
 // Time till it's registered as a click, else it might be scrolling
@@ -30,8 +32,11 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
     channel.send(readBuffer.buffer)
 }
 
+export type MouseScrollMode = "highres" | "normal"
+
 export type StreamInputConfig = {
     mouseMode: "relative" | "follow" | "pointAndDrag"
+    mouseScrollMode: MouseScrollMode
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
     controllerConfig: ControllerConfig
 }
@@ -39,6 +44,7 @@ export type StreamInputConfig = {
 export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
+        mouseScrollMode: "highres",
         touchMode: "pointAndDrag",
         controllerConfig: {
             invertAB: false,
@@ -206,7 +212,12 @@ export class StreamInput {
         }
     }
     onMouseWheel(event: WheelEvent) {
-        this.sendMouseWheel(event.deltaX, -event.deltaY)
+        if (this.config.mouseScrollMode == "highres") {
+            this.sendMouseWheelHighRes(event.deltaX, -event.deltaY)
+        } else if (this.config.mouseScrollMode == "normal") {
+            // TODO: divide
+            this.sendMouseWheel(event.deltaX, -event.deltaY)
+        }
     }
 
     sendMouseMove(movementX: number, movementY: number) {
@@ -256,12 +267,21 @@ export class StreamInput {
 
         trySendChannel(this.mouse, this.buffer)
     }
-    sendMouseWheel(deltaX: number, deltaY: number) {
+    sendMouseWheelHighRes(deltaX: number, deltaY: number) {
         this.buffer.reset()
 
         this.buffer.putU8(3)
         this.buffer.putI16(deltaX)
         this.buffer.putI16(deltaY)
+
+        trySendChannel(this.mouse, this.buffer)
+    }
+    sendMouseWheel(deltaX: number, deltaY: number) {
+        this.buffer.reset()
+
+        this.buffer.putU8(4)
+        this.buffer.putI8(deltaX)
+        this.buffer.putI8(deltaY)
 
         trySendChannel(this.mouse, this.buffer)
     }
@@ -414,7 +434,11 @@ export class StreamInput {
                     }
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
-                    this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
+                    if (this.config.mouseScrollMode == "highres") {
+                        this.sendMouseWheelHighRes(-movementX * TOUCH_HIGH_RES_SCROLL_MULTIPLIER, movementY * TOUCH_HIGH_RES_SCROLL_MULTIPLIER)
+                    } else if (this.config.mouseScrollMode == "normal") {
+                        this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
+                    }
                 } else if (this.touchMouseAction == "screenKeyboard") {
                     const distanceY = touch.clientY - oldTouch.originY
 

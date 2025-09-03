@@ -43,6 +43,12 @@ export class ByteBuffer {
         this.putU8(data ? 1 : 0)
     }
 
+    putI8(data: number) {
+        const view = new DataView(this.buffer.buffer)
+        view.setInt8(this.position, data)
+        this.bytesUsed(1, false)
+    }
+
     putU16(data: number) {
         const view = new DataView(this.buffer.buffer)
         view.setUint16(this.position, data, this.littleEndian)

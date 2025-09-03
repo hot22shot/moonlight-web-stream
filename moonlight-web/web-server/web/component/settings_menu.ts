@@ -1,4 +1,5 @@
 import { ControllerConfig } from "../stream/gamepad.js";
+import { MouseScrollMode } from "../stream/input.js";
 import { Component, ComponentEvent } from "./index.js";
 import { InputComponent, SelectComponent } from "./input.js";
 import { SidebarEdge } from "./sidebar/index.js";
@@ -17,6 +18,7 @@ export type StreamSettings = {
     dontForceH264: boolean
     playAudioLocal: boolean
     audioSampleQueueSize: number
+    mouseScrollMode: MouseScrollMode
     controllerConfig: ControllerConfig
 }
 
@@ -35,6 +37,7 @@ export function defaultStreamSettings(): StreamSettings {
         dontForceH264: false,
         playAudioLocal: false,
         audioSampleQueueSize: 20,
+        mouseScrollMode: "highres",
         controllerConfig: {
             invertAB: false,
             invertXY: false
@@ -86,8 +89,10 @@ export class StreamSettingsComponent implements Component {
 
     private audioHeader: HTMLHeadingElement = document.createElement("h2")
     private playAudioLocal: InputComponent
-
     private audioSampleQueueSize: InputComponent
+
+    private mouseHeader: HTMLHeadingElement = document.createElement("h2")
+    private mouseScrollMode: SelectComponent
 
     private controllerHeader: HTMLHeadingElement = document.createElement("h2")
     private controllerInvertAB: InputComponent
@@ -213,6 +218,23 @@ export class StreamSettingsComponent implements Component {
         this.audioSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
         this.audioSampleQueueSize.mount(this.divElement)
 
+        // Mouse
+        this.mouseHeader.innerText = "Mouse"
+        this.divElement.appendChild(this.mouseHeader)
+
+        this.mouseScrollMode = new SelectComponent("mouseScrollMode",
+            [
+                { value: "highres", name: "High Res" },
+                { value: "normal", name: "Normal" }
+            ],
+            {
+                displayName: "Scroll Mode",
+                preSelectedOption: settings?.mouseScrollMode || defaultSettings.mouseScrollMode
+            }
+        )
+        this.mouseScrollMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.mouseScrollMode.mount(this.divElement)
+
         // Controller
         if (window.isSecureContext) {
             this.controllerHeader.innerText = "Controller"
@@ -277,6 +299,8 @@ export class StreamSettingsComponent implements Component {
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()
         settings.audioSampleQueueSize = parseInt(this.audioSampleQueueSize.getValue())
+
+        settings.mouseScrollMode = this.mouseScrollMode.getValue() as any
 
         settings.controllerConfig.invertAB = this.controllerInvertAB.isChecked()
         settings.controllerConfig.invertXY = this.controllerInvertXY.isChecked()
