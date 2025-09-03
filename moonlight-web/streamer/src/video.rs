@@ -84,8 +84,7 @@ pub struct TrackSampleVideoDecoder {
     // Video important
     video_codec: Option<VideoCodec>,
     needs_idr: Arc<AtomicBool>,
-    frame_time: f32,
-    last_frame_number: i32,
+    frame_rate: u32,
 }
 
 impl TrackSampleVideoDecoder {
@@ -100,8 +99,7 @@ impl TrackSampleVideoDecoder {
             clock_rate: 90000,
             video_codec: None,
             needs_idr: Default::default(),
-            frame_time: 0.0,
-            last_frame_number: 0,
+            frame_rate: 0,
         }
     }
 }
@@ -189,7 +187,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             }
         }
 
-        self.frame_time = 1.0 / redraw_rate as f32;
+        self.frame_rate = redraw_rate;
 
         0
     }
@@ -197,12 +195,9 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn stop(&mut self) {}
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let frame_time = self.frame_time;
-        let duration = Duration::from_secs_f32(frame_time);
-        let timestamp = SystemTime::UNIX_EPOCH + unit.presentation_time;
-        let packet_timestamp =
-            (unit.frame_number as f32 * self.frame_time * self.clock_rate as f32) as u32;
-        self.last_frame_number = unit.frame_number;
+        let duration = Duration::from_millis(1);
+        let timestamp = SystemTime::now();
+        let packet_timestamp = 0;
 
         match &mut self.video_codec {
             // -- H264
