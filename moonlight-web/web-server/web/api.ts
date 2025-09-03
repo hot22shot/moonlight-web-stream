@@ -141,6 +141,27 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: { respo
     return [url, request]
 }
 
+export class FetchError extends Error {
+    private response?: Response
+
+    constructor(type: "timeout", endpoint: string, method: string)
+    constructor(type: "failed", endpoint: string, method: string, response: Response)
+
+    constructor(type: "timeout" | "failed", endpoint: string, method: string, response?: Response) {
+        if (type == "timeout") {
+            super(`failed to fetch ${method} at ${endpoint} because of timeout`)
+        } else {
+            super(`failed to fetch ${method} at ${endpoint} with code ${response?.status}`)
+        }
+
+        this.response = response
+    }
+
+    getResponse(): Response | null {
+        return this.response ?? null
+    }
+}
+
 export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any>
 export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response>
 
@@ -150,13 +171,13 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
     const timeoutAbort = new AbortController()
     request.signal = timeoutAbort.signal
     setTimeout(() => timeoutAbort.abort(
-        `failed to fetch ${method} at ${endpoint} because of timeout`
+        new FetchError("timeout", endpoint, method)
     ), API_TIMEOUT)
 
     const response = await fetch(url, request)
 
     if (!response.ok) {
-        throw `failed to fetch ${method} at ${endpoint} with code ${response.status}`
+        throw new FetchError("failed", endpoint, method, response)
     }
 
     if (init?.response == "ignore") {

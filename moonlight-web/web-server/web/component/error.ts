@@ -1,3 +1,4 @@
+import { FetchError } from "../api.js"
 import { Component } from "../component/index.js"
 import { ERROR_IMAGE, WARN_IMAGE } from "../resources/index.js"
 import { ListComponent } from "./list.js"
@@ -12,8 +13,8 @@ if (errorListElement) {
 
 let alertedErrorListNotFound = false
 
-export function showErrorPopup(message: string, fatal: boolean = false) {
-    console.error(message)
+export function showErrorPopup(message: string, fatal: boolean = false, errorObject?: any) {
+    console.error(message, errorObject)
 
     if (!errorListElement) {
         if (!alertedErrorListNotFound) {
@@ -39,10 +40,14 @@ export function showErrorPopup(message: string, fatal: boolean = false) {
 }
 
 function handleError(event: ErrorEvent) {
-    showErrorPopup(`Error: ${event.error}`)
+    const fatal = event instanceof FetchError
+
+    showErrorPopup(`${event.error}`, fatal, event)
 }
 function handleRejection(event: PromiseRejectionEvent) {
-    showErrorPopup(`Error: ${event.reason}`)
+    const fatal = event instanceof FetchError
+
+    showErrorPopup(`${event.reason}`, fatal, event)
 }
 
 window.addEventListener("error", handleError)

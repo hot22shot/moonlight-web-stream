@@ -1,4 +1,4 @@
-import { Api, getApi, apiPutHost } from "./api.js";
+import { Api, getApi, apiPutHost, FetchError } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -110,16 +110,23 @@ class MainApp implements Component {
         const modal = new AddHostModal()
 
         let host = await showModal(modal);
-        if (host) {
-            const newHost = await apiPutHost(this.api, host)
 
-            if (newHost) {
-                this.hostList.insertList(newHost.host_id, newHost)
-            } else {
-                showErrorPopup("couldn't add host")
+        if (host) {
+            let newHost
+            try {
+                newHost = await apiPutHost(this.api, host)
+            } catch (e) {
+                if (e instanceof FetchError) {
+                    const response = e.getResponse()
+                    if (response && response.status == 400) {
+                        showErrorPopup("couldn't add host: not found")
+                        return
+                    }
+                }
+                throw e
             }
-        } else {
-            showErrorPopup("couldn't add host")
+
+            this.hostList.insertList(newHost.host_id, newHost)
         }
     }
 
