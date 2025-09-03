@@ -115,7 +115,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         redraw_rate: u32,
         _flags: i32,
     ) -> i32 {
-        info!("[Stream] Streaming with format: {format:?}");
+        info!("[Stream] Stream setup: {width}x{height}x{redraw_rate} and {format:?}");
 
         {
             let mut video_size = self.decoder.stream.video_size.blocking_lock();
