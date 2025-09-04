@@ -1,7 +1,5 @@
-interface Config {
-    path_prefix: string
-}
+import { ConfigJs } from "./api_bindings"
 
-declare const CONFIG: Config | undefined
+declare const CONFIG: ConfigJs | undefined
 
 export default CONFIG
