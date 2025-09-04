@@ -6,8 +6,8 @@ use moonlight_common::{
     pair::{ClientAuth, generate_new_client},
     stream::{
         MoonlightInstance,
+        bindings::{ActiveGamepads, ColorRange, Colorspace},
         debug::DebugHandler,
-        stream::{ActiveGamepads, ColorRange, Colorspace},
     },
 };
 
@@ -21,8 +21,6 @@ use tokio::{
 use crate::gstreamer::gstreamer_pipeline;
 
 mod gstreamer;
-
-// TODO: fix this
 
 #[tokio::main]
 async fn main() {

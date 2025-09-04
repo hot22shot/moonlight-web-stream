@@ -1,23 +1,20 @@
-use std::{str::FromStr, thread::spawn, time::Duration};
+use std::{thread::spawn, time::Duration};
 
 use gstreamer::{
-    Buffer, BufferFlags, Caps, ClockTime, DebugGraphDetails, Element, ElementFactory, Format,
-    Pipeline, State, Structure,
+    Buffer, BufferFlags, ClockTime, DebugGraphDetails, Element, ElementFactory, Format, Pipeline,
+    State, Structure,
     event::Eos,
-    glib::{
-        self, Value, ValueArray,
-        gobject_ffi::{GObject, GValue, GValueArray},
-        object::ObjectExt,
-    },
+    glib::{self, object::ObjectExt},
     prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManual},
 };
 use gstreamer_app::AppSrc;
 use moonlight_common::stream::{
-    audio::{AudioConfig, AudioDecoder, OpusMultistreamConfig},
-    stream::Capabilities,
-    video::{
-        DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoDecoder, VideoFormat,
+    audio::AudioDecoder,
+    bindings::{
+        AudioConfig, Capabilities, DecodeResult, FrameType, OpusMultistreamConfig,
+        SupportedVideoFormats, VideoDecodeUnit, VideoFormat,
     },
+    video::VideoDecoder,
 };
 
 pub fn init() {
@@ -207,9 +204,9 @@ impl GStreamerAudioHandler {
 impl AudioDecoder for GStreamerAudioHandler {
     fn setup(
         &mut self,
-        audio_config: AudioConfig,
+        _audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
-        ar_flags: i32,
+        _ar_flags: i32,
     ) -> i32 {
         println!("Stream Config: {:?}", stream_config);
         // self.audio_config = Some(audio_config);
