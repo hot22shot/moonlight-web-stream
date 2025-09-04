@@ -188,7 +188,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn stop(&mut self) {}
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let duration = Duration::from_millis(1);
+        let duration = Duration::from_secs_f64(1.0 / self.frame_rate as f64);
         let timestamp = SystemTime::now();
         let packet_timestamp = 0;
 
