@@ -143,8 +143,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 }
                 if let Some(_max_bitrate) = packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
                 {
-                    // TODO: set moonlight bitrate if possible?
-                    // TODO: make this an option
+                    // Moonlight doesn't support dynamic bitrate changing :(
                 }
             },
         ) {

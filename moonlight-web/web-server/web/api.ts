@@ -9,7 +9,6 @@ const API_TIMEOUT = 3000
 
 let currentApi: Api | null = null
 
-// TODO: style api input file
 export async function getApi(host_url?: string): Promise<Api> {
     if (currentApi) {
         return currentApi

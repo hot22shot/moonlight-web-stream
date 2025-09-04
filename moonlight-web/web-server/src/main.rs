@@ -7,14 +7,14 @@ use tokio::{
 };
 
 use actix_web::{App, HttpServer, web::Data};
-use log::{LevelFilter, info, warn};
+use log::{LevelFilter, info};
 use serde::{Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 use crate::{
     api::api_service,
     data::{ApiData, RuntimeApiData},
-    web::web_service,
+    web::{web_config_js_service, web_service},
 };
 
 mod api;
@@ -64,36 +64,11 @@ async fn main2() -> Result<(), anyhow::Error> {
     }
     let config = Data::new(config);
 
-    // Write the static config.js
-    #[cfg(debug_assertions)]
-    let config_js_path = "./dist/config.js";
-    #[cfg(not(debug_assertions))]
-    let config_js_path = "./static/config.js";
-
-    // TODO: config.js should be hosted on not written and put public config js in bindings
-    match serde_json::to_string(&PublicConfigJs {
-        path_prefix: config.web_path_prefix.clone(),
-    }) {
-        Ok(json) => {
-            if let Err(err) = fs::write(config_js_path, &format!("export default {json}")).await {
-                warn!(
-                    "failed to write to the web config.js. The Web Interface might fail to load! {err:?}"
-                );
-            }
-        }
-        Err(err) => {
-            warn!(
-                "failed to write to the web config.js. The Web Interface might fail to load! {err:?}"
-            );
-        }
-    }
-
-    let bind_address = config.bind_address;
-
     // Load Data
     let data = read_or_default::<ApiData>(&config.data_path).await;
     let data = RuntimeApiData::load(&config, data).await;
 
+    let bind_address = config.bind_address;
     let server = HttpServer::new({
         let config = config.clone();
 
@@ -101,6 +76,7 @@ async fn main2() -> Result<(), anyhow::Error> {
             App::new()
                 .app_data(config.clone())
                 .service(api_service(data.clone(), config.credentials.to_string()))
+                .service(web_config_js_service())
                 .service(web_service())
         }
     });
@@ -123,11 +99,6 @@ async fn main2() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
-}
-
-#[derive(Debug, Serialize)]
-struct PublicConfigJs {
-    path_prefix: String,
 }
 
 async fn read_or_default<T>(path: impl AsRef<Path>) -> T

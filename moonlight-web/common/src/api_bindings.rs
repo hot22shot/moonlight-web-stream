@@ -12,6 +12,12 @@ use crate::ts_consts;
 
 const EXPORT_PATH: &str = "../../web-server/web/api_bindings.ts";
 
+#[derive(Serialize, Deserialize, Debug, TS, Clone)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct ConfigJs {
+    pub path_prefix: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum HostState {

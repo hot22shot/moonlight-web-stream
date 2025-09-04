@@ -1,5 +1,7 @@
 use actix_files::Files;
-use actix_web::dev::HttpServiceFactory;
+use actix_web::{HttpResponse, dev::HttpServiceFactory, get, services, web::Data};
+use common::{api_bindings::ConfigJs, config::Config};
+use log::warn;
 
 pub fn web_service() -> impl HttpServiceFactory {
     #[cfg(debug_assertions)]
@@ -9,4 +11,26 @@ pub fn web_service() -> impl HttpServiceFactory {
     let files = Files::new("/", "static").index_file("index.html");
 
     files
+}
+
+pub fn web_config_js_service() -> impl HttpServiceFactory {
+    services![config_js]
+}
+#[get("/config.js")]
+async fn config_js(config: Data<Config>) -> HttpResponse {
+    let config_json = match serde_json::to_string(&ConfigJs {
+        path_prefix: config.web_path_prefix.clone(),
+    }) {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(
+                "failed to write to the web config.js. The Web Interface might fail to load! {err:?}"
+            );
+
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let config_js = format!("export default {config_json}");
+
+    HttpResponse::Ok().body(config_js)
 }
