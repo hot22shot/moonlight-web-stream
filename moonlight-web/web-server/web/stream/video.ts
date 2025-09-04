@@ -19,15 +19,13 @@ const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string, fmtpLine: Arra
     { key: "H264_HIGH8_444", mimeType: "video/H264", fmtpLine: ["packetization-mode=1", "profile-level-id=640032"] },
     // H265
     // TODO: check level id in check function
-    // { key: "H265", mimeType: "video/H265", fmtpLine: ["profile-id=1", "tier-flag=0", "tx-mode=SRST"] },
     { key: "H265", mimeType: "video/H265", fmtpLine: [] }, // <-- Safari H265 fmtpLine is empty (for some dumb reason)
     { key: "H265_MAIN10", mimeType: "video/H265", fmtpLine: ["profile-id=2", "tier-flag=0", "tx-mode=SRST"] },
     { key: "H265_REXT8_444", mimeType: "video/H265", fmtpLine: ["profile-id=4", "tier-flag=0", "tx-mode=SRST"] },
     { key: "H265_REXT10_444", mimeType: "video/H265", fmtpLine: ["profile-id=5", "tier-flag=0", "tx-mode=SRST"] },
     // Av1
-    // TODO: check level id in check function
-    { key: "AV1_MAIN8", mimeType: "video/AV1", fmtpLine: ["profile=0"] },
-    { key: "AV1_MAIN10", mimeType: "video/AV1", fmtpLine: ["profile=0"] },
+    { key: "AV1_MAIN8", mimeType: "video/AV1", fmtpLine: [] }, // <-- Safari AV1 fmtpLine is empty
+    { key: "AV1_MAIN10", mimeType: "video/AV1", fmtpLine: [] }, // <-- Safari AV1 fmtpLine is empty
     { key: "AV1_HIGH8", mimeType: "video/AV1", fmtpLine: ["profile=1"] },
     { key: "AV1_HIGH10", mimeType: "video/AV1", fmtpLine: ["profile=1"] },
 ]
@@ -70,7 +68,7 @@ export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
             for (const codec of CAPABILITIES_CODECS) {
                 let compatible = true
 
-                if (capCodec.mimeType != codec.mimeType) {
+                if (capCodec.mimeType.toLowerCase() != codec.mimeType.toLowerCase()) {
                     compatible = false
                 }
                 for (const fmtpLineAttrib of codec.fmtpLine) {
