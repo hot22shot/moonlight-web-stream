@@ -49,7 +49,7 @@ export async function getApi(host_url?: string): Promise<Api> {
 
 class ApiCredentialsPrompt extends FormModal<string> {
 
-    private text: HTMLElement = document.createElement("p")
+    private text: HTMLElement = document.createElement("h3")
     private credentials: InputComponent
     private credentialsFile: InputComponent
 

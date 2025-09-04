@@ -2,7 +2,7 @@ import { Component, ComponentEvent } from "./index.js"
 
 export class ElementWithLabel implements Component {
     protected div: HTMLDivElement = document.createElement("div")
-    private label: HTMLLabelElement = document.createElement("label")
+    protected label: HTMLLabelElement = document.createElement("label")
 
     constructor(internalName: string, displayName?: string) {
         if (displayName) {
@@ -33,10 +33,13 @@ export type InputChangeListener = (event: ComponentEvent<InputComponent>) => voi
 
 export class InputComponent extends ElementWithLabel {
 
+    private fileLabel: HTMLDivElement | null = null
     private input: HTMLInputElement = document.createElement("input")
 
     constructor(internalName: string, type: string, displayName?: string, init?: InputInit) {
         super(internalName, displayName)
+
+        this.div.classList.add("input-div")
 
         this.input.id = internalName
         this.input.type = type
@@ -58,6 +61,18 @@ export class InputComponent extends ElementWithLabel {
         if (init && init.inputMode != null) {
             this.input.inputMode = init.inputMode
         }
+
+        if (type == "file") {
+            this.fileLabel = document.createElement("div")
+            this.fileLabel.innerText = this.label.innerText
+            this.fileLabel.classList.add("file-label")
+
+            this.label.innerText = "Open File"
+            this.label.classList.add("file-button")
+
+            this.div.insertBefore(this.fileLabel, this.label)
+        }
+
         this.div.appendChild(this.input)
 
         this.input.addEventListener("change", () => {

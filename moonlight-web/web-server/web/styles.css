@@ -16,7 +16,27 @@ h3 {
     margin-bottom: 8px;
 }
 
+/** Input Div */
+.input-div {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+/** Hide the file input */
+input[type="file"] {
+    display: none;
+}
+
+/** Label */
+.file-label,
+label {
+    cursor: default;
+    margin-right: 5px;
+}
+
 /** Button */
+.file-button,
 button {
     background-color: rgba(63, 81, 181, 1.0);
     border: none;
@@ -27,14 +47,10 @@ button {
     cursor: pointer;
 }
 
+.file-button:hover,
 button:hover {
     transition: box-shadow 0.2s;
     box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.2);
-}
-
-/** Label */
-label {
-    margin-right: 5px;
 }
 
 /** Checkbox */
@@ -81,6 +97,7 @@ input[type="checkbox"]:checked::after {
 textarea,
 select,
 input[type=text],
+input[type=password],
 input[type=number] {
     color: white;
     font-size: 1.2rem;
@@ -100,6 +117,7 @@ input[type=number] {
 textarea:hover:enabled,
 select:hover:enabled,
 input[type=text]:hover:enabled,
+input[type=password]:hover:enabled,
 input[type="number"]:hover:enabled {
     transition: all 0.2s;
     background-color: rgba(0, 0, 0, 0);
@@ -109,6 +127,7 @@ input[type="number"]:hover:enabled {
 textarea:disabled,
 select:disabled,
 input[type=text]:disabled,
+input[type=password]:disabled,
 input[type=number]:disabled {
     color: gray;
 }
