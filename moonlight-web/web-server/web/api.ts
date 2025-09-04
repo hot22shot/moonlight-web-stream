@@ -1,4 +1,5 @@
 import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { showErrorPopup } from "./component/error.js";
 import { InputComponent } from "./component/input.js";
 import { FormModal } from "./component/modal/form.js";
 import { showMessage, showModal } from "./component/modal/index.js";
@@ -192,7 +193,21 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
 }
 
 export async function apiAuthenticate(api: Api): Promise<boolean> {
-    const response = await fetchApi(api, "/authenticate", "get", { response: "ignore" })
+    let response
+    try {
+        response = await fetchApi(api, "/authenticate", "get", { response: "ignore" })
+    } catch (e) {
+        if (e instanceof FetchError) {
+            const response = e.getResponse()
+            if (response && response.status == 403) {
+                return false
+            } else {
+                showErrorPopup(e.message)
+                return false
+            }
+        }
+        throw e
+    }
 
     return response != null
 }
