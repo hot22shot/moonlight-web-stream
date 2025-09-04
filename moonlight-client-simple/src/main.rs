@@ -22,6 +22,8 @@ use crate::gstreamer::gstreamer_pipeline;
 
 mod gstreamer;
 
+// TODO: fix this
+
 #[tokio::main]
 async fn main() {
     // Configuration
