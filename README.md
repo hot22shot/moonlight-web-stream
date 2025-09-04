@@ -200,7 +200,7 @@ This will set the port range on the web server used to communicate when using We
 ```
 
 ### WebRTC Ice Servers
-A list of ice server for webrtc to use.
+A list of ice servers for webrtc to use.
 
 ```json
 {
