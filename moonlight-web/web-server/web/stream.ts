@@ -431,7 +431,12 @@ class ViewerSidebar implements Component, Sidebar {
         this.lockMouseButton.addEventListener("click", async () => {
             setSidebarExtended(false)
 
-            await app.getElement().requestPointerLock()
+            const element = await app.getElement()
+            if ("requestPointerLock" in element && typeof element.requestPointerLock == "function") {
+                await element.requestPointerLock()
+            } else {
+                await showMessage("Pointer Lock not Supported")
+            }
         })
         this.div.appendChild(this.lockMouseButton)
 
