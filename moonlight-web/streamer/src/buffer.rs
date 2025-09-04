@@ -126,19 +126,26 @@ impl<T> ByteBuffer<T>
 where
     T: AsMut<[u8]>,
 {
-    pub fn put_u8_array(&mut self, array: &[u8]) {
-        self.buffer.as_mut()[self.position..].copy_from_slice(array);
+    pub fn put_u8_array(&mut self, array: &[u8]) -> bool {
+        if self.buffer.as_mut().len() - self.position < array.len() {
+            return false;
+        }
+        self.buffer.as_mut()[self.position..(self.position + array.len())].copy_from_slice(array);
+
+        self.position += array.len();
+
+        true
     }
-    pub fn put_u8(&mut self, data: u8) {
-        self.put_u8_array(&[data]);
+    pub fn put_u8(&mut self, data: u8) -> bool {
+        self.put_u8_array(&[data])
     }
-    pub fn put_u16(&mut self, data: u16) {
+    pub fn put_u16(&mut self, data: u16) -> bool {
         let bytes: [u8; 2] = if self.little_endian {
             u16::to_le_bytes(data)
         } else {
             u16::to_be_bytes(data)
         };
 
-        self.put_u8_array(&bytes);
+        self.put_u8_array(&bytes)
     }
 }

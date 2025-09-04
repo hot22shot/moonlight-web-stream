@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use log::info;
+use log::{debug, info};
 use moonlight_common::stream::{
     bindings::{ConnectionStatus, Stage},
     connection::ConnectionListener,

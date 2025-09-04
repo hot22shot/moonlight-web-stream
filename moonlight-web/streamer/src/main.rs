@@ -74,7 +74,7 @@ mod video;
 #[tokio::main]
 async fn main() {
     #[cfg(debug_assertions)]
-    let log_level = LevelFilter::Debug;
+    let log_level = LevelFilter::Info;
     #[cfg(not(debug_assertions))]
     let log_level = LevelFilter::Info;
 

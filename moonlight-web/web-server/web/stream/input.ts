@@ -108,7 +108,7 @@ export class StreamInput {
         this.touch.onmessage = this.onTouchMessage.bind(this)
 
         this.controllers = peer.createDataChannel("controllers")
-        this.controllers.addEventListener("message", this.onControllerMessage)
+        this.controllers.addEventListener("message", this.onControllerMessage.bind(this))
     }
 
     setConfig(config: StreamInputConfig) {
