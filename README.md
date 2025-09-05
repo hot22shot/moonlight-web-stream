@@ -9,12 +9,25 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 
 ## Overview
 
+- [Images](#images)
 - [Setup](#setup)
   - [Streaming over the Internet](#streaming-over-the-internet)
   - [Configuring https](#configuring-https)
   - [Proxying via Apache 2](#proxying-via-apache-2)
 - [Config](#config)
 - [Building](#building)
+
+## Images
+
+### Host List
+![View: Hosts](/readme/hostView.jpg)
+
+### Games List
+![View: Games View](/readme/gamesView.jpg)
+
+### Streaming
+![View: Streaming, sidebar closed](/readme/stream.jpg)
+![View: Streaming, sidebar opened](/readme/streamExtended.jpg)
 
 ## Setup
 
