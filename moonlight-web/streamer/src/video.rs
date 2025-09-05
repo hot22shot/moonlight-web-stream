@@ -79,7 +79,7 @@ pub struct TrackSampleVideoDecoder {
     // Video important
     video_codec: Option<VideoCodec>,
     needs_idr: Arc<AtomicBool>,
-    frame_rate: u32,
+    old_presentation_time: Duration,
 }
 
 impl TrackSampleVideoDecoder {
@@ -93,7 +93,7 @@ impl TrackSampleVideoDecoder {
             supported_formats,
             video_codec: None,
             needs_idr: Default::default(),
-            frame_rate: 0,
+            old_presentation_time: Duration::ZERO,
         }
     }
 }
@@ -180,15 +180,13 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             }
         }
 
-        self.frame_rate = redraw_rate;
-
         0
     }
     fn start(&mut self) {}
     fn stop(&mut self) {}
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let duration = Duration::from_secs_f64(1.0 / self.frame_rate as f64);
+        let duration = unit.presentation_time - self.old_presentation_time;
         let timestamp = SystemTime::now();
         let packet_timestamp = 0;
 
@@ -264,6 +262,8 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 unreachable!()
             }
         }
+
+        self.old_presentation_time = unit.presentation_time;
 
         if self
             .needs_idr
