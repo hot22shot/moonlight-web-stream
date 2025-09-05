@@ -279,7 +279,7 @@ class ViewerApp implements Component {
             videoMultiplier = boundingRect.height / videoSize[1]
 
             // Note: Both in boundingRect / page scale
-            const boundingRectHalfWidth = boundingRect.x + boundingRect.width / 2
+            const boundingRectHalfWidth = boundingRect.width / 2
             const videoHalfWidth = videoSize[0] * videoMultiplier / 2
 
             x += boundingRectHalfWidth - videoHalfWidth
@@ -287,7 +287,7 @@ class ViewerApp implements Component {
             // Same as above but inverted
             videoMultiplier = boundingRect.width / videoSize[0]
 
-            const boundingRectHalfHeight = boundingRect.y + boundingRect.height / 2
+            const boundingRectHalfHeight = boundingRect.height / 2
             const videoHalfHeight = videoSize[1] * videoMultiplier / 2
 
             y += boundingRectHalfHeight - videoHalfHeight
