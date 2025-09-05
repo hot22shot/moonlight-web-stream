@@ -1,11 +1,11 @@
 import { Api, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { InfoEvent, Stream } from "./stream/index.js"
+import { getStreamerSize, InfoEvent, Stream } from "./stream/index.js"
 import { Modal, showMessage, showModal } from "./component/modal/index.js";
 import { setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { defaultStreamSettings, getLocalStreamSettings } from "./component/settings_menu.js";
+import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { getStandardVideoFormats, getSupportedVideoFormats, VideoCodecSupport } from "./stream/video.js";
 import { StreamCapabilities, StreamKeys } from "./api_bindings.js";
@@ -61,16 +61,24 @@ class ViewerApp implements Component {
 
     private stream: Stream | null = null
 
+    private streamerSize: [number, number]
+
     constructor(api: Api, hostId: number, appId: number) {
         this.api = api
-
 
         // Configure sidebar
         this.sidebar = new ViewerSidebar(this)
         setSidebar(this.sidebar)
 
         // Configure stream
-        this.startStream(hostId, appId)
+        const settings = getLocalStreamSettings() ?? defaultStreamSettings()
+
+        let browserWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
+        let browserHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+
+        this.startStream(hostId, appId, settings, [browserWidth, browserHeight])
+
+        this.streamerSize = getStreamerSize(settings, [browserWidth, browserHeight])
 
         // Configure video element
         this.videoElement.classList.add("video-stream")
@@ -106,11 +114,7 @@ class ViewerApp implements Component {
         }
     }
 
-    private async startStream(hostId: number, appId: number) {
-        let viewerWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
-        let viewerHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
-
-        const settings = getLocalStreamSettings() ?? defaultStreamSettings()
+    private async startStream(hostId: number, appId: number, settings: StreamSettings, browserSize: [number, number]) {
         setSidebarStyle({
             edge: settings.sidebarEdge,
         })
@@ -120,7 +124,7 @@ class ViewerApp implements Component {
             supportedVideoFormats = await getSupportedVideoFormats()
         }
 
-        this.stream = new Stream(this.api, hostId, appId, settings, supportedVideoFormats, [viewerWidth, viewerHeight])
+        this.stream = new Stream(this.api, hostId, appId, settings, supportedVideoFormats, browserSize)
 
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))
@@ -188,7 +192,7 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onMouseDown(event, this.videoElement.getBoundingClientRect());
+        this.stream?.getInput().onMouseDown(event, this.getStreamRect());
     }
     onMouseButtonUp(event: MouseEvent) {
         this.onUserInteraction()
@@ -198,7 +202,7 @@ class ViewerApp implements Component {
     }
     onMouseMove(event: MouseEvent) {
         event.preventDefault()
-        this.stream?.getInput().onMouseMove(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onMouseMove(event, this.getStreamRect())
     }
     onMouseWheel(event: WheelEvent) {
         event.preventDefault()
@@ -210,28 +214,28 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onTouchStart(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchStart(event, this.getStreamRect())
     }
     onTouchEnd(event: TouchEvent) {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onTouchEnd(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchEnd(event, this.getStreamRect())
     }
     onTouchCancel(event: TouchEvent) {
         this.onUserInteraction()
 
         event?.preventDefault()
-        this.stream?.getInput().onTouchCancel(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchCancel(event, this.getStreamRect())
     }
     onTouchUpdate() {
-        this.stream?.getInput().onTouchUpdate(this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchUpdate(this.getStreamRect())
 
         window.requestAnimationFrame(this.onTouchUpdate.bind(this))
     }
     onTouchMove(event: TouchEvent) {
         event.preventDefault()
-        this.stream?.getInput().onTouchMove(event, this.videoElement.getBoundingClientRect())
+        this.stream?.getInput().onTouchMove(event, this.getStreamRect())
     }
 
     // Gamepad
@@ -257,6 +261,45 @@ class ViewerApp implements Component {
         parent.removeChild(this.div)
     }
 
+    getStreamRect(): DOMRect {
+        // The bounding rect of the videoElement can be bigger than the actual video
+        // -> We need to correct for this when sending positions, else positions are wrong
+
+        const videoSize = this.stream?.getStreamerSize() ?? this.streamerSize
+        const videoAspect = videoSize[0] / videoSize[1]
+
+        const boundingRect = this.videoElement.getBoundingClientRect()
+        const boundingRectAspect = boundingRect.width / boundingRect.height
+
+        let x = boundingRect.x
+        let y = boundingRect.y
+        let videoMultiplier
+        if (boundingRectAspect > videoAspect) {
+            // How much is the video scaled up
+            videoMultiplier = boundingRect.height / videoSize[1]
+
+            // Note: Both in boundingRect / page scale
+            const boundingRectHalfWidth = boundingRect.x + boundingRect.width / 2
+            const videoHalfWidth = videoSize[0] * videoMultiplier / 2
+
+            x += boundingRectHalfWidth - videoHalfWidth
+        } else {
+            // Same as above but inverted
+            videoMultiplier = boundingRect.width / videoSize[0]
+
+            const boundingRectHalfHeight = boundingRect.y + boundingRect.height / 2
+            const videoHalfHeight = videoSize[1] * videoMultiplier / 2
+
+            y += boundingRectHalfHeight - videoHalfHeight
+        }
+
+        return new DOMRect(
+            x,
+            y,
+            videoSize[0] * videoMultiplier,
+            videoSize[1] * videoMultiplier
+        )
+    }
     getElement(): HTMLElement {
         return this.videoElement
     }

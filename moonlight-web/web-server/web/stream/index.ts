@@ -16,6 +16,30 @@ export type InfoEvent = CustomEvent<
 >
 export type InfoEventListener = (event: InfoEvent) => void
 
+export function getStreamerSize(settings: StreamSettings, viewerScreenSize: [number, number]): [number, number] {
+    let width, height
+    if (settings.videoSize == "720p") {
+        width = 1280
+        height = 720
+    } else if (settings.videoSize == "1080p") {
+        width = 1920
+        height = 1080
+    } else if (settings.videoSize == "1440p") {
+        width = 2560
+        height = 1440
+    } else if (settings.videoSize == "4k") {
+        width = 3840
+        height = 2160
+    } else if (settings.videoSize == "custom") {
+        width = settings.videoSizeCustom.width
+        height = settings.videoSizeCustom.height
+    } else { // native
+        width = viewerScreenSize[0]
+        height = viewerScreenSize[1]
+    }
+    return [width, height]
+}
+
 export class Stream {
     private api: Api
     private hostId: number
@@ -32,12 +56,16 @@ export class Stream {
     private peer: RTCPeerConnection | null = null
     private input: StreamInput
 
+    private streamerSize: [number, number]
+
     constructor(api: Api, hostId: number, appId: number, settings: StreamSettings, supportedVideoFormats: VideoCodecSupport, viewerScreenSize: [number, number]) {
         this.api = api
         this.hostId = hostId
         this.appId = appId
 
         this.settings = settings
+
+        this.streamerSize = getStreamerSize(settings, viewerScreenSize)
 
         // Configure web socket
         this.ws = new WebSocket(`${api.host_url}/host/stream`)
@@ -46,26 +74,6 @@ export class Stream {
         this.ws.addEventListener("close", this.onWsClose.bind(this))
         this.ws.addEventListener("message", this.onRawWsMessage.bind(this))
 
-        let width, height
-        if (this.settings.videoSize == "720p") {
-            width = 1280
-            height = 720
-        } else if (this.settings.videoSize == "1080p") {
-            width = 1920
-            height = 1080
-        } else if (this.settings.videoSize == "1440p") {
-            width = 2560
-            height = 1440
-        } else if (this.settings.videoSize == "4k") {
-            width = 3840
-            height = 2160
-        } else if (this.settings.videoSize == "custom") {
-            width = this.settings.videoSizeCustom.width
-            height = this.settings.videoSizeCustom.height
-        } else { // native
-            width = viewerScreenSize[0]
-            height = viewerScreenSize[1]
-        }
         const fps = this.settings.fps
 
         this.sendWsMessage({
@@ -76,8 +84,8 @@ export class Stream {
                 bitrate: this.settings.bitrate,
                 packet_size: this.settings.packetSize,
                 fps,
-                width,
-                height,
+                width: this.streamerSize[0],
+                height: this.streamerSize[1],
                 video_sample_queue_size: this.settings.videoSampleQueueSize,
                 play_audio_local: this.settings.playAudioLocal,
                 audio_sample_queue_size: this.settings.audioSampleQueueSize,
@@ -99,8 +107,8 @@ export class Stream {
         setTimeout(() => {
             this.debugLog("Requesting Stream with attributes: {")
             // Width, Height, Fps
-            this.debugLog(`  Width ${width}`)
-            this.debugLog(`  Height ${height}`)
+            this.debugLog(`  Width ${this.streamerSize[0]}`)
+            this.debugLog(`  Height ${this.streamerSize[1]}`)
             this.debugLog(`  Fps: ${fps}`)
 
             // Supported Video Formats
@@ -451,6 +459,10 @@ export class Stream {
 
     getInput(): StreamInput {
         return this.input
+    }
+
+    getStreamerSize(): [number, number] {
+        return this.streamerSize
     }
 }
 
