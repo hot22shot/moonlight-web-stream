@@ -92,8 +92,8 @@ class ViewerApp implements Component {
         this.div.appendChild(this.videoElement)
 
         // Configure input
-        document.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
-        document.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
+        window.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
+        window.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
 
         this.div.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
         this.div.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
