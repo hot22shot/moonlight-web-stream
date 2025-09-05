@@ -412,23 +412,26 @@ class ViewerSidebar implements Component, Sidebar {
 
     private div = document.createElement("div")
 
+    private buttonDiv = document.createElement("div")
+
     private sendKeycodeButton = document.createElement("button")
 
     private keyboardButton = document.createElement("button")
     private screenKeyboard = new ScreenKeyboard()
 
     private lockMouseButton = document.createElement("button")
-
     private fullscreenButton = document.createElement("button")
 
     private mouseMode: SelectComponent
-
     private touchMode: SelectComponent
 
     private config: StreamInputConfig = defaultStreamInputConfig()
 
     constructor(app: ViewerApp) {
         this.app = app
+
+        // Configure divs
+        this.div.classList.add("sidebar-stream")
 
         this.div.addEventListener("click", this.onStopPropagation.bind(this))
         this.div.addEventListener("keydown", this.onStopPropagation.bind(this))
@@ -438,6 +441,9 @@ class ViewerSidebar implements Component, Sidebar {
         this.div.addEventListener("touchmove", this.onStopPropagation.bind(this))
         this.div.addEventListener("touchend", this.onStopPropagation.bind(this))
         this.div.addEventListener("touchcancel", this.onStopPropagation.bind(this))
+
+        this.buttonDiv.classList.add("sidebar-stream-buttons")
+        this.div.appendChild(this.buttonDiv)
 
         // Send keycode
         this.sendKeycodeButton.innerText = "Send Keycode"
@@ -451,23 +457,7 @@ class ViewerSidebar implements Component, Sidebar {
             this.app.getStream()?.getInput().sendKey(true, key, 0)
             this.app.getStream()?.getInput().sendKey(false, key, 0)
         })
-        this.div.appendChild(this.sendKeycodeButton)
-
-        // Pop up keyboard
-        this.keyboardButton.innerText = "Keyboard"
-        this.keyboardButton.addEventListener("click", async event => {
-            // This could trigger the screen keyboard listeners for detecting close
-            event.stopPropagation()
-
-            setSidebarExtended(false)
-            this.screenKeyboard.show()
-        })
-        this.div.appendChild(this.keyboardButton)
-
-        this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
-        this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
-        this.screenKeyboard.addTextListener(this.onText.bind(this))
-        this.div.appendChild(this.screenKeyboard.getHiddenElement())
+        this.buttonDiv.appendChild(this.sendKeycodeButton)
 
         // Pointer Lock
         this.lockMouseButton.innerText = "Lock Mouse"
@@ -481,7 +471,24 @@ class ViewerSidebar implements Component, Sidebar {
                 await showMessage("Pointer Lock not Supported")
             }
         })
-        this.div.appendChild(this.lockMouseButton)
+        this.buttonDiv.appendChild(this.lockMouseButton)
+
+        // Pop up keyboard
+        this.keyboardButton.innerText = "Keyboard"
+        this.keyboardButton.addEventListener("click", async event => {
+            // This could trigger the screen keyboard listeners for detecting close
+            event.stopPropagation()
+
+            setSidebarExtended(false)
+            this.screenKeyboard.show()
+        })
+        this.buttonDiv.appendChild(this.keyboardButton)
+
+        this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
+        this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
+        this.screenKeyboard.addTextListener(this.onText.bind(this))
+        this.div.appendChild(this.screenKeyboard.getHiddenElement())
+
 
         // Fullscreen
         this.fullscreenButton.innerText = "Fullscreen"
@@ -505,7 +512,7 @@ class ViewerSidebar implements Component, Sidebar {
                 }
             }
         })
-        this.div.appendChild(this.fullscreenButton)
+        this.buttonDiv.appendChild(this.fullscreenButton)
 
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [
@@ -520,7 +527,7 @@ class ViewerSidebar implements Component, Sidebar {
         this.mouseMode.mount(this.div)
 
         // Select Touch Mode
-        this.touchMode = new SelectComponent("mouseMode", [
+        this.touchMode = new SelectComponent("touchMode", [
             { value: "touch", name: "Touch" },
             { value: "mouseRelative", name: "Relative" },
             { value: "pointAndDrag", name: "Point and Drag" }

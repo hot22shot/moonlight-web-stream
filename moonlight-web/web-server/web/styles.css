@@ -538,6 +538,16 @@ input[type=number] {
     height: auto;
 }
 
+.sidebar-stream {
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-stream-buttons {
+    display: grid;
+    grid-template-columns: 50% 50%;
+}
+
 .hiddeninput {
     position: absolute;
     z-index: -1000;
