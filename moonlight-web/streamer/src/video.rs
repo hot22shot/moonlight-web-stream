@@ -78,6 +78,7 @@ pub struct TrackSampleVideoDecoder {
     supported_formats: SupportedVideoFormats,
     // Video important
     video_codec: Option<VideoCodec>,
+    samples: Vec<Sample>,
     needs_idr: Arc<AtomicBool>,
     old_presentation_time: Duration,
 }
@@ -92,6 +93,7 @@ impl TrackSampleVideoDecoder {
             decoder: TrackSampleDecoder::new(stream, channel_queue_size),
             supported_formats,
             video_codec: None,
+            samples: Vec::new(),
             needs_idr: Default::default(),
             old_presentation_time: Duration::ZERO,
         }
@@ -209,13 +211,20 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         nal.header_range.start..nal.payload_range.end,
                     );
 
-                    self.decoder.blocking_send_sample(Sample {
+                    self.samples.push(Sample {
                         data: data.freeze(),
                         timestamp,
                         duration,
                         packet_timestamp,
                         ..Default::default() // <-- Must be default
                     });
+                }
+
+                let samples_len = self.samples.len();
+                for mut sample in self.samples.drain(..) {
+                    sample.duration =
+                        Duration::from_secs_f64(duration.as_secs_f64() / samples_len as f64);
+                    self.decoder.blocking_send_sample(sample);
                 }
             }
             // -- H265
