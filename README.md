@@ -10,6 +10,7 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 ## Overview
 
 - [Images](#images)
+- [Installation](#installation)
 - [Setup](#setup)
   - [Streaming over the Internet](#streaming-over-the-internet)
   - [Configuring https](#configuring-https)
@@ -29,7 +30,7 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 ![View: Streaming, sidebar closed](/readme/stream.jpg)
 ![View: Streaming, sidebar opened](/readme/streamExtended.jpg)
 
-## Setup
+## Installation
 
 1. Download the [compressed archive](https://github.com/MrCreativ3001/moonlight-web-stream/releases) for your platform and uncompress it or [build it yourself](#building)
 
@@ -38,6 +39,8 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 3. Change your [access credentials](#credentials) in the newly generated `server/config.json` (all changes require a restart)
 
 4. Go to `localhost:8080` and view the web interface. You can also the change [bind address](#bind-address).
+
+## Setup
 
 Add your pc:
 
