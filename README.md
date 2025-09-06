@@ -58,9 +58,9 @@ Add your pc:
 ### Streaming over the Internet
 When in a local network the WebRTC Peers will negotatiate without any problems. However when you want to play over the internet without being in the same network as Moonlight Web, you'll have to configure it and forward ports.
 
-1. Forward set the [bind address](#bind-address) to the one of your network and set the web server port (default is 8080, http is 80, https is 443)
+1. Set the [bind address](#bind-address) to the one of your network and forward the web server port (default is 8080, http is 80, https is 443)
 
-2. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config):
+2. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config)
 ```json
 {
     ..
@@ -72,8 +72,8 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 }
 ```
 
-3. Forward the port range specified in the previous step as `udp` and `tcp` ports.
-If you're using Windows Defender make sure to allow NAT Traversal
+3. Forward the port range specified in the previous step as `udp` and `tcp`.
+If you're using Windows Defender make sure to allow NAT Traversal for udp
 
 4. Configure [WebRTC Nat 1 To 1](#webrtc-nat-1-to-1-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
 ```json
@@ -248,7 +248,7 @@ This will advertise the ip as an ice candidate on the web server.
 It's recommended to set this but stun servers should figure out the public ip.
 
 - host -> This is the ip address of the server and the client can connect to
-- srflx -> This is the public ip address of this server, like a ice candidate added from a stun server.
+- srflx -> This is the public ip address of this server, like an ice candidate added from a stun server.
 
 ```json
 {
