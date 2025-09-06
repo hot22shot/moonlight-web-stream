@@ -26,7 +26,7 @@ export function defaultStreamSettings(): StreamSettings {
     return {
         sidebarEdge: "left",
         bitrate: 10000,
-        packetSize: 4096,
+        packetSize: 256,
         fps: 60,
         videoSampleQueueSize: 6,
         videoSize: "1080p",

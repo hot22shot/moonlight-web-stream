@@ -353,10 +353,20 @@ export class Stream {
     private onTrack(event: RTCTrackEvent) {
         event.receiver.jitterBufferTarget = 0
 
+        if ("playoutDelayHint" in event.receiver) {
+            event.receiver.playoutDelayHint = 0
+        } else {
+            this.debugLog(`playoutDelayHint not supported in receiver: ${event.receiver.track.label}`)
+        }
+
         const stream = event.streams[0]
         if (stream) {
             stream.getTracks().forEach(track => {
                 this.debugLog(`Adding Media Track ${track.label}`)
+
+                if (track.kind == "video" && "contentHint" in track) {
+                    track.contentHint = "motion"
+                }
 
                 this.mediaStream.addTrack(track)
             })

@@ -7,7 +7,7 @@ import { setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./comp
 import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { getStandardVideoFormats, getSupportedVideoFormats, VideoCodecSupport } from "./stream/video.js";
+import { getStandardVideoFormats, getSupportedVideoFormats } from "./stream/video.js";
 import { StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
