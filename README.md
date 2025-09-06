@@ -3,11 +3,12 @@
 An unofficial [Moonlight Client](https://moonlight-stream.org/) allowing you to stream your pc to the Web.
 It hosts Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/) traffic to a Browser using the [WebRTC Api](https://webrtc.org/).
 
+![An image displaying: PC with sunshine and moonlight web installed, a browser making requests to it](/readme/structure.png)
+
 ## Overview
 
 - [Images](#images)
 - [Limitations](#limitations)
-- [How it works]()
 - [Installation](#installation)
 - [Setup](#setup)
   - [Streaming over the Internet](#streaming-over-the-internet)
@@ -27,10 +28,6 @@ It hosts Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/pr
 ### Streaming
 ![View: Streaming, sidebar closed](/readme/stream.jpg)
 ![View: Streaming, sidebar opened](/readme/streamExtended.jpg)
-
-## How it works
-
-![An image displaying: PC with sunshine and moonlight web installed, a browser making requests to it](/readme/structure.png)
 
 ## Limitations
 - Controllers only work when in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts#:~:text=They%20must%20be,be%20considered%20deprecated.) because of the [Gamepad Api](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
