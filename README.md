@@ -1,15 +1,13 @@
 
 # Moonlight Web
-An unofficial [Moonlight](https://moonlight-stream.org/) Client allowing you to use Moonlight in the Web.
-It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/) traffic to a Browser using the [WebRTC Api](https://webrtc.org/) for minimal latency.
-
-## Limitations
-- Controllers only work when in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) because of the [Gamepad Api](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
-  - [How to configure a Secure Context / https](#configuring-https)
+An unofficial [Moonlight Client](https://moonlight-stream.org/) allowing you to stream your pc to the Web.
+It hosts Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/) traffic to a Browser using the [WebRTC Api](https://webrtc.org/).
 
 ## Overview
 
 - [Images](#images)
+- [Limitations](#limitations)
+- [How it works]()
 - [Installation](#installation)
 - [Setup](#setup)
   - [Streaming over the Internet](#streaming-over-the-internet)
@@ -30,15 +28,25 @@ It's hosted on a Web Server which will reroute [Sunshine](https://docs.lizardbyt
 ![View: Streaming, sidebar closed](/readme/stream.jpg)
 ![View: Streaming, sidebar opened](/readme/streamExtended.jpg)
 
+## How it works
+
+![An image displaying: PC with sunshine and moonlight web installed, a browser making requests to it](/readme/structure.png)
+
+## Limitations
+- Controllers only work when in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts#:~:text=They%20must%20be,be%20considered%20deprecated.) because of the [Gamepad Api](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
+  - [How to configure a Secure Context / https](#configuring-https)
+
 ## Installation
 
-1. Download the [compressed archive](https://github.com/MrCreativ3001/moonlight-web-stream/releases) for your platform and uncompress it or [build it yourself](#building)
+1. Install [Sunshine](https://github.com/LizardByte/Sunshine/blob/v2025.628.4510/docs/getting_started.md)
 
-2. Run the "web-server" executable
+2. Download the [compressed archive](https://github.com/MrCreativ3001/moonlight-web-stream/releases) for your platform and uncompress it or [build it yourself](#building)
 
-3. Change your [access credentials](#credentials) in the newly generated `server/config.json` (all changes require a restart)
+3. Run the "web-server" executable
 
-4. Go to `localhost:8080` and view the web interface. You can also the change [bind address](#bind-address).
+4. Change your [access credentials](#credentials) in the newly generated `server/config.json` (all changes require a restart)
+
+5. Go to `localhost:8080` and view the web interface. You can also the change [bind address](#bind-address).
 
 ## Setup
 
@@ -53,7 +61,7 @@ Add your pc:
 ### Streaming over the Internet
 When in a local network the WebRTC Peers will negotatiate without any problems. However when you want to play over the internet without being in the same network as Moonlight Web, you'll have to configure it and forward ports.
 
-1. Forward the web server port (default is 8080)
+1. Forward set the [bind address](#bind-address) to the one of your network and set the web server port (default is 8080, http is 80, https is 443)
 
 2. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config):
 ```json
@@ -68,8 +76,9 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 ```
 
 3. Forward the port range specified in the previous step as `udp` and `tcp` ports.
+If you're using Windows Defender make sure to allow NAT Traversal
 
-4. Configure [WebRTC Nat 1 To 1](#webrtc-nat-11-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
+4. Configure [WebRTC Nat 1 To 1](#webrtc-nat-1-to-1-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
 ```json
 {
     ..
