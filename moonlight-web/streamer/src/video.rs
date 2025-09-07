@@ -281,11 +281,6 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             }
             // -- AV1
             Some(VideoCodec::Av1 { annex_b, payloader }) => {
-                let mut full_frame = Vec::new();
-                for buffer in unit.buffers {
-                    full_frame.extend_from_slice(buffer.data);
-                }
-
                 annex_b.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(annex_b_payload)) = annex_b.next() {
