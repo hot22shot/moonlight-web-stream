@@ -97,7 +97,6 @@ pub struct TrackSampleVideoDecoder {
     samples: Vec<BytesMut>,
     needs_idr: Arc<AtomicBool>,
     old_presentation_time: Duration,
-    last_idr_presentation_time: Duration,
 }
 
 impl TrackSampleVideoDecoder {
@@ -114,7 +113,6 @@ impl TrackSampleVideoDecoder {
             samples: Vec::new(),
             needs_idr: Default::default(),
             old_presentation_time: Duration::ZERO,
-            last_idr_presentation_time: Duration::ZERO,
         }
     }
 }
@@ -315,17 +313,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             return DecodeResult::NeedIdr;
         }
 
-        if let Some(diff) = unit
-            .presentation_time
-            .checked_sub(self.last_idr_presentation_time)
-            && diff > Duration::from_secs(2)
-        {
-            self.last_idr_presentation_time = unit.presentation_time;
-
-            DecodeResult::NeedIdr
-        } else {
-            DecodeResult::Ok
-        }
+        DecodeResult::Ok
     }
 
     fn supported_formats(&self) -> SupportedVideoFormats {
