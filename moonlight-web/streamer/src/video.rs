@@ -5,18 +5,17 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 use bytes::{Bytes, BytesMut};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use moonlight_common::stream::{
     bindings::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
     video::VideoDecoder,
 };
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
-    media::Sample,
     rtcp::payload_feedbacks::{
         picture_loss_indication::PictureLossIndication,
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
@@ -27,7 +26,6 @@ use webrtc::{
             h264::H264Payloader,
             h265::{HevcPayloader, RTP_OUTBOUND_MTU},
         },
-        extension::abs_send_time_extension::AbsSendTimeExtension,
         header::Header,
         packet::Packet,
         packetizer::Payloader,
@@ -37,7 +35,6 @@ use webrtc::{
         rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType},
     },
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
-    util::{Marshal, MarshalSize},
 };
 
 use crate::{
@@ -113,6 +110,33 @@ impl TrackSampleVideoDecoder {
             samples: Vec::new(),
             needs_idr: Default::default(),
             old_presentation_time: Duration::ZERO,
+        }
+    }
+
+    fn send_samples(
+        samples: &mut Vec<BytesMut>,
+        sender: &mut TrackLocalSender<SequencedTrackLocalStaticRTP>,
+        payloader: &mut impl Payloader,
+        timestamp: u32,
+    ) {
+        for sample in samples.drain(..) {
+            let packets = match packetize(
+                payloader,
+                RTP_OUTBOUND_MTU,
+                0, // is set in the write fn
+                timestamp,
+                &sample.freeze(),
+            ) {
+                Ok(value) => value,
+                Err(err) => {
+                    warn!("failed to packetize packet: {err:?}");
+                    continue;
+                }
+            };
+
+            for packet in packets {
+                sender.blocking_send_sample(packet);
+            }
         }
     }
 }
@@ -235,20 +259,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     self.samples.push(data);
                 }
 
-                for sample in self.samples.drain(..) {
-                    // TODO: don't unwrap
-                    for packet in packetize(
-                        payloader,
-                        RTP_OUTBOUND_MTU,
-                        0, // is set in the write fn
-                        timestamp,
-                        &sample.freeze(),
-                    )
-                    .unwrap()
-                    {
-                        self.sender.blocking_send_sample(packet);
-                    }
-                }
+                Self::send_samples(&mut self.samples, &mut self.sender, payloader, timestamp);
             }
             // -- H265
             Some(VideoCodec::H265 {
@@ -263,16 +274,12 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    todo!();
-                    // self.decoder.blocking_send_sample(Sample {
-                    //     // Full includes annex b prefix which this sample reader requires
-                    //     data: nal.full.freeze(),
-                    //     timestamp,
-                    //     duration,
-                    //     packet_timestamp,
-                    //     ..Default::default() // <-- Must be default
-                    // });
+                    let data = nal.full;
+
+                    self.samples.push(data);
                 }
+
+                Self::send_samples(&mut self.samples, &mut self.sender, payloader, timestamp);
             }
             // -- AV1
             Some(VideoCodec::Av1 { annex_b, payloader }) => {
@@ -287,15 +294,10 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     let data =
                         trim_bytes_to_range(annex_b_payload.full, annex_b_payload.payload_range);
 
-                    todo!();
-                    // self.decoder.blocking_send_sample(Sample {
-                    //     data: data.freeze(),
-                    //     timestamp,
-                    //     duration,
-                    //     packet_timestamp,
-                    //     ..Default::default()
-                    // });
+                    self.samples.push(data);
                 }
+
+                Self::send_samples(&mut self.samples, &mut self.sender, payloader, timestamp);
             }
             None => {
                 // this shouldn't happen
@@ -347,20 +349,6 @@ fn packetize(
             payload,
         });
     }
-
-    // if payloads_len != 0 {
-    //     let st = SystemTime::now();
-    //     let send_time = AbsSendTimeExtension::new(st);
-
-    //     //apply http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
-    //     let mut raw = BytesMut::with_capacity(send_time.marshal_size());
-    //     raw.resize(send_time.marshal_size(), 0);
-    //     let _ = send_time.marshal_to(&mut raw)?;
-    //     packets[payloads_len - 1]
-    //         .header
-    //         // TODO: what should 0 be?
-    //         .set_extension(0, raw.freeze())?;
-    // }
 
     Ok(packets)
 }
