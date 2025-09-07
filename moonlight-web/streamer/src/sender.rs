@@ -1,12 +1,21 @@
 use std::sync::Arc;
 
 use log::warn;
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::sync::{
+    Mutex,
+    mpsc::{Receiver, Sender, channel},
+};
 use webrtc::{
     media::Sample,
     rtcp::packet::Packet,
-    rtp::extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
-    track::track_local::{TrackLocal, track_local_static_sample::TrackLocalStaticSample},
+    rtp::{
+        self,
+        extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
+    },
+    track::track_local::{
+        TrackLocal, track_local_static_rtp::TrackLocalStaticRTP,
+        track_local_static_sample::TrackLocalStaticSample,
+    },
 };
 
 use crate::StreamConnection;
@@ -52,7 +61,7 @@ where
 
         let track_sender = self.stream.runtime.block_on({
             let track = track.clone();
-            async move { stream.peer.add_track(track).await }
+            async move { stream.peer.add_track(track.track()).await }
         })?;
 
         // Read incoming RTCP packets
@@ -98,7 +107,7 @@ where
     }
 }
 
-pub trait TrackLike: TrackLocal + Send + Sync + 'static {
+pub trait TrackLike: Send + Sync + 'static {
     type Sample: Send + 'static;
 
     fn write_with_extensions(
@@ -106,20 +115,75 @@ pub trait TrackLike: TrackLocal + Send + Sync + 'static {
         sample: Self::Sample,
         extensions: &[HeaderExtension],
     ) -> impl Future<Output = Result<(), anyhow::Error>> + Send;
+
+    fn track(self: Arc<Self>) -> Arc<dyn TrackLocal + Send + Sync + 'static>;
 }
 
 impl TrackLike for TrackLocalStaticSample {
     type Sample = Sample;
 
-    fn write_with_extensions(
+    async fn write_with_extensions(
         &self,
         sample: Self::Sample,
         extensions: &[HeaderExtension],
-    ) -> impl Future<Output = Result<(), anyhow::Error>> {
-        async move {
-            self.write_sample_with_extensions(&sample, extensions)
-                .await
-                .map_err(anyhow::Error::from)
+    ) -> Result<(), anyhow::Error> {
+        self.write_sample_with_extensions(&sample, extensions)
+            .await
+            .map_err(anyhow::Error::from)
+    }
+
+    fn track(self: Arc<Self>) -> Arc<dyn TrackLocal + Send + Sync + 'static> {
+        self
+    }
+}
+
+pub struct SequencedTrackLocalStaticRTP {
+    track: Arc<TrackLocalStaticRTP>,
+    sequence_number: Mutex<u16>,
+}
+
+impl From<TrackLocalStaticRTP> for SequencedTrackLocalStaticRTP {
+    fn from(value: TrackLocalStaticRTP) -> Self {
+        Self {
+            track: Arc::new(value),
+            sequence_number: Mutex::new(0),
         }
+    }
+}
+
+impl TrackLike for SequencedTrackLocalStaticRTP {
+    type Sample = rtp::packet::Packet;
+
+    async fn write_with_extensions(
+        &self,
+        mut sample: Self::Sample,
+        extensions: &[HeaderExtension],
+    ) -> Result<(), anyhow::Error> {
+        let (any_paused, all_paused) = (
+            self.track.any_binding_paused().await,
+            self.track.all_binding_paused().await,
+        );
+
+        if all_paused {
+            // Abort already here to not increment sequence numbers.
+            return Ok(());
+        }
+        if any_paused {
+            // TODO: maybe warn?
+        }
+
+        let mut sequence_number = self.sequence_number.lock().await;
+        sample.header.sequence_number = *sequence_number;
+        *sequence_number = sequence_number.wrapping_add(1);
+
+        self.track
+            .write_rtp_with_extensions(&sample, extensions)
+            .await
+            .map_err(anyhow::Error::from)
+            .map(|_| ())
+    }
+
+    fn track(self: Arc<Self>) -> Arc<dyn TrackLocal + Send + Sync + 'static> {
+        self.track.clone()
     }
 }

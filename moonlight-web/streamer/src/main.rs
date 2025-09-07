@@ -67,8 +67,8 @@ mod audio;
 mod buffer;
 mod connection;
 mod convert;
-mod decoder;
 mod input;
+mod sender;
 mod video;
 
 #[tokio::main]

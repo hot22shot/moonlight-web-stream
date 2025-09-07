@@ -13,7 +13,7 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::{StreamConnection, decoder::TrackLocalSender};
+use crate::{StreamConnection, sender::TrackLocalSender};
 
 pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrtc::Error> {
     media_engine.register_codec(

@@ -8,7 +8,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use log::{debug, error, info};
 use moonlight_common::stream::{
     bindings::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
@@ -21,16 +21,28 @@ use webrtc::{
         picture_loss_indication::PictureLossIndication,
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
     },
+    rtp::{
+        codecs::{
+            av1::Av1Payloader,
+            h264::H264Payloader,
+            h265::{HevcPayloader, RTP_OUTBOUND_MTU},
+        },
+        extension::abs_send_time_extension::AbsSendTimeExtension,
+        header::Header,
+        packet::Packet,
+        packetizer::Payloader,
+    },
     rtp_transceiver::{
         RTCPFeedback,
         rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType},
     },
-    track::track_local::track_local_static_sample::TrackLocalStaticSample,
+    track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
+    util::{Marshal, MarshalSize},
 };
 
 use crate::{
     StreamConnection,
-    decoder::TrackLocalSender,
+    sender::{SequencedTrackLocalStaticRTP, TrackLocalSender},
     video::{annexb::AnnexBSplitter, h264::H264Reader, h265::H265Reader},
 };
 
@@ -64,21 +76,25 @@ pub fn register_video_codecs(
 enum VideoCodec {
     H264 {
         nal_reader: H264Reader<Cursor<Vec<u8>>>,
+        payloader: H264Payloader,
     },
     H265 {
         nal_reader: H265Reader<Cursor<Vec<u8>>>,
+        payloader: HevcPayloader,
     },
     Av1 {
         annex_b: AnnexBSplitter<Cursor<Vec<u8>>>,
+        payloader: Av1Payloader,
     },
 }
 
 pub struct TrackSampleVideoDecoder {
-    decoder: TrackLocalSender<TrackLocalStaticSample>,
+    sender: TrackLocalSender<SequencedTrackLocalStaticRTP>,
+    clock_rate: u32,
     supported_formats: SupportedVideoFormats,
     // Video important
     video_codec: Option<VideoCodec>,
-    samples: Vec<Sample>,
+    samples: Vec<BytesMut>,
     needs_idr: Arc<AtomicBool>,
     old_presentation_time: Duration,
     last_idr_presentation_time: Duration,
@@ -91,7 +107,8 @@ impl TrackSampleVideoDecoder {
         channel_queue_size: usize,
     ) -> Self {
         Self {
-            decoder: TrackLocalSender::new(stream, channel_queue_size),
+            sender: TrackLocalSender::new(stream, channel_queue_size),
+            clock_rate: 0,
             supported_formats,
             video_codec: None,
             samples: Vec::new(),
@@ -114,7 +131,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
         info!("[Stream] Stream setup: {width}x{height}x{redraw_rate} and {format:?}");
 
         {
-            let mut video_size = self.decoder.stream.video_size.blocking_lock();
+            let mut video_size = self.sender.stream.video_size.blocking_lock();
 
             *video_size = (width, height);
         }
@@ -132,13 +149,16 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             return -1;
         };
 
+        self.clock_rate = codec.capability.clock_rate;
+
         let needs_idr = self.needs_idr.clone();
-        if let Err(err) = self.decoder.blocking_create_track(
-            TrackLocalStaticSample::new(
+        if let Err(err) = self.sender.blocking_create_track(
+            TrackLocalStaticRTP::new(
                 codec.capability.clone(),
                 "video".to_string(),
                 "moonlight".to_string(),
-            ),
+            )
+            .into(),
             move |packet| {
                 let packet = packet.as_any();
 
@@ -162,6 +182,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             VideoFormat::H264 | VideoFormat::H264High8_444 => {
                 self.video_codec = Some(VideoCodec::H264 {
                     nal_reader: H264Reader::new(Cursor::new(Vec::new()), 0),
+                    payloader: Default::default(),
                 });
             }
             // -- H265
@@ -171,6 +192,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             | VideoFormat::H265Rext10_444 => {
                 self.video_codec = Some(VideoCodec::H265 {
                     nal_reader: H265Reader::new(Cursor::new(Vec::new()), 0),
+                    payloader: Default::default(),
                 });
             }
             // -- AV1
@@ -180,6 +202,7 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             | VideoFormat::Av1High10_444 => {
                 self.video_codec = Some(VideoCodec::Av1 {
                     annex_b: AnnexBSplitter::new(Cursor::new(Vec::new()), 0),
+                    payloader: Default::default(),
                 });
             }
         }
@@ -190,16 +213,14 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn stop(&mut self) {}
 
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let duration = self
-            .old_presentation_time
-            .checked_sub(unit.presentation_time)
-            .unwrap_or(Duration::from_millis(1));
-        let timestamp = SystemTime::now();
-        let packet_timestamp = 0;
+        let timestamp = (unit.presentation_time.as_secs_f64() * self.clock_rate as f64) as u32;
 
         match &mut self.video_codec {
             // -- H264
-            Some(VideoCodec::H264 { nal_reader }) => {
+            Some(VideoCodec::H264 {
+                nal_reader,
+                payloader,
+            }) => {
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);
@@ -213,24 +234,29 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         nal.header_range.start..nal.payload_range.end,
                     );
 
-                    self.samples.push(Sample {
-                        data: data.freeze(),
-                        timestamp,
-                        duration,
-                        packet_timestamp,
-                        ..Default::default() // <-- Must be default
-                    });
+                    self.samples.push(data);
                 }
 
-                let samples_len = self.samples.len();
-                for mut sample in self.samples.drain(..) {
-                    sample.duration =
-                        Duration::from_secs_f64(duration.as_secs_f64() / samples_len as f64);
-                    self.decoder.blocking_send_sample(sample);
+                for sample in self.samples.drain(..) {
+                    // TODO: don't unwrap
+                    for packet in packetize(
+                        payloader,
+                        RTP_OUTBOUND_MTU,
+                        0, // is set in the write fn
+                        timestamp,
+                        &sample.freeze(),
+                    )
+                    .unwrap()
+                    {
+                        self.sender.blocking_send_sample(packet);
+                    }
                 }
             }
             // -- H265
-            Some(VideoCodec::H265 { nal_reader }) => {
+            Some(VideoCodec::H265 {
+                nal_reader,
+                payloader,
+            }) => {
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);
@@ -239,18 +265,19 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    self.decoder.blocking_send_sample(Sample {
-                        // Full includes annex b prefix which this sample reader requires
-                        data: nal.full.freeze(),
-                        timestamp,
-                        duration,
-                        packet_timestamp,
-                        ..Default::default() // <-- Must be default
-                    });
+                    todo!();
+                    // self.decoder.blocking_send_sample(Sample {
+                    //     // Full includes annex b prefix which this sample reader requires
+                    //     data: nal.full.freeze(),
+                    //     timestamp,
+                    //     duration,
+                    //     packet_timestamp,
+                    //     ..Default::default() // <-- Must be default
+                    // });
                 }
             }
             // -- AV1
-            Some(VideoCodec::Av1 { annex_b }) => {
+            Some(VideoCodec::Av1 { annex_b, payloader }) => {
                 let mut full_frame = Vec::new();
                 for buffer in unit.buffers {
                     full_frame.extend_from_slice(buffer.data);
@@ -262,13 +289,14 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     let data =
                         trim_bytes_to_range(annex_b_payload.full, annex_b_payload.payload_range);
 
-                    self.decoder.blocking_send_sample(Sample {
-                        data: data.freeze(),
-                        timestamp,
-                        duration,
-                        packet_timestamp,
-                        ..Default::default()
-                    });
+                    todo!();
+                    // self.decoder.blocking_send_sample(Sample {
+                    //     data: data.freeze(),
+                    //     timestamp,
+                    //     duration,
+                    //     packet_timestamp,
+                    //     ..Default::default()
+                    // });
                 }
             }
             None => {
@@ -303,6 +331,50 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn supported_formats(&self) -> SupportedVideoFormats {
         self.supported_formats
     }
+}
+
+fn packetize(
+    payloader: &mut impl Payloader,
+    mtu: usize,
+    sequence_number: u16,
+    timestamp: u32,
+    payload: &Bytes,
+) -> Result<Vec<Packet>, anyhow::Error> {
+    let payloads = payloader.payload(mtu - 12, payload)?;
+    let payloads_len = payloads.len();
+    let mut packets = Vec::with_capacity(payloads_len);
+    for (i, payload) in payloads.into_iter().enumerate() {
+        packets.push(Packet {
+            header: Header {
+                version: 2,
+                padding: false,
+                extension: false,
+                marker: i == payloads_len - 1,
+                sequence_number,
+                timestamp,
+                payload_type: 0, // Value is handled when writing
+                ssrc: 0,         // Value is handled when writing
+                ..Default::default()
+            },
+            payload,
+        });
+    }
+
+    // if payloads_len != 0 {
+    //     let st = SystemTime::now();
+    //     let send_time = AbsSendTimeExtension::new(st);
+
+    //     //apply http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
+    //     let mut raw = BytesMut::with_capacity(send_time.marshal_size());
+    //     raw.resize(send_time.marshal_size(), 0);
+    //     let _ = send_time.marshal_to(&mut raw)?;
+    //     packets[payloads_len - 1]
+    //         .header
+    //         // TODO: what should 0 be?
+    //         .set_extension(0, raw.freeze())?;
+    // }
+
+    Ok(packets)
 }
 
 fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
