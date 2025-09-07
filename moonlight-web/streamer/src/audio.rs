@@ -13,7 +13,7 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::{StreamConnection, decoder::TrackSampleDecoder};
+use crate::{StreamConnection, decoder::TrackLocalSender};
 
 pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrtc::Error> {
     media_engine.register_codec(
@@ -35,14 +35,14 @@ pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrt
 }
 
 pub struct OpusTrackSampleAudioDecoder {
-    decoder: TrackSampleDecoder,
+    decoder: TrackLocalSender<TrackLocalStaticSample>,
     config: Option<OpusMultistreamConfig>,
 }
 
 impl OpusTrackSampleAudioDecoder {
     pub fn new(stream: Arc<StreamConnection>, channel_queue_size: usize) -> Self {
         Self {
-            decoder: TrackSampleDecoder::new(stream, channel_queue_size),
+            decoder: TrackLocalSender::new(stream, channel_queue_size),
             config: None,
         }
     }

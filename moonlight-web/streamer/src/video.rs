@@ -30,7 +30,7 @@ use webrtc::{
 
 use crate::{
     StreamConnection,
-    decoder::TrackSampleDecoder,
+    decoder::TrackLocalSender,
     video::{annexb::AnnexBSplitter, h264::H264Reader, h265::H265Reader},
 };
 
@@ -74,7 +74,7 @@ enum VideoCodec {
 }
 
 pub struct TrackSampleVideoDecoder {
-    decoder: TrackSampleDecoder,
+    decoder: TrackLocalSender<TrackLocalStaticSample>,
     supported_formats: SupportedVideoFormats,
     // Video important
     video_codec: Option<VideoCodec>,
@@ -91,7 +91,7 @@ impl TrackSampleVideoDecoder {
         channel_queue_size: usize,
     ) -> Self {
         Self {
-            decoder: TrackSampleDecoder::new(stream, channel_queue_size),
+            decoder: TrackLocalSender::new(stream, channel_queue_size),
             supported_formats,
             video_codec: None,
             samples: Vec::new(),
