@@ -1,9 +1,3 @@
-//! Specifications:
-//! - RTP Payloads with H.265: https://datatracker.ietf.org/doc/html/rfc7798#page-13
-//! - HEVC / H.265 spec: https://www.itu.int/rec/T-REC-H.265-202309-S/en
-//! - HEVC in WebRTC: https://datatracker.ietf.org/doc/html/draft-ietf-avtcore-hevc-webrtc-06#page-4
-//! - Pion issues: https://github.com/pion/webrtc/issues/3137
-
 use std::{
     io::{self, Read},
     ops::Range,
@@ -25,16 +19,17 @@ pub struct Nal {
     pub full: BytesMut,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Copy)]
 pub struct NalHeader {
     pub forbidden_zero_bit: bool,
-    pub nal_unit_type: NALUnitType,
+    pub nal_unit_type: NalUnitType,
     pub nuh_layer_id: u8,
     pub nuh_temporal_id_plus1: u8,
 }
 
 impl NalHeader {
+    pub const SIZE: usize = 2;
+
     pub fn parse(header: [u8; 2]) -> Self {
         // F: 1 bit
         let forbidden_zero_bit = (header[0] & 0b1000_0000) != 0;
@@ -52,7 +47,7 @@ impl NalHeader {
             forbidden_zero_bit,
             // It's impossible for this to fail because we only have 6 bits like the enum
             #[allow(clippy::unwrap_used)]
-            nal_unit_type: NALUnitType::from_u8(nal_unit_type).unwrap(),
+            nal_unit_type: NalUnitType::from_u8(nal_unit_type).unwrap(),
             nuh_layer_id,
             nuh_temporal_id_plus1,
         }
@@ -83,7 +78,7 @@ impl NalHeader {
 /// Section 7.4.2 in HEVC/H.265 specification (Table 7-1).
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive)]
-pub enum NALUnitType {
+pub enum NalUnitType {
     // VCL NAL units
     TrailN = 0,
     TrailR = 1,
@@ -141,8 +136,8 @@ pub enum NALUnitType {
     RsvNvcl46 = 46,
     RsvNvcl47 = 47,
 
-    Unspec48 = 48,
-    Unspec49 = 49,
+    AggregationUnit = 48,
+    FragmentationUnit = 49,
     Unspec50 = 50,
     Unspec51 = 51,
     Unspec52 = 52,
@@ -242,7 +237,7 @@ mod tests {
     fn test_serialize_round_trip() {
         let original = NalHeader {
             forbidden_zero_bit: true,
-            nal_unit_type: NALUnitType::TrailN, // example variant
+            nal_unit_type: NalUnitType::TrailN, // example variant
             nuh_layer_id: 0x2A,
             nuh_temporal_id_plus1: 0x05,
         };
@@ -258,7 +253,7 @@ mod tests {
     fn test_serialize_known_values() {
         let nal = NalHeader {
             forbidden_zero_bit: false,
-            nal_unit_type: NALUnitType::TrailR,
+            nal_unit_type: NalUnitType::TrailR,
             nuh_layer_id: 0b010101,
             nuh_temporal_id_plus1: 0b011,
         };

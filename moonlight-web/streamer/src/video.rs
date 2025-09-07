@@ -21,11 +21,7 @@ use webrtc::{
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
     },
     rtp::{
-        codecs::{
-            av1::Av1Payloader,
-            h264::H264Payloader,
-            h265::{HevcPayloader, RTP_OUTBOUND_MTU},
-        },
+        codecs::{av1::Av1Payloader, h264::H264Payloader, h265::RTP_OUTBOUND_MTU},
         header::Header,
         packet::Packet,
         packetizer::Payloader,
@@ -40,7 +36,11 @@ use webrtc::{
 use crate::{
     StreamConnection,
     sender::{SequencedTrackLocalStaticRTP, TrackLocalSender},
-    video::{annexb::AnnexBSplitter, h264::H264Reader, h265::H265Reader},
+    video::{
+        annexb::AnnexBSplitter,
+        h264::H264Reader,
+        h265::{payloader::H265Payloader, reader::H265Reader},
+    },
 };
 
 mod annexb;
@@ -77,7 +77,7 @@ enum VideoCodec {
     },
     H265 {
         nal_reader: H265Reader<Cursor<Vec<u8>>>,
-        payloader: HevcPayloader,
+        payloader: H265Payloader,
     },
     Av1 {
         annex_b: AnnexBSplitter<Cursor<Vec<u8>>>,
@@ -237,17 +237,17 @@ impl VideoDecoder for TrackSampleVideoDecoder {
     fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
         let timestamp = (unit.presentation_time.as_secs_f64() * self.clock_rate as f64) as u32;
 
+        let mut full_frame = Vec::new();
+        for buffer in unit.buffers {
+            full_frame.extend_from_slice(buffer.data);
+        }
+
         match &mut self.video_codec {
             // -- H264
             Some(VideoCodec::H264 {
                 nal_reader,
                 payloader,
             }) => {
-                let mut full_frame = Vec::new();
-                for buffer in unit.buffers {
-                    full_frame.extend_from_slice(buffer.data);
-                }
-
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
@@ -266,15 +266,13 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 nal_reader,
                 payloader,
             }) => {
-                let mut full_frame = Vec::new();
-                for buffer in unit.buffers {
-                    full_frame.extend_from_slice(buffer.data);
-                }
-
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    let data = nal.full;
+                    let data = trim_bytes_to_range(
+                        nal.full,
+                        nal.header_range.start..nal.payload_range.end,
+                    );
 
                     self.samples.push(data);
                 }
@@ -381,7 +379,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                         .to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 123,
+            payload_type: 96,
             ..Default::default()
         }),
         // -- H264 High Profile
@@ -395,7 +393,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                         .to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 124,
+            payload_type: 97,
             ..Default::default()
         }),
 
@@ -411,7 +409,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                 sdp_fmtp_line: "".to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 126,
+            payload_type: 98,
             ..Default::default()
         }),
         // -- H265 Main10 Profile
@@ -423,7 +421,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                 sdp_fmtp_line: "profile-id=2;tier-flag=0;level-id=93;tx-mode=SRST".to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 127,
+            payload_type: 99,
             ..Default::default()
         }),
         // -- H265 RExt 4:4:4 8-bit
@@ -435,7 +433,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                 sdp_fmtp_line: "profile-id=4;tier-flag=0;level-id=120;tx-mode=SRST".to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 128,
+            payload_type: 100,
             ..Default::default()
         }),
         // -- H265 RExt 4:4:4 10-bit
@@ -447,7 +445,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                 sdp_fmtp_line: "profile-id=5;tier-flag=0;level-id=93;tx-mode=SRST".to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 129,
+            payload_type: 101,
             ..Default::default()
         }),
 
@@ -460,7 +458,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                 sdp_fmtp_line: "profile=0".to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 41,
+            payload_type: 102,
             ..Default::default()
         }),
         VideoFormat::Av1High8_444 | VideoFormat::Av1High10_444 => Some(RTCRtpCodecParameters {
@@ -471,7 +469,7 @@ fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecParameters> {
                 sdp_fmtp_line: "profile=1".to_owned(),
                 rtcp_feedback: rtcp_feedback.clone(),
             },
-            payload_type: 130,
+            payload_type: 103,
             ..Default::default()
         }),
     }

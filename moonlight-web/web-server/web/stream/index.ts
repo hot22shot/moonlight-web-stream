@@ -149,6 +149,9 @@ export class Stream {
         this.peer.addEventListener("negotiationneeded", this.onNegotiationNeeded.bind(this))
         this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
 
+        this.peer.addTransceiver("audio", { direction: "recvonly" })
+        this.peer.addTransceiver("video", { direction: "recvonly" })
+
         this.peer.addEventListener("track", this.onTrack.bind(this))
         this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
 
