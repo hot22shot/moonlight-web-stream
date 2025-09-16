@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{process::exit, str::FromStr, sync::Arc};
 
 use common::{
     StreamSettings,
@@ -263,7 +263,11 @@ async fn main() {
         ))
         .await;
 
+    // Wait for termination
     connection.terminate.notified().await;
+
+    // Exit streamer
+    exit(0);
 }
 
 struct StreamInfo {
