@@ -1,4 +1,4 @@
-use std::{process::exit, str::FromStr, sync::Arc};
+use std::{panic, process::exit, str::FromStr, sync::Arc};
 
 use common::{
     StreamSettings,
@@ -85,6 +85,12 @@ async fn main() {
         ColorChoice::Auto,
     )
     .expect("failed to init logger");
+
+    let default_panic = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        default_panic(info);
+        exit(0);
+    }));
 
     // At this point we're authenticated
     let (mut ipc_sender, mut ipc_receiver) =
