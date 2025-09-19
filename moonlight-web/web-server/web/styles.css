@@ -536,6 +536,7 @@ input[type=number] {
     min-height: 100vmin;
     width: auto;
     height: auto;
+    outline: none;
 }
 
 .sidebar-stream {

@@ -88,21 +88,25 @@ class ViewerApp implements Component {
         this.videoElement.disablePictureInPicture = true
         this.videoElement.playsInline = true
         this.videoElement.muted = true
+        this.videoElement.tabIndex = 0
 
+        this.div.tabIndex = 0
         this.div.appendChild(this.videoElement)
 
         // Configure input
-        window.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
-        window.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
 
-        this.div.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
-        this.div.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
-        this.div.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
-        this.div.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
+        document.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
+        document.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
 
-        this.div.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
-        this.div.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
-        this.div.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
+        document.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
+        document.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
+        document.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
+        document.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
+        document.addEventListener("contextmenu", this.onContextMenu.bind(this), { passive: false })
+
+        document.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
+        document.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
+        document.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
 
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
@@ -207,6 +211,9 @@ class ViewerApp implements Component {
     onMouseWheel(event: WheelEvent) {
         event.preventDefault()
         this.stream?.getInput().onMouseWheel(event)
+    }
+    onContextMenu(event: MouseEvent) {
+        event.preventDefault()
     }
 
     // Touch
@@ -433,10 +440,13 @@ class ViewerSidebar implements Component, Sidebar {
         // Configure divs
         this.div.classList.add("sidebar-stream")
 
-        this.div.addEventListener("click", this.onStopPropagation.bind(this))
         this.div.addEventListener("keydown", this.onStopPropagation.bind(this))
         this.div.addEventListener("keyup", this.onStopPropagation.bind(this))
         this.div.addEventListener("keypress", this.onStopPropagation.bind(this))
+        this.div.addEventListener("click", this.onStopPropagation.bind(this))
+        this.div.addEventListener("mousedown", this.onStopPropagation.bind(this))
+        this.div.addEventListener("mouseup", this.onStopPropagation.bind(this))
+        this.div.addEventListener("mousemove", this.onStopPropagation.bind(this))
         this.div.addEventListener("touchstart", this.onStopPropagation.bind(this))
         this.div.addEventListener("touchmove", this.onStopPropagation.bind(this))
         this.div.addEventListener("touchend", this.onStopPropagation.bind(this))
@@ -464,21 +474,23 @@ class ViewerSidebar implements Component, Sidebar {
         this.lockMouseButton.addEventListener("click", async () => {
             setSidebarExtended(false)
 
-            const element = await app.getElement()
-            if ("requestPointerLock" in element && typeof element.requestPointerLock == "function") {
-                await element.requestPointerLock()
+            const root = document.getElementById("root")
+
+            if (root) {
+                if ("requestPointerLock" in root && typeof root.requestPointerLock == "function") {
+                    await root.requestPointerLock()
+                } else {
+                    await showMessage("Pointer Lock not supported")
+                }
             } else {
-                await showMessage("Pointer Lock not Supported")
+                console.warn("root element not found")
             }
         })
         this.buttonDiv.appendChild(this.lockMouseButton)
 
         // Pop up keyboard
         this.keyboardButton.innerText = "Keyboard"
-        this.keyboardButton.addEventListener("click", async event => {
-            // This could trigger the screen keyboard listeners for detecting close
-            event.stopPropagation()
-
+        this.keyboardButton.addEventListener("click", async () => {
             setSidebarExtended(false)
             this.screenKeyboard.show()
         })
@@ -499,6 +511,14 @@ class ViewerSidebar implements Component, Sidebar {
                     navigationUI: "hide"
                 })
 
+                if (this.mouseMode.getValue() == "relative") {
+                    if ("requestPointerLock" in root && typeof root.requestPointerLock == "function") {
+                        await root.requestPointerLock()
+                    }
+                } else {
+                    console.warn("failed to request pointer lock while requesting fullscreen")
+                }
+
                 try {
                     if (screen && "orientation" in screen) {
                         const orientation = screen.orientation
@@ -510,6 +530,8 @@ class ViewerSidebar implements Component, Sidebar {
                 } catch (e) {
                     console.warn("failed to set orientation to landscape", e)
                 }
+            } else {
+                console.warn("root element not found")
             }
         })
         this.buttonDiv.appendChild(this.fullscreenButton)
