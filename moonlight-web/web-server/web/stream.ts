@@ -329,6 +329,7 @@ class ConnectionInfoModal implements Modal<void> {
 
     constructor() {
         this.root.classList.add("modal-video-connect")
+        stopPropagationOn(this.root)
 
         this.text.innerText = "Connecting"
         this.root.appendChild(this.text)
@@ -440,17 +441,7 @@ class ViewerSidebar implements Component, Sidebar {
         // Configure divs
         this.div.classList.add("sidebar-stream")
 
-        this.div.addEventListener("keydown", this.onStopPropagation.bind(this))
-        this.div.addEventListener("keyup", this.onStopPropagation.bind(this))
-        this.div.addEventListener("keypress", this.onStopPropagation.bind(this))
-        this.div.addEventListener("click", this.onStopPropagation.bind(this))
-        this.div.addEventListener("mousedown", this.onStopPropagation.bind(this))
-        this.div.addEventListener("mouseup", this.onStopPropagation.bind(this))
-        this.div.addEventListener("mousemove", this.onStopPropagation.bind(this))
-        this.div.addEventListener("touchstart", this.onStopPropagation.bind(this))
-        this.div.addEventListener("touchmove", this.onStopPropagation.bind(this))
-        this.div.addEventListener("touchend", this.onStopPropagation.bind(this))
-        this.div.addEventListener("touchcancel", this.onStopPropagation.bind(this))
+        stopPropagationOn(this.div)
 
         this.buttonDiv.classList.add("sidebar-stream-buttons")
         this.div.appendChild(this.buttonDiv)
@@ -643,22 +634,11 @@ class SendKeycodeModal extends FormModal<number> {
     }
 
     mountForm(form: HTMLFormElement): void {
-        form.addEventListener("click", this.onStopPropagation.bind(this))
-        form.addEventListener("keydown", this.onStopPropagation.bind(this))
-        form.addEventListener("keyup", this.onStopPropagation.bind(this))
-        form.addEventListener("keypress", this.onStopPropagation.bind(this))
-        form.addEventListener("touchstart", this.onStopPropagation.bind(this))
-        form.addEventListener("touchmove", this.onStopPropagation.bind(this))
-        form.addEventListener("touchend", this.onStopPropagation.bind(this))
-        form.addEventListener("touchcancel", this.onStopPropagation.bind(this))
+        stopPropagationOn(form)
 
         this.dropdownSearch.mount(form)
     }
 
-    // Stop propagation so the stream doesn't get it
-    private onStopPropagation(event: Event) {
-        event.stopPropagation()
-    }
 
     reset(): void {
         this.dropdownSearch.reset()
@@ -672,4 +652,23 @@ class SendKeycodeModal extends FormModal<number> {
 
         return parseInt(keyString)
     }
+}
+
+// Stop propagation so the stream doesn't get it
+function stopPropagationOn(element: HTMLElement) {
+    element.addEventListener("keydown", onStopPropagation)
+    element.addEventListener("keyup", onStopPropagation)
+    element.addEventListener("keypress", onStopPropagation)
+    element.addEventListener("click", onStopPropagation)
+    element.addEventListener("mousedown", onStopPropagation)
+    element.addEventListener("mouseup", onStopPropagation)
+    element.addEventListener("mousemove", onStopPropagation)
+    element.addEventListener("wheel", onStopPropagation)
+    element.addEventListener("touchstart", onStopPropagation)
+    element.addEventListener("touchmove", onStopPropagation)
+    element.addEventListener("touchend", onStopPropagation)
+    element.addEventListener("touchcancel", onStopPropagation)
+}
+function onStopPropagation(event: Event) {
+    event.stopPropagation()
 }
