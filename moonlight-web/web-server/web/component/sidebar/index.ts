@@ -69,3 +69,7 @@ export function setSidebar(sidebar: Sidebar | null) {
         sidebar?.mount(sidebarParent)
     }
 }
+
+export function getSidebarRoot(): HTMLElement | null {
+    return sidebarRoot
+}

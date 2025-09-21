@@ -3,7 +3,7 @@ import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { getStreamerSize, InfoEvent, Stream } from "./stream/index.js"
 import { Modal, showMessage, showModal } from "./component/modal/index.js";
-import { setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
+import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
@@ -34,6 +34,12 @@ async function startApp() {
     }
     const hostId = Number.parseInt(hostIdStr)
     const appId = Number.parseInt(appIdStr)
+
+    // stop sidebar event propagation
+    const sidebarRoot = getSidebarRoot()
+    if (sidebarRoot) {
+        stopPropagationOn(sidebarRoot)
+    }
 
     // Start and Mount App
     const app = new ViewerApp(api, hostId, appId)
@@ -106,6 +112,7 @@ class ViewerApp implements Component {
 
         document.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
         document.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
+        document.addEventListener("touchcancel", this.onTouchCancel.bind(this), { passive: false })
         document.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
 
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
@@ -560,11 +567,6 @@ class ViewerSidebar implements Component, Sidebar {
         return this.screenKeyboard
     }
 
-    // Stop propagation so the stream doesn't get it
-    private onStopPropagation(event: Event) {
-        event.stopPropagation()
-    }
-
     // -- Keyboard
     private onText(event: TextEvent) {
         this.app.getStream()?.getInput().sendText(event.detail.text)
@@ -664,6 +666,7 @@ function stopPropagationOn(element: HTMLElement) {
     element.addEventListener("mouseup", onStopPropagation)
     element.addEventListener("mousemove", onStopPropagation)
     element.addEventListener("wheel", onStopPropagation)
+    element.addEventListener("contextmenu", onStopPropagation)
     element.addEventListener("touchstart", onStopPropagation)
     element.addEventListener("touchmove", onStopPropagation)
     element.addEventListener("touchend", onStopPropagation)
