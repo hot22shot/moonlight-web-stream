@@ -564,6 +564,18 @@ export class StreamInput {
         }
     }
 
+    private collectActuators(gamepad: Gamepad): Array<GamepadHapticActuator> {
+        const actuators = []
+        if ("vibrationActuator" in gamepad && gamepad.vibrationActuator) {
+            actuators.push(gamepad.vibrationActuator)
+        }
+        if ("hapticActuators" in gamepad && gamepad.hapticActuators) {
+            const hapticActuators = gamepad.hapticActuators as Array<GamepadHapticActuator>
+            actuators.push(...hapticActuators)
+        }
+        return actuators
+    }
+
     private gamepads: Array<number | null> = []
     private gamepadRumbleInterval: number | null = null
 
@@ -601,16 +613,7 @@ export class StreamInput {
         let capabilities = 0
 
         // Rumble capabilities
-        const actuators = []
-        if ("vibrationActuator" in gamepad) {
-            actuators.push(gamepad.vibrationActuator)
-        }
-        if ("hapticActuators" in gamepad) {
-            const hapticActuators = gamepad.hapticActuators as Array<GamepadHapticActuator>
-            actuators.push(...hapticActuators)
-        }
-
-        for (const actuator of actuators) {
+        for (const actuator of this.collectActuators(gamepad)) {
             if ("effects" in actuator) {
                 const supportedEffects = actuator.effects as Array<string>
 
@@ -744,14 +747,7 @@ export class StreamInput {
     ) {
         // Browsers are making this more complicated than it is
 
-        const actuators = []
-        if ("vibrationActuator" in gamepad) {
-            actuators.push(gamepad.vibrationActuator)
-        }
-        if ("hapticActuators" in gamepad) {
-            const hapticActuators = gamepad.hapticActuators as Array<GamepadHapticActuator>
-            actuators.push(...hapticActuators)
-        }
+        const actuators = this.collectActuators(gamepad)
 
         for (const actuator of actuators) {
             if ("effects" in actuator) {
