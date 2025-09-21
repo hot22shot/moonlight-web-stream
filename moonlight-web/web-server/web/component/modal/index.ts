@@ -16,6 +16,10 @@ modalBackground?.addEventListener("contextmenu", event => {
     event.stopImmediatePropagation()
 })
 
+export function getModalBackground(): HTMLElement | null {
+    return modalBackground
+}
+
 export async function showModal<Output>(modal: Modal<Output>): Promise<Output | null> {
     if (modalParent == null) {
         showErrorPopup("cannot find modal parent")

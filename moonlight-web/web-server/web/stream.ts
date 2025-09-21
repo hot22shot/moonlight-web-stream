@@ -2,7 +2,7 @@ import { Api, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { getStreamerSize, InfoEvent, Stream } from "./stream/index.js"
-import { Modal, showMessage, showModal } from "./component/modal/index.js";
+import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
@@ -35,10 +35,15 @@ async function startApp() {
     const hostId = Number.parseInt(hostIdStr)
     const appId = Number.parseInt(appIdStr)
 
-    // stop sidebar event propagation
+    // event propagation on overlays
     const sidebarRoot = getSidebarRoot()
     if (sidebarRoot) {
         stopPropagationOn(sidebarRoot)
+    }
+
+    const modalBackground = getModalBackground()
+    if (modalBackground) {
+        stopPropagationOn(modalBackground)
     }
 
     // Start and Mount App
@@ -336,7 +341,6 @@ class ConnectionInfoModal implements Modal<void> {
 
     constructor() {
         this.root.classList.add("modal-video-connect")
-        stopPropagationOn(this.root)
 
         this.text.innerText = "Connecting"
         this.root.appendChild(this.text)
@@ -447,8 +451,6 @@ class ViewerSidebar implements Component, Sidebar {
 
         // Configure divs
         this.div.classList.add("sidebar-stream")
-
-        stopPropagationOn(this.div)
 
         this.buttonDiv.classList.add("sidebar-stream-buttons")
         this.div.appendChild(this.buttonDiv)
@@ -636,8 +638,6 @@ class SendKeycodeModal extends FormModal<number> {
     }
 
     mountForm(form: HTMLFormElement): void {
-        stopPropagationOn(form)
-
         this.dropdownSearch.mount(form)
     }
 
