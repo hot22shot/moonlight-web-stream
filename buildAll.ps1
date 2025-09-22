@@ -23,6 +23,7 @@ $targets = @(
     "x86_64-pc-windows-gnu"
     "x86_64-unknown-linux-gnu"
     "arm-unknown-linux-gnueabihf"
+    "aarch64-unknown-linux-gnu"
 )
 
 Remove-Item -Path "$outputDir/*" -Recurse -Force
