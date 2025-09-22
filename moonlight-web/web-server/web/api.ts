@@ -113,6 +113,7 @@ export type Api = {
 export type ApiFetchInit = {
     json?: any,
     query?: any,
+    noTimeout?: boolean,
 }
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
@@ -170,9 +171,11 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
 
     const timeoutAbort = new AbortController()
     request.signal = timeoutAbort.signal
-    setTimeout(() => timeoutAbort.abort(
-        new FetchError("timeout", endpoint, method)
-    ), API_TIMEOUT)
+    if (!init?.noTimeout) {
+        setTimeout(() => timeoutAbort.abort(
+            new FetchError("timeout", endpoint, method)
+        ), API_TIMEOUT)
+    }
 
     const response = await fetch(url, request)
 
@@ -239,7 +242,8 @@ export async function apiDeleteHost(api: Api, query: DeleteHostQuery): Promise<b
 export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost> }> {
     const response = await fetchApi(api, "/pair", "post", {
         json: request,
-        response: "ignore"
+        response: "ignore",
+        noTimeout: true
     })
     if (!response.body) {
         throw "no response body in pair response"

@@ -20,9 +20,9 @@ echo "Putting final output into $outputDir"
 echo "Moonlight Root Directory $moonlightRoot"
 
 $targets = @(
-    "x86_64-pc-windows-gnu"
-    "x86_64-unknown-linux-gnu"
-    "arm-unknown-linux-gnueabihf"
+    # "x86_64-pc-windows-gnu"
+    # "x86_64-unknown-linux-gnu"
+    # "arm-unknown-linux-gnueabihf"
     "aarch64-unknown-linux-gnu"
 )
 

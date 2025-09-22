@@ -72,8 +72,8 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 }
 ```
 
-3. Forward the port range specified in the previous step as `udp` and `tcp`.
-If you're using Windows Defender make sure to allow NAT Traversal for udp
+3. Forward the port range specified in the previous step as `udp`.
+If you're using Windows Defender make sure to allow NAT Traversal.
 
 4. Configure [WebRTC Nat 1 To 1](#webrtc-nat-1-to-1-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
 ```json

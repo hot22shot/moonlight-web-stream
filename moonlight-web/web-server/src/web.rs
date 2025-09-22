@@ -24,7 +24,7 @@ async fn config_js(config: Data<Config>) -> HttpResponse {
         Ok(value) => value,
         Err(err) => {
             warn!(
-                "failed to write to the web config.js. The Web Interface might fail to load! {err:?}"
+                "failed to create the web config.js. The Web Interface might fail to load! {err:?}"
             );
 
             return HttpResponse::InternalServerError().finish();
@@ -32,5 +32,7 @@ async fn config_js(config: Data<Config>) -> HttpResponse {
     };
     let config_js = format!("export default {config_json}");
 
-    HttpResponse::Ok().body(config_js)
+    HttpResponse::Ok()
+        .append_header(("Content-Type", "text/javascript"))
+        .body(config_js)
 }
