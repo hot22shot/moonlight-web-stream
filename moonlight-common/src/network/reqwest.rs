@@ -24,9 +24,7 @@ pub enum ReqwestError {
 pub type ReqwestApiError = ApiError<ReqwestError>;
 
 fn timeout_builder() -> ClientBuilder {
-    ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(2))
-        .timeout(Duration::from_secs(20))
+    ClientBuilder::new().timeout(Duration::from_secs(10))
 }
 
 fn build_url(
@@ -51,7 +49,6 @@ impl RequestClient for Client {
 
     fn with_defaults_long_timeout() -> Result<Self, Self::Error> {
         Ok(ClientBuilder::new()
-            .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(100))
             .build()?)
     }
