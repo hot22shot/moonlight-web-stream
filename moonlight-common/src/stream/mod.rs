@@ -1,6 +1,7 @@
 use std::{
     ffi::{CStr, CString},
     mem::transmute,
+    os::raw::{c_char, c_int, c_schar, c_short, c_uchar, c_uint},
     ptr::null_mut,
     str::FromStr,
     sync::{Arc, LazyLock, Mutex},
@@ -173,10 +174,10 @@ impl MoonlightStream {
                 colorSpace: stream_config.color_space as u32 as i32,
                 colorRange: stream_config.color_range as u32 as i32,
                 encryptionFlags: stream_config.encryption_flags.bits() as i32,
-                remoteInputAesKey: transmute::<[u8; 16], [i8; 16]>(
+                remoteInputAesKey: transmute::<[u8; 16], [c_char; 16]>(
                     stream_config.remote_input_aes_key,
                 ),
-                remoteInputAesIv: transmute::<[u8; 16], [i8; 16]>(remote_input_aes_iv),
+                remoteInputAesIv: transmute::<[u8; 16], [c_char; 16]>(remote_input_aes_iv),
             };
 
             // If something panics this will be dropped -> connection_guard is false again
@@ -418,7 +419,7 @@ impl MoonlightStream {
     ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) =
-                Self::send_event_error(LiSendMouseButtonEvent(action as i8, button as i32))
+                Self::send_event_error(LiSendMouseButtonEvent(action as c_char, button as c_int))
             {
                 return Err(err);
             }
@@ -436,9 +437,11 @@ impl MoonlightStream {
         modifiers: KeyModifiers,
     ) -> Result<(), MoonlightError> {
         unsafe {
-            if let Some(err) =
-                Self::send_event_error(LiSendKeyboardEvent(code, action as i8, modifiers.bits()))
-            {
+            if let Some(err) = Self::send_event_error(LiSendKeyboardEvent(
+                code as c_short,
+                action as c_char,
+                modifiers.bits() as c_char,
+            )) {
                 return Err(err);
             }
         }
@@ -457,10 +460,10 @@ impl MoonlightStream {
     ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendKeyboardEvent2(
-                key_code,
-                key_action as i8,
-                modifiers.bits(),
-                flags.bits(),
+                key_code as c_short,
+                key_action as c_char,
+                modifiers.bits() as c_char,
+                flags.bits() as c_char,
             )) {
                 return Err(err);
             }
@@ -472,8 +475,8 @@ impl MoonlightStream {
     pub fn send_text(&self, text: &str) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendUtf8TextEvent(
-                text.as_ptr() as *const i8,
-                text.len() as u32,
+                text.as_ptr() as *const c_char,
+                text.len() as c_uint,
             )) {
                 return Err(err);
             }
@@ -486,7 +489,7 @@ impl MoonlightStream {
     /// being sent to the PC.
     pub fn send_scroll(&self, scroll_clicks: i8) -> Result<(), MoonlightError> {
         unsafe {
-            if let Some(err) = Self::send_event_error(LiSendScrollEvent(scroll_clicks)) {
+            if let Some(err) = Self::send_event_error(LiSendScrollEvent(scroll_clicks as c_schar)) {
                 return Err(err);
             }
         }
@@ -499,7 +502,9 @@ impl MoonlightStream {
     /// scrolling (Apple Trackpads, Microsoft Precision Touchpads, etc.).
     pub fn send_high_res_scroll(&self, scroll_amount: i16) -> Result<(), MoonlightError> {
         unsafe {
-            if let Some(err) = Self::send_event_error(LiSendHighResScrollEvent(scroll_amount)) {
+            if let Some(err) =
+                Self::send_event_error(LiSendHighResScrollEvent(scroll_amount as c_short))
+            {
                 return Err(err);
             }
         }
@@ -511,7 +516,8 @@ impl MoonlightStream {
     /// This is a Sunshine protocol extension.
     pub fn send_horizontal_scroll(&self, scroll_clicks: i8) -> Result<(), MoonlightError> {
         unsafe {
-            if let Some(err) = Self::send_event_error(LiSendHScrollEvent(scroll_clicks)) {
+            if let Some(err) = Self::send_event_error(LiSendHScrollEvent(scroll_clicks as c_schar))
+            {
                 return Err(err);
             }
         }
@@ -526,7 +532,9 @@ impl MoonlightStream {
         scroll_amount: i16,
     ) -> Result<(), MoonlightError> {
         unsafe {
-            if let Some(err) = Self::send_event_error(LiSendHighResHScrollEvent(scroll_amount)) {
+            if let Some(err) =
+                Self::send_event_error(LiSendHighResHScrollEvent(scroll_amount as c_short))
+            {
                 return Err(err);
             }
         }
@@ -547,13 +555,13 @@ impl MoonlightStream {
     ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendControllerEvent(
-                buttons.bits() as i32,
-                left_trigger,
-                right_trigger,
-                left_stick_x,
-                left_stick_y,
-                right_stick_x,
-                right_stick_y,
+                buttons.bits() as c_int,
+                left_trigger as c_uchar,
+                right_trigger as c_uchar,
+                left_stick_x as c_short,
+                left_stick_y as c_short,
+                right_stick_x as c_short,
+                right_stick_y as c_short,
             )) {
                 return Err(err);
             }
@@ -591,15 +599,15 @@ impl MoonlightStream {
     ) -> Result<(), MoonlightError> {
         unsafe {
             if let Some(err) = Self::send_event_error(LiSendMultiControllerEvent(
-                controller_number as i16,
-                active_gamepads.bits() as i16,
-                buttons.bits() as i32,
-                left_trigger,
-                right_trigger,
-                left_stick_x,
-                left_stick_y,
-                right_stick_x,
-                right_stick_y,
+                controller_number as c_short,
+                active_gamepads.bits() as c_short,
+                buttons.bits() as c_int,
+                left_trigger as c_uchar,
+                right_trigger as c_uchar,
+                left_stick_x as c_short,
+                left_stick_y as c_short,
+                right_stick_x as c_short,
+                right_stick_y as c_short,
             )) {
                 return Err(err);
             }

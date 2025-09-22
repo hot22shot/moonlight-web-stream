@@ -31,7 +31,7 @@ fn generate_bindings_with_name(header_name: &str, rust_name: &str) {
         .expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_path = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join(rust_name))
         .expect("Couldn't write bindings!");

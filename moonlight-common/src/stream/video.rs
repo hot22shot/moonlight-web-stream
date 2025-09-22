@@ -1,4 +1,4 @@
-use std::{ffi::c_void, slice, sync::Mutex, time::Duration};
+use std::{ffi::c_void, os::raw::c_int, slice, sync::Mutex, time::Duration};
 
 use moonlight_common_sys::limelight::{_DECODER_RENDERER_CALLBACKS, PDECODE_UNIT};
 use num::FromPrimitive;
@@ -63,13 +63,13 @@ pub(crate) fn clear_global() {
 
 #[allow(non_snake_case)]
 unsafe extern "C" fn setup(
-    videoFormat: i32,
-    width: i32,
-    height: i32,
-    redrawRate: i32,
+    videoFormat: c_int,
+    width: c_int,
+    height: c_int,
+    redrawRate: c_int,
     _context: *mut c_void,
-    drFlags: i32,
-) -> i32 {
+    drFlags: c_int,
+) -> c_int {
     global_decoder(|decoder| {
         decoder.setup(
             VideoFormat::from_i32(videoFormat).expect("invalid video format"),
@@ -88,7 +88,7 @@ unsafe extern "C" fn start() {
 
 static BUFFER: Mutex<Vec<VideoDataBuffer<'static>>> = Mutex::new(Vec::new());
 
-unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> i32 {
+unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> c_int {
     let raw = unsafe { *decode_unit };
 
     // # Safety

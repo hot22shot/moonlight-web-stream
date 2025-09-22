@@ -1,4 +1,7 @@
-use std::sync::Mutex;
+use std::{
+    os::raw::{c_char, c_int, c_uchar, c_ushort},
+    sync::Mutex,
+};
 
 use moonlight_common_sys::limelight::_CONNECTION_LISTENER_CALLBACKS;
 use num::FromPrimitive;
@@ -119,17 +122,17 @@ pub(crate) fn clear_global() {
     *decoder = None;
 }
 
-unsafe extern "C" fn stage_starting(stage: i32) {
+unsafe extern "C" fn stage_starting(stage: c_int) {
     global_listener(|listener| {
         listener.stage_starting(Stage::from_i32(stage).expect("valid stage"));
     });
 }
-unsafe extern "C" fn stage_complete(stage: i32) {
+unsafe extern "C" fn stage_complete(stage: c_int) {
     global_listener(|listener| {
         listener.stage_complete(Stage::from_i32(stage).expect("valid stage"));
     });
 }
-unsafe extern "C" fn stage_failed(stage: i32, error_code: i32) {
+unsafe extern "C" fn stage_failed(stage: c_int, error_code: c_int) {
     global_listener(|listener| {
         listener.stage_failed(Stage::from_i32(stage).expect("valid stage"), error_code);
     });
@@ -139,12 +142,12 @@ unsafe extern "C" fn connection_started() {
         listener.connection_started();
     });
 }
-unsafe extern "C" fn connection_terminated(error_code: i32) {
+unsafe extern "C" fn connection_terminated(error_code: c_int) {
     global_listener(|listener| {
         listener.connection_terminated(error_code);
     });
 }
-unsafe extern "C" fn connection_status_update(status: i32) {
+unsafe extern "C" fn connection_status_update(status: c_int) {
     global_listener(|listener| {
         listener.connection_status_update(
             ConnectionStatus::from_i32(status).expect("valid connection status"),
@@ -152,7 +155,7 @@ unsafe extern "C" fn connection_status_update(status: i32) {
     });
 }
 
-unsafe extern "C" fn log_message(message: *const i8, mut args: ...) {
+unsafe extern "C" fn log_message(message: *const c_char, mut args: ...) {
     global_listener(|listener| unsafe {
         let mut text = String::new();
         format(message, args.as_va_list(), output::fmt_write(&mut text));
@@ -168,18 +171,18 @@ unsafe extern "C" fn set_hdr_mode(hdr_enabled: bool) {
 }
 
 unsafe extern "C" fn controller_rumble(
-    controller_number: u16,
-    low_frequency_motor: u16,
-    high_frequency_motor: u16,
+    controller_number: c_ushort,
+    low_frequency_motor: c_ushort,
+    high_frequency_motor: c_ushort,
 ) {
     global_listener(|listener| {
         listener.controller_rumble(controller_number, low_frequency_motor, high_frequency_motor);
     });
 }
 unsafe extern "C" fn controller_rumble_triggers(
-    controller_number: u16,
-    left_trigger_motor: u16,
-    right_trigger_motor: u16,
+    controller_number: c_ushort,
+    left_trigger_motor: c_ushort,
+    right_trigger_motor: c_ushort,
 ) {
     global_listener(|listener| {
         listener.controller_rumble_triggers(
@@ -190,9 +193,9 @@ unsafe extern "C" fn controller_rumble_triggers(
     });
 }
 unsafe extern "C" fn controller_set_motion_event_state(
-    controller_number: u16,
-    motion_type: u8,
-    report_rate_hz: u16,
+    controller_number: c_ushort,
+    motion_type: c_uchar,
+    report_rate_hz: c_ushort,
 ) {
     global_listener(|listener| {
         listener.controller_set_motion_event_state(controller_number, motion_type, report_rate_hz);
@@ -204,12 +207,12 @@ unsafe extern "C" fn controller_set_led(controller_number: u16, r: u8, g: u8, b:
     })
 }
 unsafe extern "C" fn controller_set_adaptive_triggers(
-    controller_number: u16,
-    event_flags: u8,
-    type_left: u8,
-    type_right: u8,
-    left: *mut u8,
-    right: *mut u8,
+    controller_number: c_ushort,
+    event_flags: c_uchar,
+    type_left: c_uchar,
+    type_right: c_uchar,
+    left: *mut c_uchar,
+    right: *mut c_uchar,
 ) {
     global_listener(|listener| {
         let (left, right) = unsafe { (&mut *left, &mut *right) };

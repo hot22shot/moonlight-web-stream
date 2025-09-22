@@ -1,4 +1,9 @@
-use std::{ffi::c_void, slice, sync::Mutex};
+use std::{
+    ffi::c_void,
+    os::raw::{c_char, c_int},
+    slice,
+    sync::Mutex,
+};
 
 use moonlight_common_sys::limelight::{_AUDIO_RENDERER_CALLBACKS, POPUS_MULTISTREAM_CONFIGURATION};
 
@@ -56,11 +61,11 @@ pub(crate) fn clear_global() {
 
 #[allow(non_snake_case)]
 unsafe extern "C" fn setup(
-    audioConfiguration: i32,
+    audioConfiguration: c_int,
     opusConfig: POPUS_MULTISTREAM_CONFIGURATION,
     _context: *mut c_void,
-    arFlags: i32,
-) -> i32 {
+    arFlags: c_int,
+) -> c_int {
     global_decoder(|decoder| {
         let audio_config = AudioConfig(audioConfiguration as u32);
 
@@ -83,7 +88,7 @@ unsafe extern "C" fn start() {
     })
 }
 
-unsafe extern "C" fn decode_and_play_sample(data: *mut i8, len: i32) {
+unsafe extern "C" fn decode_and_play_sample(data: *mut c_char, len: c_int) {
     global_decoder(|decoder| unsafe {
         let data = slice::from_raw_parts(data as *mut u8, len as usize);
 
