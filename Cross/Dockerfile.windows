@@ -28,6 +28,6 @@ RUN ln -s $CROSS_SYSROOT/include/ws2tcpip.h /usr/x86_64-w64-mingw32/include/Ws2t
     ln -s $CROSS_SYSROOT/include/mswsock.h /usr/x86_64-w64-mingw32/include/Mswsock.h && \
     ln -s $CROSS_SYSROOT/include/versionhelpers.h /usr/x86_64-w64-mingw32/include/VersionHelpers.h && \
     ln -s $CROSS_SYSROOT/include/windows.h /usr/x86_64-w64-mingw32/include/Windows.h && \
-    ln -s $CROSS_SYSROOT/include/winsock2.h /usr/x86_64-w64-mingw32/include/Winsock2.h \
+    ln -s $CROSS_SYSROOT/include/winsock2.h /usr/x86_64-w64-mingw32/include/Winsock2.h && \
     # For some reason the stdbool.h is not in the include path
     ln -s /usr/lib/gcc/x86_64-w64-mingw32/7.3-posix/include/stdbool.h /usr/x86_64-w64-mingw32/include/stdbool.h
