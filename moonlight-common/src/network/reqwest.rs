@@ -26,6 +26,7 @@ pub type ReqwestApiError = ApiError<ReqwestError>;
 fn default_builder() -> ClientBuilder {
     ClientBuilder::new()
         .use_native_tls()
+        // https://github.com/seanmonstar/reqwest/issues/2021
         .pool_max_idle_per_host(0)
 }
 fn timeout_builder() -> ClientBuilder {
