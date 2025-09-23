@@ -23,8 +23,13 @@ pub enum ReqwestError {
 }
 pub type ReqwestApiError = ApiError<ReqwestError>;
 
+fn default_builder() -> ClientBuilder {
+    ClientBuilder::new()
+        .use_native_tls()
+        .pool_max_idle_per_host(0)
+}
 fn timeout_builder() -> ClientBuilder {
-    ClientBuilder::new().timeout(Duration::from_secs(10))
+    default_builder().timeout(Duration::from_secs(10))
 }
 
 fn build_url(
@@ -48,7 +53,7 @@ impl RequestClient for Client {
     type Bytes = Bytes;
 
     fn with_defaults_long_timeout() -> Result<Self, Self::Error> {
-        Ok(ClientBuilder::new()
+        Ok(default_builder()
             .timeout(Duration::from_secs(100))
             .build()?)
     }
@@ -74,7 +79,6 @@ impl RequestClient for Client {
         )?;
 
         Ok(timeout_builder()
-            .use_native_tls()
             .tls_built_in_root_certs(false)
             .add_root_certificate(server_cert)
             .identity(identity)
