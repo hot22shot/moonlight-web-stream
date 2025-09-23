@@ -6,18 +6,15 @@ license = { workspace = true }
 
 [dependencies]
 moonlight-common-sys = { workspace = true }
-
 moonlight-common = { workspace = true, features = [
     "high",
     "backend_reqwest",
     "stream",
 ] }
-tokio = { version = "1.46.1", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 
 rcgen = "0.14.3"
-pem = "3.0.5"
+pem = { workspace = true }
 
 gstreamer = "0.24.0"
 gstreamer-app = "0.24.0"
-
-audiopus_sys = { version = "0.2.2", features = ["static"] }

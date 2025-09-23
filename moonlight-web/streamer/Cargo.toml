@@ -13,9 +13,8 @@ moonlight-common = { workspace = true, features = [
 common = { path = "../common" }
 
 tokio = { workspace = true }
-
+webrtc = { workspace = true }
 bytes = { workspace = true }
-webrtc = "0.13.0"
 
 pem = { workspace = true }
 

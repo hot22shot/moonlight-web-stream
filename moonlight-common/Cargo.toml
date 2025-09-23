@@ -10,27 +10,27 @@ num = { workspace = true }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 
-log = { version = "0.4.27", optional = true }
+log = { workspace = true, optional = true }
 
 thiserror = { workspace = true }
 
 # Stream
 moonlight-common-sys = { workspace = true, optional = true }
-printf-compat = { version = "0.2.1", optional = true }
+printf-compat = { workspace = true, optional = true }
 
 # Network
-uuid = { version = "1.17.0", features = ["v4"], optional = true }
-hex = { version = "0.4.3", optional = true }
-url = { version = "2.5.4", optional = true }
-roxmltree = { version = "0.20.0", optional = true }
-form_urlencoded = { version = "1.2.1", optional = true }
+uuid = { workspace = true, features = ["v4"], optional = true }
+hex = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+roxmltree = { workspace = true, optional = true }
+form_urlencoded = { workspace = true, optional = true }
 
 # Network Reqwest backend
-reqwest = { version = "0.12.22", optional = true }
+reqwest = { workspace = true, features = ["default"], optional = true }
 bytes = { workspace = true, optional = true }
 
 # High
-tokio = { version = "1.46.1", default-features = false, features = [
+tokio = { workspace = true, features = [
     "rt",
     "rt-multi-thread",
 ], optional = true }

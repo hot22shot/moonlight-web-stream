@@ -20,5 +20,5 @@ generate-bindings = ["dep:bindgen"]
 vendored = ["dep:cmake"]
 
 [build-dependencies]
-bindgen = { version = "0.72.0", optional = true }
-cmake = { version = "0.1.54", optional = true }
+bindgen = { workspace = true, optional = true }
+cmake = { workspace = true, optional = true }
