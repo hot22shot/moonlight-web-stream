@@ -2,8 +2,10 @@ use std::{collections::HashMap, path::Path};
 
 use actix_web::web::{Bytes, Data};
 use futures::future::join_all;
-use log::warn;
-use moonlight_common::{PairStatus, network::reqwest::ReqwestMoonlightHost, pair::ClientAuth};
+use log::{info, warn};
+use moonlight_common::{
+    PairStatus, mac::MacAddress, network::reqwest::ReqwestMoonlightHost, pair::ClientAuth,
+};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
 use tokio::{
@@ -26,7 +28,7 @@ struct Host {
     address: String,
     http_port: u16,
     #[serde(default)]
-    name_cache: Option<String>,
+    cache: HostCache,
     paired: Option<PairedHost>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,18 +39,49 @@ pub struct PairedHost {
 }
 
 pub struct RuntimeApiHost {
-    pub cache_name: Option<String>,
+    pub cache: HostCache,
     pub moonlight: ReqwestMoonlightHost,
     pub app_images_cache: HashMap<u32, Bytes>,
 }
 
+impl RuntimeApiHost {
+    pub async fn try_recache(&mut self, data: &RuntimeApiData) {
+        let mut changed = false;
+
+        let name = self.moonlight.host_name().await.ok();
+        if let Some(name) = name {
+            self.cache.name = Some(name.to_string());
+            changed = true;
+        }
+
+        let mac = self.moonlight.mac().await.ok();
+        if let Some(mac) = mac.flatten() {
+            self.cache.mac = Some(mac);
+            changed = true;
+        }
+
+        if changed {
+            let _ = data.file_writer.try_send(());
+        }
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct HostCache {
+    pub name: Option<String>,
+    pub mac: Option<MacAddress>,
+}
+
 pub struct RuntimeApiData {
+    // TODO: make this private, make the save fn internal, only expose fn which uses this filer_writer sender to try_send on it
     pub(crate) file_writer: Sender<()>,
     pub(crate) hosts: RwLock<Slab<Mutex<RuntimeApiHost>>>,
 }
 
 impl RuntimeApiData {
     pub async fn load(config: &Config, data: ApiData) -> Data<Self> {
+        info!("Loading hosts");
+
         let mut hosts = Slab::new();
         let loaded_hosts = join_all(data.hosts.into_iter().map(|host_data| async move {
             let mut host =
@@ -61,10 +94,11 @@ impl RuntimeApiData {
                 };
             set_pair_state(&mut host, host_data.paired.as_ref()).await;
 
-            let name = host.host_name().await.map(str::to_string).ok();
+            // Try to cache data
+            let _ = host.host_name().await;
 
             Some(RuntimeApiHost {
-                cache_name: name,
+                cache: host_data.cache,
                 moonlight: host,
                 app_images_cache: Default::default(),
             })
@@ -93,6 +127,7 @@ impl RuntimeApiData {
             async move { self::file_writer(file_writer_receiver, path, this).await }
         });
 
+        info!("Finished loading hosts");
         this
     }
 
@@ -104,15 +139,14 @@ impl RuntimeApiData {
         };
 
         for (_, host) in &*hosts {
-            let mut host = host.lock().await;
+            let host = host.lock().await;
 
             let paired = Self::extract_paired(&host.moonlight);
-            let name = host.moonlight.host_name().await.map(str::to_string).ok();
 
             output.hosts.push(Host {
                 address: host.moonlight.address().to_string(),
                 http_port: host.moonlight.http_port(),
-                name_cache: name,
+                cache: host.cache.clone(),
                 paired,
             });
         }

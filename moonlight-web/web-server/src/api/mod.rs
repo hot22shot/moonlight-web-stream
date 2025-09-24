@@ -8,7 +8,7 @@ use futures::future::join_all;
 use log::{info, warn};
 use moonlight_common::{
     PairPin, PairStatus,
-    high::HostError,
+    high::{HostError, broadcast_magic_packet},
     network::{
         ApiError,
         reqwest::{ReqwestError, ReqwestMoonlightHost},
@@ -21,12 +21,12 @@ use tokio::sync::Mutex;
 use crate::{
     Config,
     api::auth::{ApiCredentials, auth_middleware},
-    data::{RuntimeApiData, RuntimeApiHost},
+    data::{HostCache, RuntimeApiData, RuntimeApiHost},
 };
 use common::api_bindings::{
     DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
     GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
-    PutHostRequest, PutHostResponse, UndetailedHost,
+    PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost,
 };
 
 mod auth;
@@ -43,7 +43,7 @@ async fn list_hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHostsResponse>
 
     let hosts = join_all(hosts.iter().map(|(host_id, host)| async move {
         let mut host = host.lock().await;
-        let mut name = host.cache_name.clone();
+        let mut name = host.cache.name.clone();
 
         into_undetailed_host(
             host_id,
@@ -75,11 +75,7 @@ async fn get_host(
         host.moonlight.clear_cache();
     }
 
-    if (query.force_refresh || host.cache_name.is_none())
-        && let Ok(name) = host.moonlight.host_name().await
-    {
-        host.cache_name = Some(name.to_string());
-    }
+    host.try_recache(&data).await;
 
     let Ok(detailed_host) = into_detailed_host(host_id as usize, &mut host.moonlight).await else {
         return Either::Right(HttpResponse::InternalServerError().finish());
@@ -111,7 +107,7 @@ async fn put_host(
         }
     };
 
-    let name = match host.host_name().await {
+    let mac = match host.mac().await {
         Ok(value) => value,
         Err(HostError::Api(ApiError::RequestClient(ReqwestError::Reqwest(err))))
             if err.is_timeout() =>
@@ -125,13 +121,19 @@ async fn put_host(
         }
         Err(_) => return Either::Right(HttpResponse::BadRequest().finish()),
     };
+    let Ok(name) = host.host_name().await else {
+        return Either::Right(HttpResponse::InternalServerError().finish());
+    };
 
     // Write host
     let mut hosts = data.hosts.write().await;
 
     let host_id = hosts.vacant_key();
     hosts.insert(Mutex::new(RuntimeApiHost {
-        cache_name: Some(name.to_string()),
+        cache: HostCache {
+            name: Some(name.to_string()),
+            mac,
+        },
         moonlight: host,
         app_images_cache: Default::default(),
     }));
@@ -286,6 +288,33 @@ async fn pair_host(
         .streaming(stream)
 }
 
+#[post("/host/wake")]
+async fn wake_host(
+    data: Data<RuntimeApiData>,
+    Json(request): Json<PostWakeUpRequest>,
+) -> HttpResponse {
+    let hosts = data.hosts.read().await;
+
+    let host_id = request.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return HttpResponse::NotFound().finish();
+    };
+    let host = host.lock().await;
+
+    let mac = host.cache.mac;
+
+    if let Some(mac) = mac {
+        if let Err(err) = broadcast_magic_packet(mac).await {
+            warn!("failed to send magic(wake on lan) packet: {err:?}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    } else {
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    HttpResponse::Ok().finish()
+}
+
 #[get("/apps")]
 async fn get_apps(
     data: Data<RuntimeApiData>,
@@ -367,6 +396,7 @@ pub fn api_service(data: Data<RuntimeApiData>, credentials: String) -> impl Http
             list_hosts,
             get_host,
             put_host,
+            wake_host,
             delete_host,
             pair_host,
             get_apps,
@@ -416,7 +446,7 @@ async fn into_detailed_host(
         version: host.version().await?.to_string(),
         gfe_version: host.gfe_version().await?.to_string(),
         unique_id: host.unique_id().await?.to_string(),
-        mac: host.mac().await?.to_string(),
+        mac: host.mac().await?.map(|mac| mac.to_string()),
         local_ip: host.local_ip().await?.to_string(),
         current_game: host.current_game().await?,
         max_luma_pixels_hevc: host.max_luma_pixels_hevc().await?,

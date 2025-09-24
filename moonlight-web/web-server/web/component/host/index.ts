@@ -1,5 +1,5 @@
 import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
-import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair } from "../../api.js"
+import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp } from "../../api.js"
 import { Component, ComponentEvent } from "../index.js"
 import { setContextMenu } from "../context_menu.js"
 import { showErrorPopup } from "../error.js"
@@ -70,8 +70,10 @@ export class Host implements Component {
         }
     }
 
-    private async onClick() {
-        if (this.cache?.paired == "Paired") {
+    private async onClick(event: MouseEvent) {
+        if (this.cache?.server_state == null) {
+            this.onContextMenu(event)
+        } else if (this.cache?.paired == "Paired") {
             this.divElement.dispatchEvent(new ComponentEvent("ml-hostopen", this))
         } else {
             await this.pair()
@@ -86,7 +88,13 @@ export class Host implements Component {
                 name: "Show Details",
                 callback: this.showDetails.bind(this),
             })
+        } else {
+            elements.push({
+                name: "Send Wake Up Packet",
+                callback: this.wakeUp.bind(this)
+            })
         }
+
         elements.push({
             name: "Reload",
             callback: async () => this.forceFetch(true)
@@ -166,6 +174,13 @@ export class Host implements Component {
             showErrorPopup(`something went wrong whilst removing the host ${this.getHostId()}`)
         }
         this.divElement.dispatchEvent(new ComponentEvent("ml-hostremove", this))
+    }
+    private async wakeUp() {
+        await apiWakeUp(this.api, {
+            host_id: this.getHostId()
+        })
+
+        await showMessage("Sent Wake Up packet. It might take a moment for your pc to start.")
     }
     private async pair() {
         if (this.cache?.paired == "Paired") {

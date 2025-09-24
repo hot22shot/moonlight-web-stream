@@ -75,7 +75,7 @@ pub struct DetailedHost {
     pub version: String,
     pub gfe_version: String,
     pub unique_id: String,
-    pub mac: String,
+    pub mac: Option<String>,
     pub local_ip: String,
     pub current_game: u32,
     pub max_luma_pixels_hevc: u32,
@@ -158,6 +158,12 @@ pub enum PostPairResponse1 {
 pub enum PostPairResponse2 {
     PairError,
     Paired(DetailedHost),
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostWakeUpRequest {
+    pub host_id: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

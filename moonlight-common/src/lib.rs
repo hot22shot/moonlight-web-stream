@@ -43,6 +43,8 @@ pub mod high;
 #[cfg(feature = "pair")]
 pub mod pair;
 
+pub mod mac;
+
 #[derive(Debug, Error, Clone)]
 #[error("failed to parse the state of the server")]
 pub struct ParseServerStateError;

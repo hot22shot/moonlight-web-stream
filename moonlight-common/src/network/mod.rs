@@ -8,6 +8,7 @@ use uuid::{Uuid, fmt::Hyphenated};
 
 use crate::{
     PairStatus, ParseServerStateError, ParseServerVersionError, ServerState, ServerVersion,
+    mac::{MacAddress, ParseMacAddressError},
     network::request_client::{LocalQueryParams, QueryBuilder, RequestClient, query_param},
 };
 
@@ -31,6 +32,8 @@ pub enum ApiError<RequestError> {
     ParseServerVersionError(#[from] ParseServerVersionError),
     #[error("parsing server codec mode support")]
     ParseServerCodecModeSupport,
+    #[error("failed to parse the mac address")]
+    ParseMacError(#[from] ParseMacAddressError),
     #[error("{0}")]
     ParseIntError(#[from] ParseIntError),
     #[error("{0}")]
@@ -131,7 +134,7 @@ pub struct HostInfo {
     pub https_port: u16,
     pub external_port: u16,
     pub max_luma_pixels_hevc: u32,
-    pub mac: String,
+    pub mac: Option<MacAddress>,
     pub local_ip: String,
     pub server_codec_mode_support: u32,
     pub pair_status: PairStatus,
@@ -178,7 +181,10 @@ pub async fn host_info<C: RequestClient>(
         https_port: xml_child_text::<C>(root, "HttpsPort")?.parse()?,
         external_port: xml_child_text::<C>(root, "ExternalPort")?.parse()?,
         max_luma_pixels_hevc: xml_child_text::<C>(root, "MaxLumaPixelsHEVC")?.parse()?,
-        mac: xml_child_text::<C>(root, "mac")?.to_string(),
+        mac: match xml_child_text::<C>(root, "mac")?.parse()? {
+            mac if mac == MacAddress::from_bytes([0u8; 6]) => None,
+            mac => Some(mac),
+        },
         local_ip: xml_child_text::<C>(root, "LocalIP")?.to_string(),
         server_codec_mode_support: xml_child_text::<C>(root, "ServerCodecModeSupport")?.parse()?,
         pair_status: if xml_child_text::<C>(root, "PairStatus")?.parse::<u32>()? == 0 {

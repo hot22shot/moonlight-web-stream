@@ -1,11 +1,12 @@
-import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { InputComponent } from "./component/input.js";
 import { FormModal } from "./component/modal/form.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { buildUrl } from "./config_.js";
 
-const API_TIMEOUT = 3000
+// IMPORTANT: this should be a bit bigger than the moonlight-common reqwest backend timeout if some hosts are offline!
+const API_TIMEOUT = 6000
 
 let currentApi: Api | null = null
 
@@ -275,6 +276,13 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{
             }
         })()
     }
+}
+
+export async function apiWakeUp(api: Api, request: PostWakeUpRequest): Promise<void> {
+    await fetchApi(api, "/host/wake", "post", {
+        json: request,
+        response: "ignore"
+    })
 }
 
 export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App>> {

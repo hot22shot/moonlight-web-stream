@@ -20,7 +20,7 @@ printf-compat = { workspace = true, optional = true }
 
 # Network
 uuid = { workspace = true, features = ["v4"], optional = true }
-hex = { workspace = true, optional = true }
+hex = { workspace = true }
 url = { workspace = true, optional = true }
 roxmltree = { workspace = true, optional = true }
 form_urlencoded = { workspace = true, optional = true }
@@ -33,6 +33,7 @@ bytes = { workspace = true, optional = true }
 tokio = { workspace = true, features = [
     "rt",
     "rt-multi-thread",
+    "time",
 ], optional = true }
 pem = { workspace = true, optional = true }
 openssl = { workspace = true }
@@ -58,7 +59,6 @@ network = [
     "dep:form_urlencoded",
     "dep:roxmltree",
     "dep:uuid",
-    "dep:hex",
 
     "dep:pem",
 ]

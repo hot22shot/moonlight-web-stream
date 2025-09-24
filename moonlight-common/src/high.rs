@@ -2,12 +2,18 @@
 //! The high level api of the moonlight wrapper
 //!
 
+use std::{
+    io,
+    net::{Ipv4Addr, SocketAddrV4},
+};
+
 use pem::Pem;
-use tokio::task::JoinError;
+use tokio::{net::UdpSocket, task::JoinError};
 use uuid::Uuid;
 
 use crate::{
     Error, MoonlightError, PairPin, PairStatus, ServerState, ServerVersion,
+    mac::MacAddress,
     network::{
         ApiError, App, ClientAppBoxArtRequest, ClientInfo, DEFAULT_UNIQUE_ID, HostInfo,
         ServerAppListResponse, host_app_box_art, host_app_list, host_cancel, host_info,
@@ -15,6 +21,24 @@ use crate::{
     },
     pair::{ClientAuth, PairError, PairSuccess, host_pair},
 };
+
+pub async fn broadcast_magic_packet(mac: MacAddress) -> Result<(), io::Error> {
+    let mut magic_packet = [0u8; 6 * 17];
+
+    magic_packet[0..6].copy_from_slice(&[255, 255, 255, 255, 255, 255]);
+    for i in 1..17 {
+        magic_packet[(i * 6)..((i + 1) * 6)].copy_from_slice(&mac.to_bytes());
+    }
+
+    let broadcast = SocketAddrV4::new(Ipv4Addr::new(255, 255, 255, 255), 9);
+
+    let socket = UdpSocket::bind("0.0.0.0:0").await?;
+
+    socket.set_broadcast(true)?;
+    socket.send_to(&magic_packet, &broadcast).await?;
+
+    Ok(())
+}
 
 #[derive(Debug, Error)]
 pub enum HostError<RequestError> {
@@ -30,6 +54,8 @@ pub enum HostError<RequestError> {
     Pair(#[from] PairError<RequestError>),
     #[error("{0}")]
     StreamConfig(#[from] StreamConfigError),
+    #[error("the host is likely offline")]
+    LikelyOffline,
 }
 
 #[derive(Debug, Error)]
@@ -49,6 +75,7 @@ pub struct MoonlightHost<Client> {
     client: Client,
     address: String,
     http_port: u16,
+    tried_connect: bool,
     cache_info: Option<HostInfo>,
     // Paired
     paired: Option<Paired>,
@@ -77,6 +104,7 @@ where
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
             address,
             http_port,
+            tried_connect: false,
             cache_info: None,
             paired: None,
         })
@@ -94,12 +122,13 @@ where
     }
 
     async fn host_info(&mut self) -> Result<&HostInfo, HostError<C::Error>> {
-        if self.cache_info.is_none() {
-            self.clear_cache();
-        }
-
         let has_cache = self.cache_info.is_some();
         let mut https_port = None;
+
+        if self.tried_connect && !has_cache {
+            return Err(HostError::LikelyOffline);
+        }
+        self.tried_connect = true;
 
         if !has_cache {
             let http_address = self.http_address();
@@ -136,6 +165,7 @@ where
         Ok(info)
     }
     pub fn clear_cache(&mut self) {
+        self.tried_connect = false;
         self.cache_info = None;
         if let Some(paired) = self.paired.as_mut() {
             paired.cache_app_list = None;
@@ -177,9 +207,10 @@ where
         Ok(info.unique_id)
     }
 
-    pub async fn mac(&mut self) -> Result<&str, HostError<C::Error>> {
+    /// Returns None if unpaired
+    pub async fn mac(&mut self) -> Result<Option<MacAddress>, HostError<C::Error>> {
         let info = self.host_info().await?;
-        Ok(info.mac.as_str())
+        Ok(info.mac)
     }
     pub async fn local_ip(&mut self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
