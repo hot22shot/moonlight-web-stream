@@ -9,8 +9,11 @@ import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
 import { App } from "./api_bindings.js";
 import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
+import { setTouchContextMenuEnabled } from "./ios_right_click.js";
 
 async function startApp() {
+    setTouchContextMenuEnabled(true)
+
     const api = await getApi()
 
     const rootElement = document.getElementById("root");
