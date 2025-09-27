@@ -135,7 +135,13 @@ export class Game implements Component {
             appId: this.getAppId(),
         } as any)
 
-        window.open(buildUrl(`/stream.html?${query}`), "_blank")
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            // If we're in a pwa: open in the current tab
+            // If we don't do this we might get a url bar at the top
+            window.location.href = buildUrl(`/stream.html?${query}`)
+        } else {
+            window.open(buildUrl(`/stream.html?${query}`), "_blank")
+        }
     }
 
     private onContextMenu(event: MouseEvent) {
