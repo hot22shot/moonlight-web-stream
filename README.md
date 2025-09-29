@@ -60,7 +60,56 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 
 1. Set the [bind address](#bind-address) to the one of your network and forward the web server port (default is 8080, http is 80, https is 443)
 
-2. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config)
+```json
+{
+    ..
+    "bind_address": "192.168.1.1:80"
+    ..
+}
+```
+
+There are two ways to make the WebRTC Peers negotiate:
+1. The most reliable and recommended way is to use a [turn server](#configure-a-turn-server)
+2. [Forward the ports directly](#port-forward) (this might not work in every network if the firewall is very strict: e.g. udp blocked, the NAT is very strict)
+
+#### Configure a turn server
+1. Host and configure your turn server like [coturn](https://github.com/coturn/coturn) or use other services to host one for you.
+
+2. Add your turn server to your WebRTC Ice Server list
+```json
+{
+    ..
+    "webrtc_ice_servers": [
+        {
+            "urls": [
+                    "stun:l.google.com:19302",
+                    "stun:stun.l.google.com:19302",
+                    "stun:stun1.l.google.com:19302",
+                    "stun:stun2.l.google.com:19302",
+                    "stun:stun3.l.google.com:19302",
+                    "stun:stun4.l.google.com:19302",
+            ]
+        },
+        {
+            "urls": [
+                    // Your turn server
+                    "turn:yourip.com:3478?transport=udp",
+                    "turn:yourip.com:3478?transport=tcp",
+                    "turn:yourip.com:5349?transport=tcp"
+                    // Some (business) firewalls might be very strict and only allow tcp on port 443 for turn connections
+                    "turn:yourip.com:443?transport=tcp"
+            ],
+            "username": "your username",
+            "credential": "your credential"
+        }
+    ]
+    ..
+}
+```
+
+#### Port forward
+
+1. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config)
 ```json
 {
     ..
@@ -71,11 +120,10 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
     ..
 }
 ```
+2. Forward the port range specified in the previous step as `udp`.
+If you're using Windows Defender make sure to allow NAT Traversal. Important: If your firewall blocks udp connections this won't work and you need to host a [turn server](#configure-a-turn-server)
 
-3. Forward the port range specified in the previous step as `udp`.
-If you're using Windows Defender make sure to allow NAT Traversal.
-
-4. Configure [WebRTC Nat 1 To 1](#webrtc-nat-1-to-1-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
+3. Configure [WebRTC Nat 1 To 1](#webrtc-nat-1-to-1-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
 ```json
 {
     ..
