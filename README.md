@@ -183,18 +183,18 @@ sudo a2enmod mod_proxy mod_proxy_wstunnel
 # Example subpath "/moonlight" -> To connect you'd go to "http://yourip.com/moonlight/"
 Define MOONLIGHT_SUBPATH /moonlight
 # The address and port of your Moonlight Web server
-Define MOONLIGHT_DEV YOUR_LOCAL_IP:YOUR_PORT
+Define MOONLIGHT_STREAMER YOUR_LOCAL_IP:YOUR_PORT
 
 ProxyPreserveHost on
         
 # Important: This WebSocket will help negotiate the WebRTC Peers
 <Location ${MOONLIGHT_SUBPATH}/api/host/stream>
-        ProxyPass ws://${MOONLIGHT_DEV}/api/host/stream
-        ProxyPassReverse ws://${MOONLIGHT_DEV}/api/host/stream
+        ProxyPass ws://${MOONLIGHT_STREAMER}/api/host/stream
+        ProxyPassReverse ws://${MOONLIGHT_STREAMER}/api/host/stream
 </Location>
 
-ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_DEV}/
-ProxyPassReverse ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_DEV}/
+ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/
+ProxyPassReverse ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/
 ```
 
 3. Enable the created config file
