@@ -56,7 +56,6 @@ Add your pc:
 3. Launch an app
 
 ### Streaming over the Internet
-When in a local network the WebRTC Peers will negotatiate without any problems. However when you want to play over the internet without being in the same network as Moonlight Web, you'll have to configure it and forward ports.
 
 1. Set the [bind address](#bind-address) to the one of your network and forward the web server port (default is 8080, http is 80, https is 443)
 
@@ -68,12 +67,15 @@ When in a local network the WebRTC Peers will negotatiate without any problems. 
 }
 ```
 
-There are two ways to make the WebRTC Peers negotiate:
+When in a local network the WebRTC Peers will negotatiate without any problems.
+When you want to play to over the Internet the STUN servers included by default will try to negotiate the peers directly.
+This works for most of the networks, but if your network is very restrictive it might not work.
+If this is the case try to configure one or both of these options:
 1. The most reliable and recommended way is to use a [turn server](#configure-a-turn-server)
-2. [Forward the ports directly](#port-forward) (this might not work in every network if the firewall is very strict: e.g. udp blocked, the NAT is very strict)
+2. [Forward the ports directly](#port-forward) (this might not work if the firewall blocks udp)
 
 #### Configure a turn server
-1. Host and configure your turn server like [coturn](https://github.com/coturn/coturn) or use other services to host one for you.
+1. Host and configure a turn server like [coturn](https://github.com/coturn/coturn) or use other services to host one for you.
 
 2. Add your turn server to your WebRTC Ice Server list
 ```json
