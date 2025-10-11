@@ -58,7 +58,7 @@ foreach($target in $targets) {
     $itemsToZip = @($binaryPaths) + "$outputDir/static"
     $zipDestination = "$outputDir/moonlight-web-$target.zip"
 
-    Compress-Archive -Path $itemsToZip -DestinationPath $zipDestination -Force
+    & 7z a -tzip $zipDestination $itemsToZip -y
 
     echo "Created Zip file at $zipDestination"
     echo "------------- Finished Zipping for $target -------------"
