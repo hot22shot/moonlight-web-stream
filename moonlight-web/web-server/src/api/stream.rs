@@ -18,7 +18,7 @@ use log::{debug, info, warn};
 use moonlight_common::{PairStatus, stream::bindings::SupportedVideoFormats};
 use tokio::{process::Command, spawn, time::sleep};
 
-use crate::data::RuntimeApiData;
+use crate::{api::auth::ApiCredentials, data::RuntimeApiData};
 
 /// The stream handler WILL authenticate the client because it is a websocket
 /// The Authenticator will let this route through
@@ -26,6 +26,7 @@ use crate::data::RuntimeApiData;
 pub async fn start_host(
     data: Data<RuntimeApiData>,
     config: Data<Config>,
+    credentials: Data<ApiCredentials>,
     request: HttpRequest,
     payload: Payload,
 ) -> Result<HttpResponse, Error> {
@@ -58,7 +59,7 @@ pub async fn start_host(
         };
 
         let StreamClientMessage::AuthenticateAndInit {
-            credentials,
+            credentials: request_credentials,
             host_id,
             app_id,
             bitrate,
@@ -78,7 +79,17 @@ pub async fn start_host(
             return;
         };
 
-        if credentials != config.credentials {
+        if !credentials.authenticate_with_credentials(request_credentials.as_deref()) {
+            let _ = send_ws_message(
+                &mut session,
+                StreamServerMessage::StageFailed {
+                    stage: "Authentication".to_string(),
+                    error_code: -1,
+                },
+            )
+            .await;
+
+            let _ = session.close(None).await;
             return;
         }
 

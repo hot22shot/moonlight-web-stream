@@ -20,7 +20,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     Config,
-    api::auth::{ApiCredentials, auth_middleware},
+    api::auth::auth_middleware,
     data::{HostCache, RuntimeApiData, RuntimeApiHost},
 };
 use common::api_bindings::{
@@ -29,7 +29,7 @@ use common::api_bindings::{
     PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost,
 };
 
-mod auth;
+pub mod auth;
 mod stream;
 
 #[get("/authenticate")]
@@ -384,10 +384,9 @@ async fn get_app_image(
     }
 }
 
-pub fn api_service(data: Data<RuntimeApiData>, credentials: String) -> impl HttpServiceFactory {
+pub fn api_service(data: Data<RuntimeApiData>) -> impl HttpServiceFactory {
     web::scope("/api")
         .wrap(middleware::from_fn(auth_middleware))
-        .app_data(ApiCredentials(credentials))
         .app_data(data)
         .service(services![
             authenticate,

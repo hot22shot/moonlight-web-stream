@@ -232,6 +232,16 @@ The credentials the Website will prompt you to enter.
 }
 ```
 
+If you set this null authentication will be disabled and the `Authorization` header won't be used in requests.
+
+```json
+{
+    ..
+    "credentials": null
+    ..
+}
+```
+
 ### Bind Address 
 The address and port the website will run on
 

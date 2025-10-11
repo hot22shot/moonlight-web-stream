@@ -15,6 +15,7 @@ const EXPORT_PATH: &str = "../../web-server/web/api_bindings.ts";
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct ConfigJs {
+    pub enable_credential_authentication: bool,
     pub path_prefix: String,
 }
 
@@ -239,7 +240,7 @@ pub enum StreamSignalingMessage {
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamClientMessage {
     AuthenticateAndInit {
-        credentials: String,
+        credentials: Option<String>,
         host_id: u32,
         app_id: u32,
         bitrate: u32,
