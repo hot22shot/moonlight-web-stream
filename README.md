@@ -356,11 +356,13 @@ There are 2 ways to build Moonlight Web:
 
   When you want to build it on your system take a look at how to compile the crates:
   - [moonlight common sys](#crate-moonlight-common-sys)
-  - [moonlight web](#crate-moonlight-web)
+  - [moonlight web server](#crate-moonlight-web-server)
+  - [moonlight web streamer](#crate-moonlight-web-streamer)
 
 - Compile using [Cargo Cross](https://github.com/cross-rs/cross)
 
   After you've got a successful installation of cross just run the command in the project root directory
+  This will compile the [web server](#crate-moonlight-web-server) and the [streamer](#crate-moonlight-web-streamer)
   ```sh
   cross build --release --target YOUR_TARGET
   ```
@@ -369,25 +371,27 @@ There are 2 ways to build Moonlight Web:
 ### Crate: Moonlight Common Sys
 [moonlight-common-sys](./moonlight-common-sys/) are rust bindings to the cpp [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library.
 
-Requires:
+Required for building:
 - A [CMake installation](https://cmake.org/download/) which will automatically compile the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
 - [openssl-sys](https://docs.rs/openssl-sys/0.9.109/openssl_sys/): For information on building openssl sys go to the [openssl docs](https://docs.rs/openssl/latest/openssl/)
 
-### Crate: Moonlight Web
-This is the main Moonlight Web project
+### Crate: Moonlight Web Server
+This is the web server for Moonlight Web found at `moonlight-web/web-server/`.
+It'll spawn a multiple [streamers](#crate-moonlight-web-server) as a subprocess for handling each stream.
 
-Required:
+Required for building:
 - [moonlight-common-sys](#moonlight-common-sys)
-- [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
-Build the executables in the root directory with (builds streamer and web-server):
+Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
 ```sh
-cargo build --release
-```
-
-Build the web frontend with:
-```sh
-npm run install
+npm install
 npm run build
 ```
-The build output will be in `moonlight-web/dist`. The dist folder needs to be called `static` and in the same directory as the executable.
+The build output will be in `moonlight-web/web-server/dist`. The dist folder needs to be called `static` and in the same directory as the web server executable.
+
+### Crate: Moonlight Web Streamer
+This is the streamer subprocess of the [web server](#crate-moonlight-web-server) and found at `moonlight-web/streamer/`.
+It'll communicate via stdin and stdout with the web server to negotiate the WebRTC peers and then continue to communicate via the peer.
+
+Required for building:
+- [moonlight-common-sys](#moonlight-common-sys)
