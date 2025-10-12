@@ -87,7 +87,12 @@ class ApiCredentialsPrompt extends FormModal<string> {
                     file.text().then((credentials) => {
                         abortController.abort()
 
-                        resolve(credentials)
+                        // Remove carriage return and new line
+                        resolve(
+                            credentials
+                                .replace(/\r/g, "")
+                                .replace(/\n/g, "")
+                        )
                     })
                 }
             }, { signal: abortController.signal })
