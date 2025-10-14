@@ -6,7 +6,7 @@ use actix_web::{
     middleware::Next,
     web::Data,
 };
-use log::error;
+use log::{error, warn};
 
 #[derive(Clone)]
 pub struct ApiCredentials {
@@ -32,7 +32,14 @@ pub async fn auth_middleware(
         return Ok(req.into_response(response));
     };
 
-    if credentials.authenticate(&req) {
+    let authenticated = match credentials.authenticate(&req) {
+        Err(err) => {
+            return Ok(req.into_response(err));
+        }
+        Ok(value) => value,
+    };
+
+    if authenticated {
         next.call(req).await
     } else {
         let response = HttpResponse::Unauthorized().finish();
@@ -42,21 +49,22 @@ pub async fn auth_middleware(
 }
 
 impl ApiCredentials {
-    fn authenticate(&self, request: &ServiceRequest) -> bool {
+    fn authenticate(&self, request: &ServiceRequest) -> Result<bool, HttpResponse> {
         let Some(value) = request
             .head()
             .headers()
             .get(header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
         else {
-            return self.authenticate_with_credentials(None);
+            return Ok(self.authenticate_with_credentials(None));
         };
 
         let Some((auth_type, request_credentials)) = value.split_once(" ") else {
-            todo!()
+            warn!("[Auth] Received malformed Authorization header!");
+            return Err(HttpResponse::BadRequest().finish());
         };
 
-        auth_type == "Bearer" && self.authenticate_with_credentials(Some(request_credentials))
+        Ok(auth_type == "Bearer" && self.authenticate_with_credentials(Some(request_credentials)))
     }
 
     pub fn enable_credential_authentication(&self) -> bool {
