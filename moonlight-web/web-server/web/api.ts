@@ -214,7 +214,7 @@ export async function apiAuthenticate(api: Api): Promise<boolean> {
     } catch (e) {
         if (e instanceof FetchError) {
             const response = e.getResponse()
-            if (response && response.status == 403) {
+            if (response && response.status == 401) {
                 return false
             } else {
                 showErrorPopup(e.message)
