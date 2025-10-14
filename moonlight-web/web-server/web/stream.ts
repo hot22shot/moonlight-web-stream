@@ -99,26 +99,12 @@ class ViewerApp implements Component {
         this.videoElement.disablePictureInPicture = true
         this.videoElement.playsInline = true
         this.videoElement.muted = true
-        this.videoElement.tabIndex = 0
 
-        this.div.tabIndex = 0
         this.div.appendChild(this.videoElement)
 
         // Configure input
-
-        document.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
-        document.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
-
-        document.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
-        document.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
-        document.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
-        document.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
-        document.addEventListener("contextmenu", this.onContextMenu.bind(this), { passive: false })
-
-        document.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
-        document.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
-        document.addEventListener("touchcancel", this.onTouchCancel.bind(this), { passive: false })
-        document.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
+        this.addListeners(document)
+        this.addListeners(document.getElementById("input") as HTMLDivElement)
 
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
@@ -128,6 +114,21 @@ class ViewerApp implements Component {
                 this.onGamepadAdd(gamepad)
             }
         }
+    }
+    private addListeners(element: GlobalEventHandlers) {
+        element.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
+        element.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
+
+        element.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
+        element.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
+        element.addEventListener("mousemove", this.onMouseMove.bind(this), { passive: false })
+        element.addEventListener("wheel", this.onMouseWheel.bind(this), { passive: false })
+        element.addEventListener("contextmenu", this.onContextMenu.bind(this), { passive: false })
+
+        element.addEventListener("touchstart", this.onTouchStart.bind(this), { passive: false })
+        element.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
+        element.addEventListener("touchcancel", this.onTouchCancel.bind(this), { passive: false })
+        element.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
     }
 
     private async startStream(hostId: number, appId: number, settings: StreamSettings, browserSize: [number, number]) {
@@ -474,17 +475,16 @@ class ViewerSidebar implements Component, Sidebar {
         this.lockMouseButton.addEventListener("click", async () => {
             setSidebarExtended(false)
 
-            const root = document.getElementById("root")
-
-            if (root) {
-                if ("requestPointerLock" in root && typeof root.requestPointerLock == "function") {
-                    await root.requestPointerLock()
-                } else {
-                    await showMessage("Pointer Lock not supported")
-                }
-            } else {
-                console.warn("root element not found")
+            if (this.app.getStream()?.getInput().getConfig().mouseMode != "relative") {
+                await showMessage("Locking the Mouse is only possible with mouse mode: relative")
+                return
             }
+
+            const inputElement = document.getElementById("input") as HTMLDivElement
+            await requestStreamPointerLock(this.app, inputElement, true)
+
+            // Focus input
+            inputElement.focus()
         })
         this.buttonDiv.appendChild(this.lockMouseButton)
 
@@ -512,9 +512,7 @@ class ViewerSidebar implements Component, Sidebar {
                 })
 
                 if (this.mouseMode.getValue() == "relative") {
-                    if ("requestPointerLock" in root && typeof root.requestPointerLock == "function") {
-                        await root.requestPointerLock()
-                    }
+                    await requestStreamPointerLock(this.app, root)
                 } else {
                     console.warn("failed to request pointer lock while requesting fullscreen")
                 }
@@ -530,6 +528,11 @@ class ViewerSidebar implements Component, Sidebar {
                 } catch (e) {
                     console.warn("failed to set orientation to landscape", e)
                 }
+
+                // Focus input
+                const inputElement = document.getElementById("input") as HTMLDivElement
+                inputElement.focus()
+
             } else {
                 console.warn("root element not found")
             }
@@ -653,6 +656,14 @@ class SendKeycodeModal extends FormModal<number> {
         }
 
         return parseInt(keyString)
+    }
+}
+
+async function requestStreamPointerLock(app: ViewerApp, root: HTMLElement | null, errorIfNotFound: boolean = false) {
+    if (root && "requestPointerLock" in root && typeof root.requestPointerLock == "function") {
+        await root.requestPointerLock()
+    } else if (errorIfNotFound) {
+        await showMessage("Pointer Lock not supported")
     }
 }
 
