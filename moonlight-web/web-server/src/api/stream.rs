@@ -181,7 +181,7 @@ pub async fn start_host(
         // Starting stage: launch streamer
         let _ = send_ws_message(
             &mut session,
-            StreamServerMessage::StageComplete {
+            StreamServerMessage::StageStarting {
                 stage: "Launch Streamer".to_string(),
             },
         )
