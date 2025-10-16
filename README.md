@@ -248,7 +248,7 @@ The address and port the website will run on
 ```json
 {
     ..
-    "bind_address": "127.0.0.1:8080"
+    "bind_address": "0.0.0.0:8080"
     ..
 }
 ```
@@ -290,12 +290,16 @@ A list of ice servers for webrtc to use.
     "webrtc_ice_servers": [
         {
             "urls": [
-                    "stun:l.google.com:19302",
-                    "stun:stun.l.google.com:19302",
-                    "stun:stun1.l.google.com:19302",
-                    "stun:stun2.l.google.com:19302",
-                    "stun:stun3.l.google.com:19302",
-                    "stun:stun4.l.google.com:19302",
+                "stun:stun.l.google.com:19302",
+                "stun:stun.l.google.com:5349",
+                "stun:stun1.l.google.com:3478",
+                "stun:stun1.l.google.com:5349",
+                "stun:stun2.l.google.com:19302",
+                "stun:stun2.l.google.com:5349",
+                "stun:stun3.l.google.com:3478",
+                "stun:stun3.l.google.com:5349",
+                "stun:stun4.l.google.com:19302",
+                "stun:stun4.l.google.com:5349",
             ]
         }
     ]
