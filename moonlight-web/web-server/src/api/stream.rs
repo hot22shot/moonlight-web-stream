@@ -14,7 +14,7 @@ use common::{
     ipc::{ServerIpcMessage, StreamerIpcMessage, create_child_ipc},
     serialize_json,
 };
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use moonlight_common::{PairStatus, stream::bindings::SupportedVideoFormats};
 use tokio::{process::Command, spawn, time::sleep};
 
@@ -140,7 +140,7 @@ pub async fn start_host(
             let apps = match host.app_list().await {
                 Ok(value) => value,
                 Err(err) => {
-                    warn!("[Stream]: failed to get app list from host: {err:?}");
+                    error!("[Stream]: failed to get app list from host: {err:?}");
 
                     let _ = send_ws_message(&mut session, StreamServerMessage::InternalServerError)
                         .await;
@@ -149,6 +149,8 @@ pub async fn start_host(
                 }
             };
             let Some(app) = apps.iter().find(|app| app.id == app_id).cloned() else {
+                warn!("[Stream]: failed to get request app from user");
+
                 let _ = send_ws_message(&mut session, StreamServerMessage::AppNotFound).await;
                 let _ = session.close(None).await;
                 return;
@@ -201,7 +203,7 @@ pub async fn start_host(
                 {
                     (child, stdin, stdout)
                 } else {
-                    warn!("[Stream]: streamer process didn't include a stdin or stdout");
+                    error!("[Stream]: streamer process didn't include a stdin or stdout");
 
                     let _ = send_ws_message(&mut session, StreamServerMessage::InternalServerError)
                         .await;
@@ -215,7 +217,7 @@ pub async fn start_host(
                 }
             }
             Err(err) => {
-                warn!("[Stream]: failed to spawn streamer process: {err:?}");
+                error!("[Stream]: failed to spawn streamer process: {err:?}");
 
                 let _ =
                     send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
