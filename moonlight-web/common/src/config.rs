@@ -93,7 +93,7 @@ fn data_path_default() -> String {
 }
 
 fn default_bind_address() -> SocketAddr {
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8080))
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
 }
 
 fn moonlight_default_http_port_default() -> u16 {
@@ -106,12 +106,16 @@ fn default_ice_servers() -> Vec<RtcIceServer> {
         RtcIceServer {
             urls: vec![
                 // Google
-                "stun:l.google.com:19302".to_owned(),
-                "stun:stun.l.google.com:19302".to_owned(),
-                "stun:stun1.l.google.com:19302".to_owned(),
-                "stun:stun2.l.google.com:19302".to_owned(),
-                "stun:stun3.l.google.com:19302".to_owned(),
-                "stun:stun4.l.google.com:19302".to_owned(),
+                "stun:stun.l.google.com:19302".to_string(),
+                "stun:stun.l.google.com:5349".to_string(),
+                "stun:stun1.l.google.com:3478".to_string(),
+                "stun:stun1.l.google.com:5349".to_string(),
+                "stun:stun2.l.google.com:19302".to_string(),
+                "stun:stun2.l.google.com:5349".to_string(),
+                "stun:stun3.l.google.com:3478".to_string(),
+                "stun:stun3.l.google.com:5349".to_string(),
+                "stun:stun4.l.google.com:19302".to_string(),
+                "stun:stun4.l.google.com:5349".to_string(),
             ],
             ..Default::default()
         },
