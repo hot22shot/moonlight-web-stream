@@ -216,6 +216,9 @@ async fn main() {
             .collect(),
     );
 
+    // TODO: make this configurable
+    api_settings.set_include_loopback_candidate(true);
+
     // -- Register media codecs
     let mut api_media = MediaEngine::default();
     register_audio_codecs(&mut api_media).expect("failed to register audio codecs");
