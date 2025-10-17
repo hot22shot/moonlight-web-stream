@@ -61,9 +61,7 @@ Add your pc:
 
 ```json
 {
-    ..
     "bind_address": "192.168.1.1:80"
-    ..
 }
 ```
 
@@ -80,7 +78,6 @@ If this is the case try to configure one or both of these options:
 2. Add your turn server to your WebRTC Ice Server list
 ```json
 {
-    ..
     "webrtc_ice_servers": [
         {
             "urls": [
@@ -94,32 +91,27 @@ If this is the case try to configure one or both of these options:
         },
         {
             "urls": [
-                    // Your turn server
                     "turn:yourip.com:3478?transport=udp",
                     "turn:yourip.com:3478?transport=tcp",
                     "turn:yourip.com:5349?transport=tcp"
-                    // Some (business) firewalls might be very strict and only allow tcp on port 443 for turn connections
-                    "turn:yourip.com:443?transport=tcp"
             ],
             "username": "your username",
             "credential": "your credential"
         }
     ]
-    ..
 }
 ```
+Some (business) firewalls might be very strict and only allow tcp on port 443 for turn connections if that's the case also bind the turn server on port 443 and add `"turn:yourip.com:443?transport=tcp"` to the url's list.
 
 #### Port forward
 
 1. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config)
 ```json
 {
-    ..
     "webrtc_port_range": {
         "min": 40000,
         "max": 40010
     }
-    ..
 }
 ```
 2. Forward the port range specified in the previous step as `udp`.
@@ -128,14 +120,12 @@ If you're using Windows Defender make sure to allow NAT Traversal. Important: If
 3. Configure [WebRTC Nat 1 To 1](#webrtc-nat-1-to-1-ips) to advertise your [public ip](https://whatismyipaddress.com/) (Optional: WebRTC stun servers can usually automatically detect them):
 ```json
 {
-    ..
     "webrtc_nat_1to1": {
         "ice_candidate_type": "host",
         "ips": [
             "74.125.224.72"
         ]
     }
-    ..
 }
 ```
 
@@ -159,12 +149,10 @@ python ./moonlight-web/web-server/generate_certificate.py
 3. Modify the [config](#config) to enable https using the certificates
 ```json
 {
-    ..
     "certificate": {
         "private_key_pem": "./server/key.pem",
         "certificate_pem": "./server/cert.pem"
     }
-    ..
 }
 ```
 
@@ -207,9 +195,7 @@ sudo a2enconf moonlight-web
 4. Change [config](#config) to include the [prefixed path](#web-path-prefix)
 ```json
 {
-    ..
     "web_path_prefix": "/moonlight"
-    ..
 }
 ```
 
@@ -223,12 +209,11 @@ For a full list of values look into the [Rust Config module](moonlight-web/commo
 
 ### Credentials
 The credentials the Website will prompt you to enter.
+Change this from the default value to the credentials for the website.
 
 ```json
 {
-    ..
-    "credentials": "default"
-    ..
+    "credentials": "your password"
 }
 ```
 
@@ -236,9 +221,7 @@ If you set this null authentication will be disabled and the `Authorization` hea
 
 ```json
 {
-    ..
     "credentials": null
-    ..
 }
 ```
 
@@ -247,9 +230,7 @@ The address and port the website will run on
 
 ```json
 {
-    ..
     "bind_address": "127.0.0.1:8080"
-    ..
 }
 ```
 
@@ -258,12 +239,10 @@ If enabled the web server will use https with the provided certificate data
 
 ```json
 {
-    ..
     "certificate": {
         "private_key_pem": "./server/key.pem",
         "certificate_pem": "./server/cert.pem"
     }
-    ..
 }
 ```
 
@@ -272,12 +251,10 @@ This will set the port range on the web server used to communicate when using We
 
 ```json
 {
-    ..
     "webrtc_port_range": {
         "min": 40000,
         "max": 40010
     }
-    ..
 }
 ```
 
@@ -286,7 +263,6 @@ A list of ice servers for webrtc to use.
 
 ```json
 {
-    ..
     "webrtc_ice_servers": [
         {
             "urls": [
@@ -299,7 +275,6 @@ A list of ice servers for webrtc to use.
             ]
         }
     ]
-    ..
 }
 ```
 
@@ -307,19 +282,18 @@ A list of ice servers for webrtc to use.
 This will advertise the ip as an ice candidate on the web server.
 It's recommended to set this but stun servers should figure out the public ip.
 
-- host -> This is the ip address of the server and the client can connect to
-- srflx -> This is the public ip address of this server, like an ice candidate added from a stun server.
+`ice_candidate_type`:
+- `host` -> This is the ip address of the server and the client can connect to
+- `srflx` -> This is the public ip address of this server, like an ice candidate added from a stun server.
 
 ```json
 {
-    ..
     "webrtc_nat_1to1": {
-        "ice_candidate_type": "host", // "srflx" or "host"
+        "ice_candidate_type": "host",
         "ips": [
             "74.125.224.72"
         ]
     }
-    ..
 }
 ```
 
@@ -333,12 +307,10 @@ This will set the network types allowed by webrtc.
 
 ```json
 {
-    ..
     "webrtc_network_types": [
         "udp4",
         "udp6",
     ]
-    ..
 }
 ```
 
@@ -348,9 +320,7 @@ Will always append the prefix to all requests made by the website.
 
 ```json
 {
-    ..
     "web_path_prefix": "/moonlight"
-    ..
 }
 ```
 
