@@ -30,8 +30,9 @@ It hosts Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/pr
 ![View: Streaming, sidebar opened](/readme/streamExtended.jpg)
 
 ## Limitations
-- Controllers only work when in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts#:~:text=They%20must%20be,be%20considered%20deprecated.) because of the [Gamepad Api](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
-  - [How to configure a Secure Context / https](#configuring-https)
+- Features that only work in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts#:~:text=They%20must%20be,be%20considered%20deprecated.) -> [How to configure a Secure Context / https](#configuring-https)
+  - Controllers: [Gamepad API](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
+  - Keyboard Lock (allows to capture almost all keys also OS Keys): [Experimental Keyboard Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Keyboard_API)
 
 ## Installation
 

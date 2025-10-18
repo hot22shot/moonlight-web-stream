@@ -4,7 +4,7 @@ import { showErrorPopup } from "./component/error.js";
 import { getStreamerSize, InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
-import { defaultStreamInputConfig, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
+import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { getStandardVideoFormats, getSupportedVideoFormats } from "./stream/video.js";
@@ -443,6 +443,8 @@ class ViewerSidebar implements Component, Sidebar {
     private fullscreenButton = document.createElement("button")
 
     private mouseMode: SelectComponent
+    // used when mouse is locked to store the previous value
+    private previousMouseMode: MouseMode
     private touchMode: SelectComponent
 
     private config: StreamInputConfig = defaultStreamInputConfig()
@@ -473,12 +475,8 @@ class ViewerSidebar implements Component, Sidebar {
         // Pointer Lock
         this.lockMouseButton.innerText = "Lock Mouse"
         this.lockMouseButton.addEventListener("click", async () => {
-            setSidebarExtended(false)
-
-            if (this.app.getStream()?.getInput().getConfig().mouseMode != "relative") {
-                await showMessage("Locking the Mouse is only possible with mouse mode: relative")
-                return
-            }
+            this.config.mouseMode = "relative"
+            this.updateConfig()
 
             const inputElement = document.getElementById("input") as HTMLDivElement
             await requestStreamPointerLock(this.app, inputElement, true)
@@ -487,6 +485,9 @@ class ViewerSidebar implements Component, Sidebar {
             inputElement.focus()
         })
         this.buttonDiv.appendChild(this.lockMouseButton)
+
+        this.previousMouseMode = this.config.mouseMode
+        document.addEventListener("pointerlockchange", this.onPointerLockChange.bind(this))
 
         // Pop up keyboard
         this.keyboardButton.innerText = "Keyboard"
@@ -505,18 +506,27 @@ class ViewerSidebar implements Component, Sidebar {
         // Fullscreen
         this.fullscreenButton.innerText = "Fullscreen"
         this.fullscreenButton.addEventListener("click", async () => {
+            const body = document.body
             const root = document.getElementById("root")
             if (root) {
-                if (!("requestFullscreen" in root && typeof root.requestFullscreen == "function")) {
+                if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
                     await showMessage("Fullscreen is not supported by your browser!")
 
                     return
                 }
 
+                await body.requestFullscreen({
+                    navigationUI: "hide"
+                })
+
+                if ("keyboard" in navigator && navigator.keyboard && "lock" in navigator.keyboard) {
+                    await navigator.keyboard.lock()
+
+                    await showMessage("To exit Fullscreen you'll have to hold ESC for a few seconds.")
+                }
+
                 if (this.mouseMode.getValue() == "relative") {
                     await requestStreamPointerLock(this.app, root)
-                } else {
-                    console.warn("failed to request pointer lock while requesting fullscreen")
                 }
 
                 try {
@@ -540,6 +550,8 @@ class ViewerSidebar implements Component, Sidebar {
             }
         })
         this.buttonDiv.appendChild(this.fullscreenButton)
+
+        document.addEventListener("fullscreenchange", this.onFullscreenChange.bind(this))
 
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [
@@ -574,6 +586,20 @@ class ViewerSidebar implements Component, Sidebar {
         return this.screenKeyboard
     }
 
+    // -- Fully immersed Fullscreen -> Fullscreen API + Pointer Lock
+    private checkFullyImmersed() {
+        if ("pointerLockElement" in document && document.pointerLockElement &&
+            "fullscreenElement" in document && document.fullscreenElement) {
+            // We're fully immersed -> remove sidebar
+            setSidebar(null)
+        } else {
+            setSidebar(this)
+        }
+    }
+    private onFullscreenChange() {
+        this.checkFullyImmersed()
+    }
+
     // -- Keyboard
     private onText(event: TextEvent) {
         this.app.getStream()?.getInput().sendText(event.detail.text)
@@ -588,12 +614,25 @@ class ViewerSidebar implements Component, Sidebar {
     // -- Mouse Mode
     private onMouseModeChange() {
         this.config.mouseMode = this.mouseMode.getValue() as any
-        this.app.getStream()?.getInput().setConfig(this.config)
+        this.updateConfig()
+    }
+
+    private onPointerLockChange() {
+        this.checkFullyImmersed()
+
+        if (!document.pointerLockElement) {
+            this.config.mouseMode = this.previousMouseMode
+            this.updateConfig()
+        }
     }
 
     // -- Touch Mode
     private onTouchModeChange() {
         this.config.touchMode = this.touchMode.getValue() as any
+        this.updateConfig()
+    }
+
+    private updateConfig() {
         this.app.getStream()?.getInput().setConfig(this.config)
     }
 
@@ -661,8 +700,11 @@ class SendKeycodeModal extends FormModal<number> {
     }
 }
 
+// Returns if it was successful
 async function requestStreamPointerLock(app: ViewerApp, root: HTMLElement | null, errorIfNotFound: boolean = false) {
     if (root && "requestPointerLock" in root && typeof root.requestPointerLock == "function") {
+        setSidebarExtended(false)
+
         await root.requestPointerLock()
     } else if (errorIfNotFound) {
         await showMessage("Pointer Lock not supported")
