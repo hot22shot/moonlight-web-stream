@@ -259,9 +259,18 @@ async fn pair_host(
             return;
         };
 
+        let _ = data.file_writer.try_send(());
+
         let detailed_host = match into_detailed_host(host_id as usize, &mut host.moonlight).await {
             Err(err) => {
-                warn!("failed to get host info after pairing for host {host_id}: {err:?}");
+                warn!("[Api] failed to get host info after pairing for host {host_id}: {err:?}");
+
+                let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
+                    unreachable!()
+                };
+
+                let bytes = Bytes::from_owner(text);
+                yield Ok::<_, Error>(bytes);
 
                 return
             }
@@ -276,8 +285,6 @@ async fn pair_host(
 
         drop(host);
         drop(hosts);
-
-        let _ = data.file_writer.try_send(());
 
         let bytes = Bytes::from_owner(text);
         yield Ok::<_, Error>(bytes);
