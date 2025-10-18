@@ -121,7 +121,7 @@ impl RuntimeApiData {
         });
 
         spawn({
-            let path = config.data_path.clone();
+            let path = config.data_storage.clone();
             let this = this.clone();
 
             async move { self::file_writer(file_writer_receiver, path, this).await }

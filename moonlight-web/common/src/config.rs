@@ -6,16 +6,44 @@ use crate::api_bindings::RtcIceServer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Use the ApiCredentials struct instead if you are verify the user!
-    pub credentials: Option<String>,
-    #[serde(default = "data_path_default")]
-    pub data_path: String,
-    #[serde(default = "default_bind_address")]
-    pub bind_address: SocketAddr,
-    #[serde(default = "moonlight_default_http_port_default")]
-    pub moonlight_default_http_port: u16,
-    #[serde(default = "default_pair_device_name")]
-    pub pair_device_name: String,
+    #[serde(default = "default_data_storage")]
+    pub data_storage: StorageConfig,
+    pub webrtc: WebRtcConfig,
+    pub web_server: WebServerConfig,
+    pub moonlight: MoonlightConfig,
+    #[serde(default = "default_streamer_path")]
+    pub streamer_path: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            data_storage: default_data_storage(),
+            streamer_path: default_streamer_path(),
+            web_server: Default::default(),
+            moonlight: Default::default(),
+            webrtc: Default::default(),
+        }
+    }
+}
+
+// -- Data Storage
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StorageConfig {
+    Json { path: String },
+}
+
+fn default_data_storage() -> StorageConfig {
+    StorageConfig::Json {
+        path: "server/data.json".to_string(),
+    }
+}
+
+// -- WebRTC Config
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebRtcConfig {
     #[serde(default = "default_ice_servers")]
     pub webrtc_ice_servers: Vec<RtcIceServer>,
     #[serde(default)]
@@ -24,11 +52,6 @@ pub struct Config {
     pub webrtc_nat_1to1: Option<WebRtcNat1To1Mapping>,
     #[serde(default = "default_network_types")]
     pub webrtc_network_types: Vec<WebRtcNetworkType>,
-    #[serde(default)]
-    pub web_path_prefix: String,
-    pub certificate: Option<ConfigSsl>,
-    #[serde(default = "default_streamer_path")]
-    pub streamer_path: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -58,46 +81,20 @@ pub enum WebRtcNat1To1IceCandidateType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConfigSsl {
-    pub private_key_pem: String,
-    pub certificate_pem: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortRange {
     pub min: u16,
     pub max: u16,
 }
 
-impl Default for Config {
+impl Default for WebRtcConfig {
     fn default() -> Self {
         Self {
-            credentials: Some("default".to_string()),
-            data_path: data_path_default(),
-            bind_address: default_bind_address(),
-            moonlight_default_http_port: moonlight_default_http_port_default(),
             webrtc_ice_servers: default_ice_servers(),
-            webrtc_port_range: Default::default(),
-            webrtc_nat_1to1: Default::default(),
+            webrtc_port_range: None,
+            webrtc_nat_1to1: None,
             webrtc_network_types: default_network_types(),
-            pair_device_name: default_pair_device_name(),
-            web_path_prefix: String::new(),
-            certificate: None,
-            streamer_path: default_streamer_path(),
         }
     }
-}
-
-fn data_path_default() -> String {
-    "server/data.json".to_string()
-}
-
-fn default_bind_address() -> SocketAddr {
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
-}
-
-fn moonlight_default_http_port_default() -> u16 {
-    47989
 }
 
 fn default_ice_servers() -> Vec<RtcIceServer> {
@@ -123,6 +120,61 @@ fn default_ice_servers() -> Vec<RtcIceServer> {
 }
 fn default_network_types() -> Vec<WebRtcNetworkType> {
     vec![WebRtcNetworkType::Udp4, WebRtcNetworkType::Udp6]
+}
+
+// -- Web Server Config
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebServerConfig {
+    #[serde(default = "default_bind_address")]
+    pub bind_address: SocketAddr,
+    pub certificate: Option<ConfigSsl>,
+    #[serde(default)]
+    pub url_path_prefix: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigSsl {
+    pub private_key_pem: String,
+    pub certificate_pem: String,
+}
+
+impl Default for WebServerConfig {
+    fn default() -> Self {
+        Self {
+            bind_address: default_bind_address(),
+            certificate: None,
+            url_path_prefix: "".to_string(),
+        }
+    }
+}
+
+fn default_bind_address() -> SocketAddr {
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
+}
+
+// TODO: should this be moonlight or sunshine / apollo config?
+// -- Moonlight
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoonlightConfig {
+    #[serde(default = "default_moonlight_http_port")]
+    pub moonlight_default_http_port: u16,
+    #[serde(default = "default_pair_device_name")]
+    pub pair_device_name: String,
+}
+
+impl Default for MoonlightConfig {
+    fn default() -> Self {
+        Self {
+            moonlight_default_http_port: default_moonlight_http_port(),
+            pair_device_name: default_pair_device_name(),
+        }
+    }
+}
+
+fn default_moonlight_http_port() -> u16 {
+    47989
 }
 
 fn default_pair_device_name() -> String {

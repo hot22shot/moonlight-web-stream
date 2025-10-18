@@ -12,12 +12,13 @@ use serde::{Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 use crate::{
-    api::{api_service, auth::ApiCredentials},
+    api::api_service,
     data::{ApiData, RuntimeApiData},
     web::{web_config_js_service, web_service},
 };
 
 mod api;
+mod app;
 mod data;
 mod web;
 
@@ -57,36 +58,27 @@ async fn exit() -> Result<(), anyhow::Error> {
 async fn main2() -> Result<(), anyhow::Error> {
     // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
-    if config.credentials.as_deref() == Some("default") {
-        info!("Enter your credentials in the config (server/config.json)");
 
-        return Ok(());
-    }
-    let credentials = Data::new(ApiCredentials {
-        credentials: config.credentials.clone(),
-    });
-
-    let config = Data::new(config);
+    let app = Data::new(config);
 
     // Load Data
-    let data = read_or_default::<ApiData>(&config.data_path).await;
-    let data = RuntimeApiData::load(&config, data).await;
+    // let data = read_or_default::<ApiData>(&app).await;
+    // let data = RuntimeApiData::load(&app, data).await;
 
-    let bind_address = config.bind_address;
+    let bind_address = app.web_server.bind_address;
     let server = HttpServer::new({
-        let config = config.clone();
+        let app = app.clone();
 
         move || {
             App::new()
-                .app_data(config.clone())
-                .app_data(credentials.clone())
-                .service(api_service(data.clone()))
+                .app_data(app.clone())
+                .service(api_service())
                 .service(web_config_js_service())
                 .service(web_service())
         }
     });
 
-    if let Some(certificate) = config.certificate.as_ref() {
+    if let Some(certificate) = app.web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())

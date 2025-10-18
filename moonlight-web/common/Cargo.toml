@@ -24,7 +24,8 @@ serde_json = { workspace = true }
 
 log = { workspace = true }
 
-ts-rs = { workspace = true }
+ts-rs = { workspace = true, features = ["uuid-impl"] }
+uuid = { workspace = true, features = ["serde"] }
 
 [lints]
 workspace = true

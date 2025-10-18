@@ -27,6 +27,8 @@ pem = { workspace = true }
 slab = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
+uuid.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

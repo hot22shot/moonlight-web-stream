@@ -5,10 +5,12 @@
 use std::{
     io,
     net::{Ipv4Addr, SocketAddrV4},
+    ops::Deref,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use pem::Pem;
-use tokio::{net::UdpSocket, task::JoinError};
+use tokio::{net::UdpSocket, sync::RwLock, task::JoinError};
 use uuid::Uuid;
 
 use crate::{
@@ -72,13 +74,19 @@ pub enum StreamConfigError {
 
 pub struct MoonlightHost<Client> {
     client_unique_id: String,
-    client: Client,
+    client: RwLock<Client>,
     address: String,
     http_port: u16,
-    tried_connect: bool,
-    cache_info: Option<HostInfo>,
+    cache: Cache,
     // Paired
     paired: Option<Paired>,
+}
+
+#[derive(Debug, Default)]
+struct Cache {
+    tried_connect: AtomicBool,
+    info: RwLock<Option<HostInfo>>,
+    app_list: RwLock<Option<ServerAppListResponse>>,
 }
 
 #[derive(Clone)]
@@ -86,12 +94,11 @@ struct Paired {
     client_private_key: Pem,
     client_certificate: Pem,
     server_certificate: Pem,
-    cache_app_list: Option<ServerAppListResponse>,
 }
 
 impl<C> MoonlightHost<C>
 where
-    C: RequestClient,
+    C: RequestClient + Clone,
 {
     pub fn new(
         address: String,
@@ -99,15 +106,19 @@ where
         unique_id: Option<String>,
     ) -> Result<Self, HostError<C::Error>> {
         Ok(Self {
-            client: C::with_defaults()
-                .map_err(|err| HostError::Api(ApiError::RequestClient(err)))?,
+            client: RwLock::new(
+                C::with_defaults().map_err(|err| HostError::Api(ApiError::RequestClient(err)))?,
+            ),
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
             address,
             http_port,
-            tried_connect: false,
-            cache_info: None,
+            cache: Default::default(),
             paired: None,
         })
+    }
+
+    async fn client(&self) -> C {
+        self.client.read().await.clone()
     }
 
     pub fn address(&self) -> &str {
@@ -121,14 +132,16 @@ where
         format!("{}:{}", self.address, self.http_port)
     }
 
-    async fn host_info(&mut self) -> Result<&HostInfo, HostError<C::Error>> {
-        let has_cache = self.cache_info.is_some();
+    async fn host_info(&self) -> Result<impl Deref<Target = HostInfo>, HostError<C::Error>> {
+        let has_cache = { self.cache.info.read().await.is_some() };
         let mut https_port = None;
 
-        if self.tried_connect && !has_cache {
+        if self.cache.tried_connect.load(Ordering::Acquire) && !has_cache {
             return Err(HostError::LikelyOffline);
         }
-        self.tried_connect = true;
+        self.cache.tried_connect.store(true, Ordering::Release);
+
+        let mut client = self.client().await;
 
         if !has_cache {
             let http_address = self.http_address();
@@ -138,11 +151,11 @@ where
                 uuid: Uuid::new_v4(),
             };
 
-            let info = host_info(&mut self.client, false, &http_address, Some(client_info)).await?;
+            let info = host_info(&mut client, false, &http_address, Some(client_info)).await?;
 
             https_port = Some(info.https_port);
 
-            self.cache_info = Some(info);
+            *self.cache.info.write().await = Some(info);
         }
         if !has_cache
             && let Some(https_port) = https_port
@@ -154,25 +167,31 @@ where
                 unique_id: &self.client_unique_id,
                 uuid: Uuid::new_v4(),
             };
-            self.cache_info =
-                Some(host_info(&mut self.client, true, &https_address, Some(client_info)).await?);
+
+            *self.cache.info.write().await =
+                Some(host_info(&mut client, true, &https_address, Some(client_info)).await?);
         }
 
-        let Some(info) = &self.cache_info else {
-            unreachable!()
+        let Some(info) = self.cache.info.read().await else {
+            // TODO: some other error
+            return Err(HostError::LikelyOffline);
         };
 
         Ok(info)
     }
-    pub fn clear_cache(&mut self) {
-        self.tried_connect = false;
-        self.cache_info = None;
-        if let Some(paired) = self.paired.as_mut() {
-            paired.cache_app_list = None;
+    pub async fn clear_cache(&self) {
+        // TODO: parallel?
+        {
+            let mut info = self.cache.info.write().await;
+            info.take();
+        }
+        {
+            let mut app_list = self.cache.app_list.write().await;
+            app_list.take();
         }
     }
 
-    pub async fn https_port(&mut self) -> Result<u16, HostError<C::Error>> {
+    pub async fn https_port(&self) -> Result<u16, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.https_port)
     }
@@ -180,53 +199,53 @@ where
     fn build_https_address(address: &str, https_port: u16) -> String {
         format!("{address}:{https_port}")
     }
-    pub async fn https_address(&mut self) -> Result<String, HostError<C::Error>> {
+    pub async fn https_address(&self) -> Result<String, HostError<C::Error>> {
         let https_port = self.https_port().await?;
         Ok(Self::build_https_address(&self.address, https_port))
     }
-    pub async fn external_port(&mut self) -> Result<u16, HostError<C::Error>> {
+    pub async fn external_port(&self) -> Result<u16, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.external_port)
     }
 
-    pub async fn host_name(&mut self) -> Result<&str, HostError<C::Error>> {
+    pub async fn host_name(&self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.host_name.as_str())
     }
-    pub async fn version(&mut self) -> Result<ServerVersion, HostError<C::Error>> {
+    pub async fn version(&self) -> Result<ServerVersion, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.app_version)
     }
 
-    pub async fn gfe_version(&mut self) -> Result<&str, HostError<C::Error>> {
+    pub async fn gfe_version(&self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.gfe_version.as_str())
     }
-    pub async fn unique_id(&mut self) -> Result<Uuid, HostError<C::Error>> {
+    pub async fn unique_id(&self) -> Result<Uuid, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.unique_id)
     }
 
     /// Returns None if unpaired
-    pub async fn mac(&mut self) -> Result<Option<MacAddress>, HostError<C::Error>> {
+    pub async fn mac(&self) -> Result<Option<MacAddress>, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.mac)
     }
-    pub async fn local_ip(&mut self) -> Result<&str, HostError<C::Error>> {
+    pub async fn local_ip(&self) -> Result<&str, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.local_ip.as_str())
     }
 
-    pub async fn current_game(&mut self) -> Result<u32, HostError<C::Error>> {
+    pub async fn current_game(&self) -> Result<u32, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.current_game)
     }
 
-    pub async fn state(&mut self) -> Result<(&str, ServerState), HostError<C::Error>> {
+    pub async fn state(&self) -> Result<(&str, ServerState), HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok((info.state_string.as_str(), info.state))
     }
-    pub async fn is_nvidia_software(&mut self) -> Result<bool, HostError<C::Error>> {
+    pub async fn is_nvidia_software(&self) -> Result<bool, HostError<C::Error>> {
         let (state_str, _) = self.state().await?;
         // Real Nvidia host software (GeForce Experience and RTX Experience) both use the 'Mjolnir'
         // codename in the state field and no version of Sunshine does. We can use this to bypass
@@ -234,18 +253,18 @@ where
         Ok(state_str.contains("Mjolnir"))
     }
 
-    pub async fn max_luma_pixels_hevc(&mut self) -> Result<u32, HostError<C::Error>> {
+    pub async fn max_luma_pixels_hevc(&self) -> Result<u32, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.max_luma_pixels_hevc)
     }
-    pub async fn server_codec_mode_support_raw(&mut self) -> Result<u32, HostError<C::Error>> {
+    pub async fn server_codec_mode_support_raw(&self) -> Result<u32, HostError<C::Error>> {
         let info = self.host_info().await?;
         Ok(info.server_codec_mode_support)
     }
 
     #[cfg(feature = "stream")]
     pub async fn server_codec_mode_support(
-        &mut self,
+        &self,
     ) -> Result<crate::stream::bindings::ServerCodeModeSupport, HostError<C::Error>> {
         use crate::stream::bindings::ServerCodeModeSupport;
 
@@ -254,7 +273,7 @@ where
     }
 
     pub fn set_pairing_info(
-        &mut self,
+        &self,
         client_auth: &ClientAuth,
         server_certificate: &Pem,
     ) -> Result<(), HostError<C::Error>> {
@@ -320,7 +339,7 @@ where
     }
 
     pub async fn pair(
-        &mut self,
+        &self,
         auth: &ClientAuth,
         device_name: String,
         pin: PairPin,
@@ -376,7 +395,7 @@ where
         }
     }
 
-    pub async fn unpair(&mut self) -> Result<(), HostError<C::Error>> {
+    pub async fn unpair(&self) -> Result<(), HostError<C::Error>> {
         self.check_paired()?;
 
         let http_address = self.http_address();
@@ -392,7 +411,7 @@ where
         Ok(())
     }
 
-    pub async fn app_list(&mut self) -> Result<&[App], HostError<C::Error>> {
+    pub async fn app_list(&self) -> Result<&[App], HostError<C::Error>> {
         self.check_paired()?;
 
         let https_address = self.https_address().await?;
@@ -419,10 +438,7 @@ where
         Ok(cache_app_list.apps.as_slice())
     }
 
-    pub async fn request_app_image(
-        &mut self,
-        app_id: u32,
-    ) -> Result<C::Bytes, HostError<C::Error>> {
+    pub async fn request_app_image(&self, app_id: u32) -> Result<C::Bytes, HostError<C::Error>> {
         self.check_paired()?;
 
         let https_address = self.https_address().await?;
@@ -443,7 +459,7 @@ where
         Ok(response)
     }
 
-    pub async fn cancel(&mut self) -> Result<bool, HostError<C::Error>> {
+    pub async fn cancel(&self) -> Result<bool, HostError<C::Error>> {
         self.check_paired()?;
 
         let https_hostport = self.https_address().await?;
