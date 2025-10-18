@@ -507,9 +507,11 @@ class ViewerSidebar implements Component, Sidebar {
         this.fullscreenButton.addEventListener("click", async () => {
             const root = document.getElementById("root")
             if (root) {
-                await root.requestFullscreen({
-                    navigationUI: "hide"
-                })
+                if (!("requestFullscreen" in root && typeof root.requestFullscreen == "function")) {
+                    await showMessage("Fullscreen is not supported by your browser!")
+
+                    return
+                }
 
                 if (this.mouseMode.getValue() == "relative") {
                     await requestStreamPointerLock(this.app, root)
