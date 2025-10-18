@@ -55,9 +55,7 @@ impl RequestClient for Client {
     type Bytes = Bytes;
 
     fn with_defaults_long_timeout() -> Result<Self, Self::Error> {
-        Ok(default_builder()
-            .timeout(Duration::from_secs(100))
-            .build()?)
+        Ok(default_builder().build()?)
     }
     fn with_defaults() -> Result<Self, Self::Error> {
         Ok(timeout_builder().build()?)
