@@ -218,24 +218,27 @@ class ViewerApp implements Component {
     }
 
     // Keyboard
-    private isFullscreenToggleKeybind(event: KeyboardEvent): boolean {
-        return this.toggleFullscreenWithKeybind && event.ctrlKey && event.shiftKey && event.code == "KeyI"
-    }
-
-    private isTogglingFullscreenWithKeybind = false
     onKeyDown(event: KeyboardEvent) {
         this.onUserInteraction()
 
         event.preventDefault()
         this.stream?.getInput().onKeyDown(event)
+    }
 
-        if (this.isFullscreenToggleKeybind(event)) {
+    private isTogglingFullscreenWithKeybind: "waitForCtrl" | "makingFullscreen" | "none" = "none"
+    onKeyUp(event: KeyboardEvent) {
+        this.onUserInteraction()
+
+        event.preventDefault()
+        this.stream?.getInput().onKeyUp(event)
+
+        if (this.toggleFullscreenWithKeybind && this.isTogglingFullscreenWithKeybind == "none" && event.ctrlKey && event.shiftKey && event.code == "KeyI") {
+            this.isTogglingFullscreenWithKeybind = "waitForCtrl"
+        }
+        if (this.isTogglingFullscreenWithKeybind == "waitForCtrl" && (event.code == "ControlRight" || event.code == "ControlLeft")) {
+            this.isTogglingFullscreenWithKeybind = "makingFullscreen";
+
             (async () => {
-                if (this.isTogglingFullscreenWithKeybind) {
-                    return
-                }
-                this.isTogglingFullscreenWithKeybind = true
-
                 if (this.isFullscreen()) {
                     await this.exitPointerLock()
                     await this.exitFullscreen()
@@ -244,15 +247,9 @@ class ViewerApp implements Component {
                     await this.requestPointerLock()
                 }
 
-                this.isTogglingFullscreenWithKeybind = false
+                this.isTogglingFullscreenWithKeybind = "none"
             })()
         }
-    }
-    onKeyUp(event: KeyboardEvent) {
-        this.onUserInteraction()
-
-        event.preventDefault()
-        this.stream?.getInput().onKeyUp(event)
     }
 
     // Mouse
