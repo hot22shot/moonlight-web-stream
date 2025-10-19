@@ -33,9 +33,10 @@ function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
 }
 
 export type MouseScrollMode = "highres" | "normal"
+export type MouseMode = "relative" | "follow" | "pointAndDrag"
 
 export type StreamInputConfig = {
-    mouseMode: "relative" | "follow" | "pointAndDrag"
+    mouseMode: MouseMode
     mouseScrollMode: MouseScrollMode
     touchMode: "touch" | "mouseRelative" | "pointAndDrag"
     controllerConfig: ControllerConfig

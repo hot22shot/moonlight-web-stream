@@ -125,232 +125,239 @@ async fn put_host(
         host: detailed_host,
     }))
 }
-//
-// #[delete("/host")]
-// async fn delete_host(
-//     data: Data<RuntimeApiData>,
-//     Query(query): Query<DeleteHostQuery>,
-// ) -> HttpResponse {
-//     let mut hosts = data.hosts.write().await;
-//
-//     let host = hosts.try_remove(query.host_id as usize);
-//
-//     drop(hosts);
-//
-//     if host.is_none() {
-//         return HttpResponse::NotFound().finish();
-//     } else {
-//         let _ = data.file_writer.try_send(());
-//     }
-//
-//     HttpResponse::Ok().finish()
-// }
-//
-// #[post("/pair")]
-// async fn pair_host(
-//     data: Data<RuntimeApiData>,
-//     config: Data<Config>,
-//     Json(request): Json<PostPairRequest>,
-// ) -> HttpResponse {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = request.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return HttpResponse::NotFound().finish();
-//     };
-//
-//     let host = host.lock().await;
-//
-//     if matches!(host.moonlight.is_paired(), PairStatus::Paired) {
-//         return HttpResponse::NotModified().finish();
-//     }
-//
-//     let data = data.clone();
-//
-//     let stream = async_stream::stream! {
-//         let hosts = data.hosts.read().await;
-//         let Some(host) = hosts.get(host_id as usize) else {
-//             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//             return;
-//         };
-//         let mut host = host.lock().await;
-//
-//         let Ok(client_auth) = generate_new_client() else {
-//             warn!("[Api]: failed to generate new client to host authentication data");
-//
-//             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//             return;
-//         };
-//
-//         let Ok(pin) = PairPin::generate() else {
-//             warn!("[Api]: failed to generate pin!");
-//
-//             return
-//         };
-//
-//             let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//         if let Err(err) = host.moonlight
-//             .pair(
-//                 &client_auth,
-//                 config.moonlight.pair_device_name.to_string(),
-//                 pin,
-//             )
-//             .await
-//         {
-//             info!("[Api]: failed to pair host {}: {:?}", host.moonlight.address(), err);
-//
-//             let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//             return;
-//         };
-//
-//         let detailed_host = match into_detailed_host(host_id as usize, &mut host.moonlight).await {
-//             Err(err) => {
-//                 warn!("failed to get host info after pairing for host {host_id}: {err:?}");
-//
-//                 return
-//             }
-//             Ok(value) => value,
-//         };
-//
-//         let mut text = Vec::new();
-//         let _ = writeln!(&mut text);
-//         if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(detailed_host)).is_err() {
-//             unreachable!()
-//         };
-//
-//         drop(host);
-//         drop(hosts);
-//
-//         let _ = data.file_writer.try_send(());
-//
-//         let bytes = Bytes::from_owner(text);
-//         yield Ok::<_, Error>(bytes);
-//     };
-//
-//     HttpResponse::Ok()
-//         .insert_header(("Content-Type", "application/x-ndjson"))
-//         .streaming(stream)
-// }
-//
-// #[post("/host/wake")]
-// async fn wake_host(
-//     data: Data<RuntimeApiData>,
-//     Json(request): Json<PostWakeUpRequest>,
-// ) -> HttpResponse {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = request.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return HttpResponse::NotFound().finish();
-//     };
-//     let host = host.lock().await;
-//
-//     let mac = host.cache.mac;
-//
-//     if let Some(mac) = mac {
-//         if let Err(err) = broadcast_magic_packet(mac).await {
-//             warn!("failed to send magic(wake on lan) packet: {err:?}");
-//             return HttpResponse::InternalServerError().finish();
-//         }
-//     } else {
-//         return HttpResponse::InternalServerError().finish();
-//     }
-//
-//     HttpResponse::Ok().finish()
-// }
-//
-// #[get("/apps")]
-// async fn get_apps(
-//     data: Data<RuntimeApiData>,
-//     Query(query): Query<GetAppsQuery>,
-// ) -> Either<Json<GetAppsResponse>, HttpResponse> {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = query.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return Either::Right(HttpResponse::NotFound().finish());
-//     };
-//     let mut host = host.lock().await;
-//
-//     if query.force_refresh {
-//         host.moonlight.clear_cache();
-//     }
-//
-//     let app_list = match host.moonlight.app_list().await {
-//         Err(err) => {
-//             warn!("[Api]: failed to get app list for host {host_id}: {err:?}");
-//
-//             return Either::Right(HttpResponse::InternalServerError().finish());
-//         }
-//         Ok(value) => value,
-//     };
-//
-//     Either::Left(Json(GetAppsResponse {
-//         apps: app_list.iter().map(|x| x.to_owned().into()).collect(),
-//     }))
-// }
-//
-// #[get("/app/image")]
-// async fn get_app_image(
-//     data: Data<RuntimeApiData>,
-//     Query(query): Query<GetAppImageQuery>,
-// ) -> Either<Bytes, HttpResponse> {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = query.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return Either::Right(HttpResponse::NotFound().finish());
-//     };
-//     let mut host = host.lock().await;
-//
-//     if query.force_refresh {
-//         host.app_images_cache.clear();
-//         host.moonlight.clear_cache();
-//     }
-//
-//     let app_id = query.app_id;
-//     if let Some(cache) = host.app_images_cache.get(&app_id) {
-//         return Either::Left(cache.clone());
-//     }
-//
-//     let image = host.moonlight.request_app_image(app_id).await;
-//     match image {
-//         Err(err) => {
-//             warn!("[Api]: failed to get host {host_id} app image {app_id}: {err:?}");
-//
-//             Either::Right(HttpResponse::InternalServerError().finish())
-//         }
-//         Ok(image) => {
-//             host.app_images_cache.insert(app_id, image.clone());
-//
-//             Either::Left(image)
-//         }
-//     }
-// }
+
+#[delete("/host")]
+async fn delete_host(
+    data: Data<RuntimeApiData>,
+    Query(query): Query<DeleteHostQuery>,
+) -> HttpResponse {
+    let mut hosts = data.hosts.write().await;
+
+    let host = hosts.try_remove(query.host_id as usize);
+
+    drop(hosts);
+
+    if host.is_none() {
+        return HttpResponse::NotFound().finish();
+    } else {
+        let _ = data.file_writer.try_send(());
+    }
+
+    HttpResponse::Ok().finish()
+}
+
+#[post("/pair")]
+async fn pair_host(
+    data: Data<RuntimeApiData>,
+    config: Data<Config>,
+    Json(request): Json<PostPairRequest>,
+) -> HttpResponse {
+    let hosts = data.hosts.read().await;
+
+    let host_id = request.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return HttpResponse::NotFound().finish();
+    };
+
+    let host = host.lock().await;
+
+    if matches!(host.moonlight.is_paired(), PairStatus::Paired) {
+        return HttpResponse::NotModified().finish();
+    }
+
+    let data = data.clone();
+
+    let stream = async_stream::stream! {
+        let hosts = data.hosts.read().await;
+        let Some(host) = hosts.get(host_id as usize) else {
+            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+        let mut host = host.lock().await;
+
+        let Ok(client_auth) = generate_new_client() else {
+            warn!("[Api]: failed to generate new client to host authentication data");
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+
+        let Ok(pin) = PairPin::generate() else {
+            warn!("[Api]: failed to generate pin!");
+
+            return
+        };
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+        if let Err(err) = host.moonlight
+            .pair(
+                &client_auth,
+                config.pair_device_name.to_string(),
+                pin,
+            )
+            .await
+        {
+            info!("[Api]: failed to pair host {}: {:?}", host.moonlight.address(), err);
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+
+        let _ = data.file_writer.try_send(());
+
+        let detailed_host = match into_detailed_host(host_id as usize, &mut host.moonlight).await {
+            Err(err) => {
+                warn!("[Api] failed to get host info after pairing for host {host_id}: {err:?}");
+
+                let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
+                    unreachable!()
+                };
+
+                let bytes = Bytes::from_owner(text);
+                yield Ok::<_, Error>(bytes);
+
+                return
+            }
+            Ok(value) => value,
+        };
+
+        let mut text = Vec::new();
+        let _ = writeln!(&mut text);
+        if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(detailed_host)).is_err() {
+            unreachable!()
+        };
+
+        drop(host);
+        drop(hosts);
+
+        let bytes = Bytes::from_owner(text);
+        yield Ok::<_, Error>(bytes);
+    };
+
+    HttpResponse::Ok()
+        .insert_header(("Content-Type", "application/x-ndjson"))
+        .streaming(stream)
+}
+
+#[post("/host/wake")]
+async fn wake_host(
+    data: Data<RuntimeApiData>,
+    Json(request): Json<PostWakeUpRequest>,
+) -> HttpResponse {
+    let hosts = data.hosts.read().await;
+
+    let host_id = request.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return HttpResponse::NotFound().finish();
+    };
+    let host = host.lock().await;
+
+    let mac = host.cache.mac;
+
+    if let Some(mac) = mac {
+        if let Err(err) = broadcast_magic_packet(mac).await {
+            warn!("failed to send magic(wake on lan) packet: {err:?}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    } else {
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    HttpResponse::Ok().finish()
+}
+
+#[get("/apps")]
+async fn get_apps(
+    data: Data<RuntimeApiData>,
+    Query(query): Query<GetAppsQuery>,
+) -> Either<Json<GetAppsResponse>, HttpResponse> {
+    let hosts = data.hosts.read().await;
+
+    let host_id = query.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return Either::Right(HttpResponse::NotFound().finish());
+    };
+    let mut host = host.lock().await;
+
+    if query.force_refresh {
+        host.moonlight.clear_cache();
+    }
+
+    let app_list = match host.moonlight.app_list().await {
+        Err(err) => {
+            warn!("[Api]: failed to get app list for host {host_id}: {err:?}");
+
+            return Either::Right(HttpResponse::InternalServerError().finish());
+        }
+        Ok(value) => value,
+    };
+
+    Either::Left(Json(GetAppsResponse {
+        apps: app_list.iter().map(|x| x.to_owned().into()).collect(),
+    }))
+}
+
+#[get("/app/image")]
+async fn get_app_image(
+    data: Data<RuntimeApiData>,
+    Query(query): Query<GetAppImageQuery>,
+) -> Either<Bytes, HttpResponse> {
+    let hosts = data.hosts.read().await;
+
+    let host_id = query.host_id;
+    let Some(host) = hosts.get(host_id as usize) else {
+        return Either::Right(HttpResponse::NotFound().finish());
+    };
+    let mut host = host.lock().await;
+
+    if query.force_refresh {
+        host.app_images_cache.clear();
+        host.moonlight.clear_cache();
+    }
+
+    let app_id = query.app_id;
+    if let Some(cache) = host.app_images_cache.get(&app_id) {
+        return Either::Left(cache.clone());
+    }
+
+    let image = host.moonlight.request_app_image(app_id).await;
+    match image {
+        Err(err) => {
+            warn!("[Api]: failed to get host {host_id} app image {app_id}: {err:?}");
+
+            Either::Right(HttpResponse::InternalServerError().finish())
+        }
+        Ok(image) => {
+            host.app_images_cache.insert(app_id, image.clone());
+
+            Either::Left(image)
+        }
+    }
+}
 
 pub fn api_service() -> impl HttpServiceFactory {
     web::scope("/api")
