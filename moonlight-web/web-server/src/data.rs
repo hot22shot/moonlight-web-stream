@@ -193,7 +193,7 @@ async fn set_pair_state(host: &mut ReqwestMoonlightHost, paired: Option<&PairedH
         return;
     };
 
-    match host.set_pairing_info(
+    match host.set_pair_info(
         &ClientAuth {
             private_key: client_private_key,
             certificate: client_certificate,

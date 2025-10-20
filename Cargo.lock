@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "moonlight-common",
@@ -1990,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "moonlight-client-simple"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "gstreamer",
  "gstreamer-app",
@@ -2003,7 +2003,7 @@ dependencies = [
 
 [[package]]
 name = "moonlight-common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bitflags 2.9.1",
  "bytes",
@@ -2028,7 +2028,7 @@ dependencies = [
 
 [[package]]
 name = "moonlight-common-sys"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -3034,7 +3034,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "streamer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3698,7 +3698,7 @@ dependencies = [
 
 [[package]]
 name = "web-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "actix-files",
  "actix-web",

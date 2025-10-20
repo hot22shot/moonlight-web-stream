@@ -165,7 +165,7 @@ async fn main() {
     let mut host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
         .expect("failed to create host");
 
-    host.set_pairing_info(
+    host.set_pair_info(
         &ClientAuth {
             private_key: Pem::from_str(&client_private_key_pem)
                 .expect("failed to parse client private key"),

@@ -2,8 +2,9 @@ use std::time::Duration;
 
 use moonlight_common::{
     PairPin, PairStatus,
+    high::PairInfo,
     network::reqwest::ReqwestMoonlightHost,
-    pair::{ClientAuth, generate_new_client},
+    pair::generate_new_client,
     stream::{
         MoonlightInstance,
         bindings::{ActiveGamepads, ColorRange, Colorspace},
@@ -51,14 +52,18 @@ async fn main() {
         let crt_contents = read_to_string(crt_file).await.unwrap();
         let server_crt_contents = read_to_string(server_crt_file).await.unwrap();
 
-        let auth = ClientAuth {
-            private_key: pem::parse(key_contents).unwrap(),
-            certificate: pem::parse(crt_contents).unwrap(),
-        };
+        let client_private_key = pem::parse(key_contents).unwrap();
+        let client_certificate = pem::parse(crt_contents).unwrap();
         let server_certificate = pem::parse(server_crt_contents).unwrap();
 
         // Get the current pair state
-        host.set_pairing_info(&auth, &server_certificate).unwrap();
+        host.set_pair_info(PairInfo {
+            client_private_key,
+            client_certificate,
+            server_certificate,
+        })
+        .await
+        .unwrap();
 
         assert_eq!(host.verify_paired().await.unwrap(), PairStatus::Paired);
     } else {
@@ -75,14 +80,18 @@ async fn main() {
             .await
             .unwrap();
 
-        let Some(server_certificate) = host.server_certificate() else {
+        let Some(pair_info) = host.pair_info().await else {
             panic!("failed to get server certificate on paired host");
         };
 
         // Save the pair information
-        write(key_file, auth.private_key.to_string()).await.unwrap();
-        write(crt_file, auth.certificate.to_string()).await.unwrap();
-        write(server_crt_file, server_certificate.to_string())
+        write(key_file, pair_info.client_private_key.to_string())
+            .await
+            .unwrap();
+        write(crt_file, pair_info.client_certificate.to_string())
+            .await
+            .unwrap();
+        write(server_crt_file, pair_info.server_certificate.to_string())
             .await
             .unwrap();
     };
