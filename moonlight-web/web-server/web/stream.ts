@@ -402,7 +402,37 @@ class ViewerApp implements Component {
 
             setSidebarExtended(false)
 
-            await inputElement.requestPointerLock()
+            const onLockError = () => {
+                document.removeEventListener("pointerlockerror", onLockError)
+
+                // Fallback: try to request pointer lock without options
+                inputElement.requestPointerLock()
+            }
+
+            document.addEventListener("pointerlockerror", onLockError, { once: true })
+
+            try {
+                let promise = inputElement.requestPointerLock({
+                    unadjustedMovement: true
+                })
+
+                if (promise) {
+                    await promise
+                } else {
+                    inputElement.requestPointerLock()
+                }
+            } catch (error) {
+                // Some platforms do not support unadjusted movement. If you
+                // would like PointerLock anyway, request again.
+                if (error instanceof Error && error.name == "NotSupportedError") {
+                    inputElement.requestPointerLock()
+                } else {
+                    throw error
+                }
+            } finally {
+                document.removeEventListener("pointerlockerror", onLockError)
+            }
+
         } else if (errorIfNotFound) {
             await showMessage("Pointer Lock not supported")
         }
