@@ -1998,6 +1998,7 @@ dependencies = [
  "moonlight-common-sys",
  "pem",
  "rcgen 0.14.3",
+ "simplelog",
  "tokio",
 ]
 

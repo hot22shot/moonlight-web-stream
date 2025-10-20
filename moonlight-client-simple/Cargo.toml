@@ -13,6 +13,8 @@ moonlight-common = { workspace = true, features = [
 ] }
 tokio = { workspace = true, features = ["full"] }
 
+simplelog = { workspace = true }
+
 rcgen = "0.14.3"
 pem = { workspace = true }
 

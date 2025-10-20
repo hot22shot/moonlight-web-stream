@@ -12,6 +12,7 @@ use moonlight_common::{
     },
 };
 
+use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
 use tokio::{
     fs::{self, File, read_to_string, try_exists, write},
     io::AsyncWriteExt,
@@ -25,6 +26,14 @@ mod gstreamer;
 
 #[tokio::main]
 async fn main() {
+    TermLogger::init(
+        LevelFilter::Debug,
+        simplelog::Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )
+    .expect("failed to init logger");
+
     // Configuration
     let host_ip = "127.0.0.1";
     let host_http_port = 47989;

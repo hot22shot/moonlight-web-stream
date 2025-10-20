@@ -185,6 +185,7 @@ where
     }
     pub async fn clear_cache(&self) {
         // TODO: parallel?
+        self.cache.tried_connect.store(false, Ordering::Release);
         {
             let mut info = self.cache.info.write().await;
             info.take();
