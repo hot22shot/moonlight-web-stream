@@ -3,13 +3,11 @@ use std::{collections::HashMap, io::ErrorKind, path::PathBuf, sync::Arc};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use log::error;
-use moonlight_common::mac::MacAddress;
-use serde::{Deserialize, Serialize};
 use tokio::{
     fs, spawn,
     sync::{
         RwLock,
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Receiver, Sender, error::TrySendError},
     },
 };
 
@@ -19,35 +17,19 @@ use crate::app::{
     storage::{
         Storage, StorageHost, StorageHostAdd, StorageHostModify, StorageQueryHosts, StorageUser,
         StorageUserAdd, StorageUserModify,
+        json::versions::{Json, V2, V2Host, V2User, migrate_to_latest},
     },
-    user::{UserId, UserRole},
+    user::UserId,
 };
+
+mod serde_hashmap_fix;
+mod versions;
 
 pub struct JsonStorage {
     file: PathBuf,
     store_sender: Sender<()>,
-    users: RwLock<HashMap<u32, RwLock<JsonUser>>>,
-    hosts: RwLock<HashMap<u32, RwLock<JsonHost>>>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Json {
-    users: HashMap<u32, JsonUser>,
-    hosts: HashMap<u32, JsonHost>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct JsonUser {
-    pub role: UserRole,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct JsonHost {
-    pub owner: u32,
-    pub hostport: String,
-    pub pair_info: Option<String>,
-    pub cache_name: String,
-    pub cache_mac: MacAddress,
+    users: RwLock<HashMap<u32, RwLock<V2User>>>,
+    hosts: RwLock<HashMap<u32, RwLock<V2Host>>>,
 }
 
 impl JsonStorage {
@@ -73,6 +55,12 @@ impl JsonStorage {
         Ok(this)
     }
 
+    pub fn force_write(&self) {
+        if let Err(TrySendError::Closed(_)) = self.store_sender.try_send(()) {
+            error!("Failed to save data because the writer task closed!");
+        }
+    }
+
     async fn load_internal(&self) -> Result<(), anyhow::Error> {
         let text = match fs::read_to_string(&self.file).await {
             Ok(text) => text,
@@ -91,16 +79,18 @@ impl JsonStorage {
             }
         };
 
+        let data = migrate_to_latest(json)?;
+
         {
             let mut users = self.users.write().await;
             let mut hosts = self.hosts.write().await;
 
-            *users = json
+            *users = data
                 .users
                 .into_iter()
-                .map(|(id, host)| (id, RwLock::new(host)))
+                .map(|(id, user)| (id, RwLock::new(user)))
                 .collect();
-            *hosts = json
+            *hosts = data
                 .hosts
                 .into_iter()
                 .map(|(id, host)| (id, RwLock::new(host)))
@@ -128,10 +118,10 @@ impl JsonStorage {
                 hosts_json.insert(*key, (*value).clone());
             }
 
-            Json {
+            Json::V2(V2 {
                 users: users_json,
                 hosts: hosts_json,
-            }
+            })
         };
 
         let text = match serde_json::to_string_pretty(&json) {

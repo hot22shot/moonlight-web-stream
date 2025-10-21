@@ -6,13 +6,14 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader, stdin},
 };
 
-use actix_web::{App, HttpServer, web::Data};
+use actix_web::{App as ActixApp, HttpServer, web::Data};
 use log::{LevelFilter, info};
 use serde::{Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 use crate::{
     api::api_service,
+    app::App,
     web::{web_config_js_service, web_service},
 };
 
@@ -57,14 +58,15 @@ async fn main2() -> Result<(), anyhow::Error> {
     // Load Config
     let config = read_or_default::<Config>("./server/config.json").await;
 
-    let app = Data::new(config);
+    let app = App::new(config).await?;
+    let app = Data::new(app);
 
-    let bind_address = app.web_server.bind_address;
+    let bind_address = app.config().web_server.bind_address;
     let server = HttpServer::new({
         let app = app.clone();
 
         move || {
-            App::new()
+            ActixApp::new()
                 .app_data(app.clone())
                 .service(api_service())
                 .service(web_config_js_service())
@@ -72,7 +74,7 @@ async fn main2() -> Result<(), anyhow::Error> {
         }
     });
 
-    if let Some(certificate) = app.web_server.certificate.as_ref() {
+    if let Some(certificate) = app.config().web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())

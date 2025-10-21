@@ -52,7 +52,7 @@ impl AppRef {
 
 struct AppInner {
     config: Config,
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn Storage + Send + Sync>,
 }
 
 pub struct App {

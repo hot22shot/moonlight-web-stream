@@ -23,6 +23,14 @@ impl Host {
         self.id
     }
 
+    pub async fn owner(&self) -> Result<Option<UserId>, AppError> {
+        let app = self.app.access()?;
+
+        let host = app.storage.get_host(self.id).await?;
+
+        Ok(host.owner)
+    }
+
     pub async fn undetailed_host(&self) -> Result<UndetailedHost, AppError> {
         todo!()
     }
@@ -47,7 +55,7 @@ impl Host {
 
         let host = app.storage.get_host(self.id).await?;
 
-        if host.owner == user_id {
+        if matches!(host.owner, Some(user_id)) {
             self.delete_no_auth().await
         } else {
             Err(AppError::Forbidden)
