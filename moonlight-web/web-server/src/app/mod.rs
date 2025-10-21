@@ -39,6 +39,8 @@ pub enum AppError {
     Unauthorized,
     #[error("the action is not allowed with the current privileges, 403")]
     Forbidden,
+    #[error("the authorization header is not a bearer")]
+    AuthorizationNotBearer,
     #[error("openssl error occured")]
     OpenSSL(#[from] ErrorStack),
     #[error("hex error occured")]
@@ -61,6 +63,7 @@ impl ResponseError for AppError {
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Hex(_) => StatusCode::BAD_REQUEST,
+            Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -186,5 +189,9 @@ impl App {
             app: self.new_ref(),
             id: user_id,
         })
+    }
+
+    pub async fn delete_session(&self, session: SessionToken) -> Result<(), AppError> {
+        todo!()
     }
 }

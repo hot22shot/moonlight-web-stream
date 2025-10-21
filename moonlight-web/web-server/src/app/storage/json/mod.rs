@@ -190,12 +190,18 @@ impl Storage for JsonStorage {
 
         // TODO: check for duplicate names
 
-        let mut id = [0u8; 4];
-        rand_bytes(&mut id)?;
-        let id = u32::from_be_bytes(id);
-
         let mut users = self.users.write().await;
 
+        let mut id;
+        loop {
+            let mut id_bytes = [0u8; 4];
+            rand_bytes(&mut id_bytes)?;
+            id = u32::from_be_bytes(id_bytes);
+
+            if !users.contains_key(&id) {
+                break;
+            }
+        }
         users.insert(id, RwLock::new(user.clone()));
 
         drop(users);
@@ -249,16 +255,15 @@ impl Storage for JsonStorage {
         todo!()
     }
 
-    async fn add_session_token(
-        &self,
-        user_id: UserId,
-        session: SessionToken,
-    ) -> Result<(), AppError> {
+    async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError> {
+        let token = SessionToken::new()?;
+
+        // TODO: statistically impossible, but session duplicates?
         let mut sessions = self.sessions.write().await;
 
-        sessions.insert(session, user_id.0);
+        sessions.insert(token, user_id.0);
 
-        Ok(())
+        Ok(token)
     }
     async fn remove_session_token(&self, session: SessionToken) -> Result<(), AppError> {
         todo!()

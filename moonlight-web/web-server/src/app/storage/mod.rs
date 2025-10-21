@@ -97,11 +97,7 @@ pub trait Storage {
     async fn remove_user(&self, user_id: UserId) -> Result<(), AppError>;
 
     // TODO: maybe expiration date?
-    async fn add_session_token(
-        &self,
-        user_id: UserId,
-        session: SessionToken,
-    ) -> Result<(), AppError>;
+    async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError>;
     async fn remove_session_token(&self, session: SessionToken) -> Result<(), AppError>;
     async fn remove_all_user_session_tokens(&self, user_id: UserId) -> Result<(), AppError>;
     /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data of the user directly

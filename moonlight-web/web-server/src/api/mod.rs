@@ -1,6 +1,6 @@
 use actix_web::{
-    Either, Error, HttpResponse, Responder,
-    cookie::Cookie,
+    Either, Error, HttpRequest, HttpResponse, Responder,
+    cookie::{Cookie, SameSite},
     delete,
     dev::HttpServiceFactory,
     get, middleware, post, put, services,
@@ -25,6 +25,7 @@ use crate::{
     api::{admin::add_user, auth::COOKIE_SESSION_TOKEN_NAME},
     app::{
         App,
+        auth::UserAuth,
         host::{Host, HostId},
         user::User,
     },
@@ -52,14 +53,38 @@ async fn login(
     let mut session_bytes = [0; _];
     let session_str = session.encode(&mut session_bytes);
 
+    let url_path_prefix = &app.config().web_server.url_path_prefix;
+
+    // TODO: expiration of cookie
     Ok(HttpResponse::Ok()
-        .cookie(Cookie::new(COOKIE_SESSION_TOKEN_NAME, session_str))
+        .cookie(
+            Cookie::build(COOKIE_SESSION_TOKEN_NAME, session_str)
+                .path(url_path_prefix)
+                .same_site(SameSite::Strict)
+                .http_only(true) // not accessible via js
+                // TODO: add a secure option in the config
+                // .secure(true)
+                .finish(),
+        )
         .finish())
 }
 
 #[post("/logout")]
-async fn logout(app: Data<App>) -> Result<HttpResponse, Error> {
-    todo!()
+async fn logout(app: Data<App>, auth: UserAuth, req: HttpRequest) -> Result<HttpResponse, Error> {
+    let session = match auth {
+        UserAuth::Session(session) => session,
+        _ => return Ok(HttpResponse::BadRequest().finish()),
+    };
+
+    app.delete_session(session).await?;
+
+    let mut response = HttpResponse::Ok().finish();
+
+    if let Some(session_cookie) = req.cookie(COOKIE_SESSION_TOKEN_NAME) {
+        response.add_removal_cookie(&session_cookie)?;
+    }
+
+    Ok(response)
 }
 
 #[get("/authenticate")]

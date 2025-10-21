@@ -11,15 +11,13 @@ pub struct StoragePassword {
 
 impl StoragePassword {
     fn hash(salt: &[u8; 16], password: &str, out: &mut [u8; 32]) -> Result<(), AppError> {
-        // TODO: error handling
         pkcs5::pbkdf2_hmac(
             password.as_bytes(),
             salt,
             HASH_ITERATIONS,
             MessageDigest::sha256(),
             out,
-        )
-        .unwrap();
+        )?;
 
         Ok(())
     }
@@ -27,7 +25,7 @@ impl StoragePassword {
     pub fn new(password: &str) -> Result<Self, AppError> {
         let mut salt = [0u8; 16];
 
-        rand_bytes(&mut salt);
+        rand_bytes(&mut salt)?;
 
         let mut hash = [0u8; 32];
 
