@@ -6,7 +6,6 @@ use std::{
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use common::config::Config;
 use thiserror::Error;
-use uuid::Uuid;
 
 use crate::app::{
     auth::UserAuth,
@@ -23,6 +22,12 @@ pub mod user;
 pub enum AppError {
     #[error("the app got destroyed")]
     AppDestroyed,
+    #[error("the user was not found")]
+    UserNotFound,
+    #[error("the host was not found")]
+    HostNotFound,
+    #[error("the action is not allowed with the current privileges, 403")]
+    Forbidden,
 }
 
 impl ResponseError for AppError {
@@ -47,7 +52,7 @@ impl AppRef {
 
 struct AppInner {
     config: Config,
-    storage: Box<dyn Storage>,
+    storage: Arc<dyn Storage>,
 }
 
 pub struct App {
@@ -66,16 +71,28 @@ impl App {
         })
     }
 
+    fn new_ref(&self) -> AppRef {
+        AppRef {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+
     pub fn config(&self) -> &Config {
         &self.inner.config
     }
 
     pub async fn user(&self, id: UserId, auth: UserAuth) -> Result<User, AppError> {
         // TODO: auth
+
         self.user_no_auth(id).await
     }
 
     pub async fn user_no_auth(&self, id: UserId) -> Result<User, AppError> {
-        todo!()
+        // TODO: check if the user exists
+
+        Ok(User {
+            app: self.new_ref(),
+            id,
+        })
     }
 }

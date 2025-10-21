@@ -7,7 +7,6 @@ use moonlight_common::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use uuid::Uuid;
 
 use crate::ts_consts;
 
@@ -56,7 +55,7 @@ impl From<moonlight_common::PairStatus> for PairStatus {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct UndetailedHost {
-    pub uuid: Uuid,
+    pub host_id: u32,
     pub name: String,
     pub paired: PairStatus,
     /// None if offline else the state
@@ -111,7 +110,7 @@ pub struct GetHostsResponse {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetHostQuery {
-    pub host_uuid: Uuid,
+    pub host_id: u32,
     #[serde(default)]
     pub force_refresh: bool,
 }

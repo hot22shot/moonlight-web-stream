@@ -30,6 +30,8 @@ impl Default for Config {
 // -- Data Storage
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 pub enum StorageConfig {
     Json { path: String },
 }
@@ -159,7 +161,7 @@ fn default_bind_address() -> SocketAddr {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoonlightConfig {
     #[serde(default = "default_moonlight_http_port")]
-    pub moonlight_default_http_port: u16,
+    pub default_http_port: u16,
     #[serde(default = "default_pair_device_name")]
     pub pair_device_name: String,
 }
@@ -167,7 +169,7 @@ pub struct MoonlightConfig {
 impl Default for MoonlightConfig {
     fn default() -> Self {
         Self {
-            moonlight_default_http_port: default_moonlight_http_port(),
+            default_http_port: default_moonlight_http_port(),
             pair_device_name: default_pair_device_name(),
         }
     }

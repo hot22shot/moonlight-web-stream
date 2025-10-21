@@ -1,12 +1,13 @@
+use std::pin::Pin;
+
 use actix_web::{FromRequest, HttpRequest, dev::Payload, web::Data};
-use futures::future::{Ready, err, ok};
 
 use crate::app::{App, AppError, user::User};
 
 impl FromRequest for User {
     type Error = AppError;
 
-    type Future = Ready<Result<Self, Self::Error>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
 
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         let app = match req.app_data::<Data<App>>() {
@@ -20,13 +21,11 @@ impl FromRequest for User {
         let uuid = todo!();
         let auth = todo!();
 
-        let user = match app.user(uuid, auth) {
-            Err(error) => {
-                return err(error);
-            }
-            Ok(value) => value,
-        };
+        let app = app.clone();
+        Box::pin(async move {
+            let user = app.user(uuid, auth).await?;
 
-        ok(user)
+            Ok(user)
+        })
     }
 }

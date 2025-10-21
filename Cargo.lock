@@ -681,7 +681,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "ts-rs",
- "uuid",
 ]
 
 [[package]]
@@ -2975,6 +2974,9 @@ name = "slab"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04dc19736151f35336d325007ac991178d504a119863a2fcb3758cdb5e52c50d"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "smallvec"
@@ -3565,7 +3567,6 @@ checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
 dependencies = [
  "getrandom 0.3.3",
  "js-sys",
- "serde",
  "wasm-bindgen",
 ]
 

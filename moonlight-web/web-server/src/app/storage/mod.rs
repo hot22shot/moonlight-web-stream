@@ -1,8 +1,9 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use common::config::StorageConfig;
 use moonlight_common::mac::MacAddress;
 use pem::Pem;
-use uuid::Uuid;
 
 use crate::app::{
     AppError,
@@ -13,12 +14,12 @@ use crate::app::{
 
 pub mod file;
 
-pub async fn create_storage(config: StorageConfig) -> Result<Box<dyn Storage>, anyhow::Error> {
+pub async fn create_storage(config: StorageConfig) -> Result<Arc<dyn Storage>, anyhow::Error> {
     match config {
         StorageConfig::Json { path } => {
-            let storage = JsonStorage::new(path.into())?;
+            let storage = JsonStorage::load(path.into()).await?;
 
-            Ok(Box::new(storage))
+            Ok(storage)
         }
     }
 }
@@ -39,6 +40,11 @@ pub struct StorageUserModify {
 
 pub struct StorageHost {
     pub id: HostId,
+    pub owner: UserId,
+    pub hostport: String,
+    pub pair_info: Option<Pem>,
+    pub cache_name: String,
+    pub cache_mac: MacAddress,
 }
 pub struct StorageHostAdd {
     pub owner: UserId,
@@ -47,7 +53,6 @@ pub struct StorageHostAdd {
     pub cache_name: String,
     pub cache_mac: MacAddress,
 }
-
 pub struct StorageHostModify {
     pub id: HostId,
     pub owner: Option<UserId>,
@@ -63,14 +68,14 @@ pub struct StorageQueryHosts {
 
 #[async_trait]
 pub trait Storage {
-    async fn get_user(&self, user: StorageUser) -> Result<StorageUser, AppError>;
-    async fn add_user(&self, user: StorageUserAdd) -> Result<(), AppError>;
+    async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError>;
     async fn modify_user(&self, user: StorageUserModify) -> Result<(), AppError>;
-    async fn remove_user(&self, user: UserId) -> Result<(), AppError>;
+    async fn get_user(&self, user_id: UserId) -> Result<StorageUser, AppError>;
+    async fn remove_user(&self, user_id: UserId) -> Result<(), AppError>;
 
-    async fn get_host(&self, host: HostId) -> Result<StorageHost, AppError>;
-    async fn add_host(&self, host: StorageHostAdd) -> Result<(), AppError>;
+    async fn add_host(&self, host: StorageHostAdd) -> Result<StorageHost, AppError>;
     async fn modify_host(&self, host: StorageHostModify) -> Result<(), AppError>;
+    async fn get_host(&self, host_id: HostId) -> Result<StorageHost, AppError>;
     async fn remove_host(&self, host_id: HostId) -> Result<(), AppError>;
 
     async fn list_user_hosts(&self, query: StorageQueryHosts)

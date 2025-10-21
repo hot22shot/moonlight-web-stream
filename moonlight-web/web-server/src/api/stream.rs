@@ -18,15 +18,13 @@ use log::{debug, error, info, warn};
 use moonlight_common::{PairStatus, stream::bindings::SupportedVideoFormats};
 use tokio::{process::Command, spawn, time::sleep};
 
-use crate::{api::auth::ApiCredentials, data::RuntimeApiData};
+use crate::app::{App, user::User};
 
 /// The stream handler WILL authenticate the client because it is a websocket
 /// The Authenticator will let this route through
 #[get("/host/stream")]
 pub async fn start_host(
-    data: Data<RuntimeApiData>,
-    config: Data<Config>,
-    credentials: Data<ApiCredentials>,
+    web_app: Data<App>,
     request: HttpRequest,
     payload: Payload,
 ) -> Result<HttpResponse, Error> {
@@ -262,7 +260,7 @@ pub async fn start_host(
         // Send init into ipc
         ipc_sender
             .send(ServerIpcMessage::Init {
-                server_config: Config::clone(&config),
+                server_config: Config::clone(web_app.),
                 stream_settings,
                 host_address,
                 host_http_port,
@@ -314,26 +312,8 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
 
 #[post("/host/cancel")]
 pub async fn cancel_host(
-    data: Data<RuntimeApiData>,
+    user: User,
     request: Json<PostCancelRequest>,
 ) -> Either<Json<PostCancelResponse>, HttpResponse> {
-    let hosts = data.hosts.read().await;
-
-    let host_id = request.host_id;
-    let Some(host) = hosts.get(host_id as usize) else {
-        return Either::Right(HttpResponse::NotFound().finish());
-    };
-
-    let mut host = host.lock().await;
-
-    let success = match host.moonlight.cancel().await {
-        Ok(value) => value,
-        Err(err) => {
-            warn!("[Api]: failed to cancel stream for {host_id}:{err:?}");
-
-            return Either::Right(HttpResponse::InternalServerError().finish());
-        }
-    };
-
-    Either::Left(Json(PostCancelResponse { success }))
+    todo!()
 }

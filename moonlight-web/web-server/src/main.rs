@@ -13,13 +13,11 @@ use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 use crate::{
     api::api_service,
-    data::{ApiData, RuntimeApiData},
     web::{web_config_js_service, web_service},
 };
 
 mod api;
 mod app;
-mod data;
 mod web;
 
 #[actix_web::main]
@@ -60,10 +58,6 @@ async fn main2() -> Result<(), anyhow::Error> {
     let config = read_or_default::<Config>("./server/config.json").await;
 
     let app = Data::new(config);
-
-    // Load Data
-    // let data = read_or_default::<ApiData>(&app).await;
-    // let data = RuntimeApiData::load(&app, data).await;
 
     let bind_address = app.web_server.bind_address;
     let server = HttpServer::new({

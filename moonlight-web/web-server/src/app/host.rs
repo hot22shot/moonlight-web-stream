@@ -1,13 +1,21 @@
+use std::fmt::{Debug, Formatter};
+
 use common::api_bindings::{DetailedHost, UndetailedHost};
 
-use crate::app::{AppError, AppRef};
+use crate::app::{AppError, AppRef, user::UserId};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HostId(pub u32);
 
 pub struct Host {
     app: AppRef,
     id: HostId,
+}
+
+impl Debug for Host {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.id)
+    }
 }
 
 impl Host {
@@ -22,7 +30,30 @@ impl Host {
         todo!()
     }
 
-    pub async fn pair(&self) -> Result<Host, AppError> {
+    pub async fn pair(&self, user_id: UserId) -> Result<Host, AppError> {
+        todo!()
+    }
+
+    pub async fn unpair(&self, user_id: UserId) -> Result<Host, AppError> {
+        todo!()
+    }
+
+    pub async fn wake(&self) -> Result<(), AppError> {
+        todo!()
+    }
+
+    pub async fn delete(&self, user_id: UserId) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        let host = app.storage.get_host(self.id).await?;
+
+        if host.owner == user_id {
+            self.delete_no_auth().await
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+    pub async fn delete_no_auth(&self) -> Result<(), AppError> {
         todo!()
     }
 }
