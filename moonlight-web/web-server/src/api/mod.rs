@@ -1,5 +1,7 @@
 use actix_web::{
-    Either, Error, HttpResponse, Responder, delete,
+    Either, Error, HttpResponse, Responder,
+    cookie::Cookie,
+    delete,
     dev::HttpServiceFactory,
     get, middleware, post, put, services,
     web::{self, Bytes, Data, Json, Query},
@@ -20,6 +22,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     Config,
+    api::{admin::add_user, auth::COOKIE_SESSION_TOKEN_NAME},
     app::{
         App,
         host::{Host, HostId},
@@ -28,12 +31,36 @@ use crate::{
 };
 use common::api_bindings::{
     DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
-    GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
-    PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost,
+    GetHostResponse, GetHostsResponse, PostLoginRequest, PostPairRequest, PostPairResponse1,
+    PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost,
 };
 
+pub mod admin;
 pub mod auth;
 // mod stream;
+
+#[post("/login")]
+async fn login(
+    app: Data<App>,
+    Json(request): Json<PostLoginRequest>,
+) -> Result<HttpResponse, Error> {
+    let user = app
+        .user_by_name_password(&request.name, &request.password)
+        .await?;
+
+    let session = user.new_session().await?;
+    let mut session_bytes = [0; _];
+    let session_str = session.encode(&mut session_bytes);
+
+    Ok(HttpResponse::Ok()
+        .cookie(Cookie::new(COOKIE_SESSION_TOKEN_NAME, session_str))
+        .finish())
+}
+
+#[post("/logout")]
+async fn logout(app: Data<App>) -> Result<HttpResponse, Error> {
+    todo!()
+}
 
 #[get("/authenticate")]
 async fn authenticate(_user: User) -> impl Responder {
@@ -333,9 +360,9 @@ pub fn api_service() -> impl HttpServiceFactory {
     web::scope("/api")
         // .wrap(middleware::from_fn(auth_middleware))
         .service(services![
+            login,
+            logout,
             authenticate,
-            // stream::start_host,
-            // stream::cancel_host,
             list_hosts,
             get_host,
             put_host,
@@ -344,6 +371,11 @@ pub fn api_service() -> impl HttpServiceFactory {
             // pair_host,
             // get_apps,
             // get_app_image,
+            // -- Stream
+            // stream::start_host,
+            // stream::cancel_host,
+            // -- Admin
+            add_user,
         ])
 }
 

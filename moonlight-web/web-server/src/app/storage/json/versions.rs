@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use moonlight_common::mac::MacAddress;
 use serde::{Deserialize, Serialize};
 
-use crate::app::user::UserRole;
+use crate::app::user::Role;
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "version")]
@@ -52,11 +52,13 @@ pub fn migrate_v1_to_v2(old: V1) -> V2 {
             address: old_host.address,
             http_port: old_host.http_port,
             pair_info: old_host.paired,
-            cache_name: old_host.cache.name.unwrap_or_else(|| "Unknown".to_string()),
-            cache_mac: old_host
-                .cache
-                .mac
-                .unwrap_or_else(|| MacAddress::from_bytes([0; 6])),
+            cache: V2HostCache {
+                name: old_host.cache.name.unwrap_or_else(|| "Unknown".to_string()),
+                mac: old_host
+                    .cache
+                    .mac
+                    .unwrap_or_else(|| MacAddress::from_bytes([0; 6])),
+            },
         };
 
         v2_hosts.insert(id as u32, v2_host);
@@ -70,7 +72,7 @@ pub fn migrate_v1_to_v2(old: V1) -> V2 {
 
 // -- V2
 
-use crate::app::storage::json::serde_hashmap_fix::de_int_key;
+use crate::app::storage::json::serde_helpers::de_int_key;
 
 #[derive(Serialize, Deserialize)]
 pub struct V2 {
@@ -82,7 +84,15 @@ pub struct V2 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2User {
-    pub role: UserRole,
+    pub role: Role,
+    pub name: String,
+    pub password: V2UserPassword,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2UserPassword {
+    // TODO: maybe make them serialize to base64
+    pub salt: [u8; 16],
+    pub hash: [u8; 32],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,8 +101,13 @@ pub struct V2Host {
     pub address: String,
     pub http_port: u16,
     pub pair_info: Option<V1HostPairInfo>,
-    pub cache_name: String,
-    pub cache_mac: MacAddress,
+    pub cache: V2HostCache,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2HostCache {
+    name: String,
+    mac: MacAddress,
 }
 
 pub fn migrate_to_latest(json: Json) -> Result<V2, anyhow::Error> {

@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -18,10 +18,12 @@ export async function getApi(host_url?: string): Promise<Api> {
         host_url = buildUrl("/api")
     }
 
-    let credentials = sessionStorage.getItem("mlCredentials");
+    let api = { host_url, bearer: null }
 
-    if (isUserPasswordAuthenticationEnabled()) {
-        while (credentials == null) {
+    const authenticated = await apiAuthenticate(api)
+
+    if (isUserPasswordAuthenticationEnabled() && !authenticated) {
+        while (true) {
             const prompt = new ApiUserPasswordPrompt()
             const userAuth = await showModal(prompt)
 
@@ -29,23 +31,18 @@ export async function getApi(host_url?: string): Promise<Api> {
                 continue;
             }
 
-            let api = { host_url, bearer: testCredentials }
-
-            if (await apiAuthenticate(api)) {
-                sessionStorage.setItem("mlCredentials", testCredentials)
-
-                credentials = api.bearer;
-
-                break;
-            } else {
-                await showMessage("Credentials are not Valid")
+            if (await apiLogin(api, userAuth)) {
+                if (!await apiAuthenticate(api)) {
+                    showErrorPopup("Login was successful but authentication doesn't work!")
+                }
+                break
             }
+
+            await showMessage("Credentials are not Valid")
         }
-    } else {
-        credentials = null
     }
 
-    currentApi = { host_url, bearer: credentials }
+    currentApi = { host_url, bearer: null }
 
     return currentApi
 }
@@ -73,7 +70,7 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: { respo
     const headers: any = {
     };
 
-    if (isUserPasswordAuthenticationEnabled()) {
+    if (isUserPasswordAuthenticationEnabled() && api.bearer) {
         headers["Authorization"] = `Bearer ${api.bearer}`;
     }
 
@@ -81,10 +78,11 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: { respo
         headers["Content-Type"] = "application/json";
     }
 
-    const request = {
+    const request: RequestInit = {
         method: method,
         headers,
-        body: init?.json && JSON.stringify(init.json)
+        body: init?.json && JSON.stringify(init.json),
+        credentials: "include"
     }
 
     return [url, request]
@@ -95,15 +93,20 @@ export class FetchError extends Error {
 
     constructor(type: "timeout", endpoint: string, method: string)
     constructor(type: "failed", endpoint: string, method: string, response: Response)
+    constructor(type: "unknown", endpoint: string, method: string, error: Error)
 
-    constructor(type: "timeout" | "failed", endpoint: string, method: string, response?: Response) {
+    constructor(type: "timeout" | "failed" | "unknown", endpoint: string, method: string, responseOrError?: Response | any) {
         if (type == "timeout") {
             super(`failed to fetch ${method} at ${endpoint} because of timeout`)
-        } else {
+        } else if (type == "failed") {
+            const response = responseOrError as Response
             super(`failed to fetch ${method} at ${endpoint} with code ${response?.status}`)
-        }
 
-        this.response = response
+            this.response = response
+        } else if (type == "unknown") {
+            const error = responseOrError as Error
+            super(`failed to fetch ${method} at ${endpoint} because of ${error}`)
+        }
     }
 
     getResponse(): Response | null {
@@ -125,7 +128,12 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
         ), API_TIMEOUT)
     }
 
-    const response = await fetch(url, request)
+    let response
+    try {
+        response = await fetch(url, request)
+    } catch (e: any) {
+        throw new FetchError("unknown", endpoint, method, e)
+    }
 
     if (!response.ok) {
         throw new FetchError("failed", endpoint, method, response)
@@ -142,6 +150,30 @@ export async function fetchApi(api: Api, endpoint: string, method: string = "get
     }
 }
 
+export async function apiLogin(api: Api, request: PostLoginRequest): Promise<boolean> {
+    let response
+
+    try {
+        response = await fetchApi(api, "/login", "post", {
+            json: request,
+            response: "ignore"
+        })
+    } catch (e) {
+        if (e instanceof FetchError) {
+            const response = e.getResponse()
+
+            if (response && (response.status == 401 || response.status == 404)) {
+                return false
+            } else {
+                showErrorPopup(e.message)
+                return false
+            }
+        }
+    }
+
+    return true
+}
+
 export async function apiAuthenticate(api: Api): Promise<boolean> {
     let response
     try {
@@ -152,8 +184,7 @@ export async function apiAuthenticate(api: Api): Promise<boolean> {
             if (response && response.status == 401) {
                 return false
             } else {
-                showErrorPopup(e.message)
-                return false
+                throw e
             }
         }
         throw e

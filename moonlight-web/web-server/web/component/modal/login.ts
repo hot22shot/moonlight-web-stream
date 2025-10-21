@@ -17,19 +17,21 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
     constructor() {
         super()
 
-        this.text.innerText = "Enter Credentials"
+        this.text.innerText = "Login"
 
-        this.username = new InputComponent("ml-api-name", "text", "Username")
+        this.username = new InputComponent("ml-api-username", "text", "Username")
 
         this.password = new InputComponent("ml-api-password", "password", "Password")
         this.passwordFile = new InputComponent("ml-api-password-file", "file", "Password as File", { accept: ".txt" })
     }
 
     reset(): void {
+        this.username.reset()
         this.password.reset()
+        this.passwordFile.reset()
     }
     submit(): UserAuth | null {
-        const username = "todo"
+        const username = this.username.getValue()
         const password = this.password.getValue()
 
         if (username && password) {

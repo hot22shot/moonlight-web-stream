@@ -5,16 +5,18 @@ use std::{
 
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use common::config::Config;
+use openssl::error::ErrorStack;
 use thiserror::Error;
 
 use crate::app::{
-    auth::UserAuth,
-    storage::{Storage, create_storage},
-    user::{User, UserId},
+    auth::{SessionToken, UserAuth},
+    storage::{Storage, StorageUserAdd, create_storage},
+    user::{Admin, User, UserId},
 };
 
 pub mod auth;
 pub mod host;
+pub mod password;
 pub mod storage;
 pub mod user;
 
@@ -26,17 +28,36 @@ pub enum AppError {
     UserNotFound,
     #[error("the host was not found")]
     HostNotFound,
+    // TODO: rename the credentials error
+    #[error("the credentials don't exists")]
+    CredentialsWrong,
+    #[error("the host was not found")]
+    SessionTokenNotFound,
+    // CredentialsWrong and SessionToken not found describe this more exact
+    #[error("the action is not allowed because the user is not authorized, 401")]
+    Unauthorized,
     #[error("the action is not allowed with the current privileges, 403")]
     Forbidden,
+    #[error("openssl error occured")]
+    OpenSSL(#[from] ErrorStack),
 }
 
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
-        HttpResponse::InternalServerError().finish()
+        HttpResponse::new(self.status_code())
     }
 
     fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
+        match self {
+            Self::AppDestroyed => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::HostNotFound => StatusCode::NOT_FOUND,
+            Self::UserNotFound => StatusCode::NOT_FOUND,
+            Self::CredentialsWrong => StatusCode::UNAUTHORIZED,
+            Self::SessionTokenNotFound => StatusCode::UNAUTHORIZED,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
     }
 }
 
@@ -81,18 +102,85 @@ impl App {
         &self.inner.config
     }
 
-    pub async fn user(&self, id: UserId, auth: UserAuth) -> Result<User, AppError> {
-        // TODO: auth
-
-        self.user_no_auth(id).await
+    /// admin: The admin that tries to do this action
+    pub async fn add_user(&self, _: &Admin, user: StorageUserAdd) -> Result<User, AppError> {
+        self.add_user_no_auth(user).await
     }
 
-    pub async fn user_no_auth(&self, id: UserId) -> Result<User, AppError> {
-        // TODO: check if the user exists
+    pub async fn add_user_no_auth(&self, user: StorageUserAdd) -> Result<User, AppError> {
+        // TODO: use storage user
+        let user = self.inner.storage.add_user(user).await?;
 
         Ok(User {
             app: self.new_ref(),
-            id,
+            id: user.id,
+        })
+    }
+
+    pub async fn user(&self, auth: UserAuth) -> Result<User, AppError> {
+        match auth {
+            UserAuth::None => {
+                // TODO: allow a default user to exist
+                Err(AppError::Unauthorized)
+            }
+            UserAuth::UserPassword { username, password } => {
+                self.user_by_name_password(&username, &password).await
+            }
+            UserAuth::Session(session) => {
+                let user = self.user_by_session(session).await?;
+
+                Ok(user)
+            }
+            UserAuth::ForwardedHeaders { username } => {
+                // TODO: look if config enabled so we can trust or not
+                todo!()
+            }
+        }
+    }
+    pub async fn user_by_name_password(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<User, AppError> {
+        let user = self.user_by_name_no_auth(username).await?;
+
+        if !user.verify_password(password).await? {
+            return Err(AppError::CredentialsWrong);
+        }
+
+        Ok(user)
+    }
+
+    pub async fn user_no_auth(&self, id: UserId) -> Result<User, AppError> {
+        let user = self.inner.storage.get_user(id).await?;
+
+        Ok(User {
+            app: self.new_ref(),
+            id: user.id,
+        })
+    }
+    pub async fn user_by_name_no_auth(&self, name: &str) -> Result<User, AppError> {
+        let (user_id, user) = self.inner.storage.get_user_by_name(name).await?;
+
+        // TODO: use optional user field
+
+        Ok(User {
+            app: self.new_ref(),
+            id: user_id,
+        })
+    }
+    pub async fn user_by_session(&self, session: SessionToken) -> Result<User, AppError> {
+        let (user_id, user) = self
+            .inner
+            .storage
+            .get_user_by_session_token(session)
+            .await?;
+
+        // TODO: use optional user field
+
+        Ok(User {
+            app: self.new_ref(),
+            id: user_id,
         })
     }
 }

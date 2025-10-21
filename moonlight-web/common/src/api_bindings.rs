@@ -19,6 +19,13 @@ pub struct ConfigJs {
     pub path_prefix: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, TS, Clone)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostLoginRequest {
+    pub name: String,
+    pub password: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum HostState {
@@ -201,6 +208,23 @@ pub struct PostCancelRequest {
 pub struct PostCancelResponse {
     pub success: bool,
 }
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum UserRole {
+    User,
+    Admin,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PutUserRequest {
+    pub name: String,
+    pub password: String,
+    pub role: UserRole,
+}
+
+// -- Stream
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
 #[ts(export, export_to = EXPORT_PATH)]

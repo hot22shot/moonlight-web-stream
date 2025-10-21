@@ -3710,6 +3710,7 @@ dependencies = [
  "async-trait",
  "common",
  "futures",
+ "hex",
  "log",
  "moonlight-common",
  "openssl",
