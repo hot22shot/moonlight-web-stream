@@ -5,6 +5,7 @@ use std::{
 
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use common::config::Config;
+use hex::FromHexError;
 use openssl::error::ErrorStack;
 use thiserror::Error;
 
@@ -40,6 +41,8 @@ pub enum AppError {
     Forbidden,
     #[error("openssl error occured")]
     OpenSSL(#[from] ErrorStack),
+    #[error("hex error occured")]
+    Hex(#[from] FromHexError),
 }
 
 impl ResponseError for AppError {
@@ -57,6 +60,7 @@ impl ResponseError for AppError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Hex(_) => StatusCode::BAD_REQUEST,
         }
     }
 }

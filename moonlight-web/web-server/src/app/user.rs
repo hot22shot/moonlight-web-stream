@@ -49,7 +49,13 @@ impl User {
     }
 
     pub async fn new_session(&self) -> Result<SessionToken, AppError> {
-        todo!()
+        let app = self.app.access()?;
+
+        let session = SessionToken::new()?;
+
+        app.storage.add_session_token(self.id(), session).await?;
+
+        Ok(session)
     }
 
     pub async fn role(&self) -> Result<Role, AppError> {

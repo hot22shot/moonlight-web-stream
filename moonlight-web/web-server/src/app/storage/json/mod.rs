@@ -34,6 +34,7 @@ pub struct JsonStorage {
     store_sender: Sender<()>,
     users: RwLock<HashMap<u32, RwLock<V2User>>>,
     hosts: RwLock<HashMap<u32, RwLock<V2Host>>>,
+    sessions: RwLock<HashMap<SessionToken, u32>>,
 }
 
 impl JsonStorage {
@@ -45,6 +46,7 @@ impl JsonStorage {
             store_sender,
             hosts: Default::default(),
             users: Default::default(),
+            sessions: Default::default(),
         };
 
         this.load_internal().await?;
@@ -252,7 +254,11 @@ impl Storage for JsonStorage {
         user_id: UserId,
         session: SessionToken,
     ) -> Result<(), AppError> {
-        todo!()
+        let mut sessions = self.sessions.write().await;
+
+        sessions.insert(session, user_id.0);
+
+        Ok(())
     }
     async fn remove_session_token(&self, session: SessionToken) -> Result<(), AppError> {
         todo!()
@@ -264,7 +270,12 @@ impl Storage for JsonStorage {
         &self,
         session: SessionToken,
     ) -> Result<(UserId, Option<StorageUser>), AppError> {
-        todo!()
+        let sessions = self.sessions.read().await;
+
+        sessions
+            .get(&session)
+            .map(|user_id| (UserId(*user_id), None))
+            .ok_or(AppError::SessionTokenNotFound)
     }
 
     async fn add_host(&self, host: StorageHostAdd) -> Result<StorageHost, AppError> {

@@ -1,9 +1,13 @@
 use std::fmt;
 
+use hex::FromHexError;
+use openssl::rand::rand_bytes;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, Visitor},
 };
+
+use crate::app::AppError;
 
 pub enum UserAuth {
     None,
@@ -13,10 +17,18 @@ pub enum UserAuth {
 }
 
 const SESSION_TOKEN_SIZE: usize = 32;
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SessionToken([u8; SESSION_TOKEN_SIZE]);
 
 impl SessionToken {
+    pub fn new() -> Result<Self, AppError> {
+        let mut bytes = [0; SESSION_TOKEN_SIZE];
+
+        rand_bytes(&mut bytes)?;
+
+        Ok(Self(bytes))
+    }
+
     pub fn encode<'a>(&self, bytes: &'a mut [u8; SESSION_TOKEN_SIZE * 2]) -> &'a str {
         hex::encode_to_slice(self.0.as_slice(), bytes).expect("failed to hex encode bytes");
 
@@ -24,13 +36,9 @@ impl SessionToken {
     }
 
     // TODO: custom error or just leave it like this?
-    pub fn decode(str: &str) -> Result<Self, ()> {
-        if !str.is_ascii() || str.len() * 2 != SESSION_TOKEN_SIZE {
-            return Err(());
-        }
-
+    pub fn decode(str: &str) -> Result<Self, FromHexError> {
         let mut arr = [0u8; SESSION_TOKEN_SIZE];
-        hex::decode_to_slice(str.as_bytes(), &mut arr).expect("failed to decode session token");
+        hex::decode_to_slice(str.as_bytes(), &mut arr)?;
         Ok(SessionToken(arr))
     }
 }

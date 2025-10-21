@@ -2,7 +2,7 @@ import { InputComponent } from "../input.js"
 import { FormModal } from "./form.js"
 
 export type UserAuth = {
-    username: string,
+    name: string,
     password: string
 }
 
@@ -10,7 +10,7 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
 
     private text: HTMLElement = document.createElement("h3")
 
-    private username: InputComponent
+    private name: InputComponent
     private password: InputComponent
     private passwordFile: InputComponent
 
@@ -19,23 +19,23 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
 
         this.text.innerText = "Login"
 
-        this.username = new InputComponent("ml-api-username", "text", "Username")
+        this.name = new InputComponent("ml-api-name", "text", "Username")
 
         this.password = new InputComponent("ml-api-password", "password", "Password")
         this.passwordFile = new InputComponent("ml-api-password-file", "file", "Password as File", { accept: ".txt" })
     }
 
     reset(): void {
-        this.username.reset()
+        this.name.reset()
         this.password.reset()
         this.passwordFile.reset()
     }
     submit(): UserAuth | null {
-        const username = this.username.getValue()
+        const name = this.name.getValue()
         const password = this.password.getValue()
 
-        if (username && password) {
-            return { username, password }
+        if (name && password) {
+            return { name, password }
         } else {
             return null
         }
@@ -59,10 +59,10 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
                             .replace(/\r/g, "")
                             .replace(/\n/g, "")
 
-                        const username = this.username.getValue()
+                        const name = this.name.getValue()
 
                         resolve({
-                            username,
+                            name,
                             password
                         })
                     })
@@ -82,7 +82,7 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
     mountForm(form: HTMLFormElement): void {
         form.appendChild(this.text)
 
-        this.username.mount(form)
+        this.name.mount(form)
 
         this.password.mount(form)
         this.passwordFile.mount(form)
