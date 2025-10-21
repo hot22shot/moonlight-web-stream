@@ -8,7 +8,11 @@ use common::config::Config;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::app::{auth::UserAuth, user::User};
+use crate::app::{
+    auth::UserAuth,
+    storage::{Storage, create_storage},
+    user::{User, UserId},
+};
 
 pub mod auth;
 pub mod host;
@@ -43,6 +47,7 @@ impl AppRef {
 
 struct AppInner {
     config: Config,
+    storage: Box<dyn Storage>,
 }
 
 pub struct App {
@@ -50,8 +55,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config) -> Result<Self, anyhow::Error> {
-        let app = AppInner { config };
+    pub async fn new(config: Config) -> Result<Self, anyhow::Error> {
+        let app = AppInner {
+            storage: create_storage(config.data_storage.clone()).await?,
+            config,
+        };
 
         Ok(Self {
             inner: Arc::new(app),
@@ -62,11 +70,12 @@ impl App {
         &self.inner.config
     }
 
-    pub fn user(&self, uuid: Uuid, auth: UserAuth) -> Result<User, AppError> {
-        todo!()
+    pub async fn user(&self, id: UserId, auth: UserAuth) -> Result<User, AppError> {
+        // TODO: auth
+        self.user_no_auth(id).await
     }
 
-    pub fn user_no_auth(&self, uuid: Uuid) -> Result<User, AppError> {
+    pub async fn user_no_auth(&self, id: UserId) -> Result<User, AppError> {
         todo!()
     }
 }

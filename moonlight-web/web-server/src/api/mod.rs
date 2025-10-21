@@ -161,7 +161,7 @@ async fn pair_host(
 
     let host = host.lock().await;
 
-    if matches!(host.moonlight.is_paired(), PairStatus::Paired) {
+    if matches!(host.moonlight.pair_status(), PairStatus::Paired) {
         return HttpResponse::NotModified().finish();
     }
 

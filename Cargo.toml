@@ -28,6 +28,7 @@ printf-compat = { version = "0.2.1" }
 # Util
 slab = "0.4.10"
 ts-rs = "11.0.1"
+async-trait = "0.1.89"
 
 # Async
 tokio = { version = "1.47.1" }

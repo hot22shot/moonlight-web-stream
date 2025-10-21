@@ -1,6 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::app::{AppError, storage::Storage};
+use async_trait::async_trait;
+
+use crate::app::storage::Storage;
 
 pub struct JsonStorage {
     file: PathBuf,
@@ -12,4 +14,5 @@ impl JsonStorage {
     }
 }
 
+#[async_trait]
 impl Storage for JsonStorage {}

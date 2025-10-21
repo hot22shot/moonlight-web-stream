@@ -3706,6 +3706,7 @@ dependencies = [
  "actix-ws",
  "anyhow",
  "async-stream",
+ "async-trait",
  "common",
  "futures",
  "log",

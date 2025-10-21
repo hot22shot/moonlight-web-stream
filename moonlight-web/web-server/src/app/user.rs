@@ -9,16 +9,16 @@ pub enum UserRole {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct UserId(Uuid);
+pub struct UserId(pub u32);
 
 pub struct User {
     app: AppRef,
-    uuid: Uuid,
+    id: UserId,
 }
 
 impl User {
-    pub fn id(&self) -> Uuid {
-        self.uuid
+    pub fn id(&self) -> UserId {
+        self.id
     }
 
     pub async fn role(&self) -> Result<UserRole, AppError> {

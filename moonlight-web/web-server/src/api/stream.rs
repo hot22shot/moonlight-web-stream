@@ -129,7 +129,7 @@ pub async fn start_host(
             let mut host = host.lock().await;
             let host = &mut host.moonlight;
 
-            if host.is_paired() == PairStatus::NotPaired {
+            if host.pair_status() == PairStatus::NotPaired {
                 warn!("[Stream]: tried to connect to a not paired host");
 
                 let _ = send_ws_message(&mut session, StreamServerMessage::HostNotPaired).await;
