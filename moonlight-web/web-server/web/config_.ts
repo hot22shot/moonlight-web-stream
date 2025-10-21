@@ -1,6 +1,6 @@
 import CONFIG from "./config.js"
 
-export function isCredentialAuthenticationEnabled(): boolean {
+export function isUserPasswordAuthenticationEnabled(): boolean {
     return CONFIG?.enable_credential_authentication ?? true
 }
 

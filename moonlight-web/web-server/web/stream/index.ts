@@ -78,7 +78,7 @@ export class Stream {
 
         this.sendWsMessage({
             AuthenticateAndInit: {
-                credentials: this.api.credentials,
+                credentials: this.api.bearer,
                 host_id: this.hostId,
                 app_id: this.appId,
                 bitrate: this.settings.bitrate,

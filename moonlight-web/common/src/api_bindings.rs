@@ -15,7 +15,7 @@ const EXPORT_PATH: &str = "../../web-server/web/api_bindings.ts";
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct ConfigJs {
-    pub enable_credential_authentication: bool,
+    pub enable_user_password_authentication: bool,
     pub path_prefix: String,
 }
 

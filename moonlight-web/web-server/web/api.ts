@@ -1,9 +1,8 @@
 import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
-import { InputComponent } from "./component/input.js";
-import { FormModal } from "./component/modal/form.js";
 import { showMessage, showModal } from "./component/modal/index.js";
-import { buildUrl, isCredentialAuthenticationEnabled } from "./config_.js";
+import { ApiUserPasswordPrompt } from "./component/modal/login.js";
+import { buildUrl, isUserPasswordAuthenticationEnabled } from "./config_.js";
 
 // IMPORTANT: this should be a bit bigger than the moonlight-common reqwest backend timeout if some hosts are offline!
 const API_TIMEOUT = 6000
@@ -21,21 +20,21 @@ export async function getApi(host_url?: string): Promise<Api> {
 
     let credentials = sessionStorage.getItem("mlCredentials");
 
-    if (isCredentialAuthenticationEnabled()) {
+    if (isUserPasswordAuthenticationEnabled()) {
         while (credentials == null) {
-            const prompt = new ApiCredentialsPrompt()
-            const testCredentials = await showModal(prompt)
+            const prompt = new ApiUserPasswordPrompt()
+            const userAuth = await showModal(prompt)
 
-            if (testCredentials == null) {
+            if (userAuth == null) {
                 continue;
             }
 
-            let api = { host_url, credentials: testCredentials }
+            let api = { host_url, bearer: testCredentials }
 
             if (await apiAuthenticate(api)) {
                 sessionStorage.setItem("mlCredentials", testCredentials)
 
-                credentials = api.credentials;
+                credentials = api.bearer;
 
                 break;
             } else {
@@ -46,78 +45,14 @@ export async function getApi(host_url?: string): Promise<Api> {
         credentials = null
     }
 
-    currentApi = { host_url, credentials }
+    currentApi = { host_url, bearer: credentials }
 
     return currentApi
 }
 
-class ApiCredentialsPrompt extends FormModal<string> {
-
-    private text: HTMLElement = document.createElement("h3")
-    private credentials: InputComponent
-    private credentialsFile: InputComponent
-
-    constructor() {
-        super()
-
-        this.text.innerText = "Enter Credentials"
-
-        this.credentials = new InputComponent("ml-api-credentials", "password", "Credentials")
-
-        this.credentialsFile = new InputComponent("ml-api-credentials-file", "file", "Credentials as File", { accept: ".txt" })
-    }
-
-    reset(): void {
-        this.credentials.reset()
-    }
-    submit(): string | null {
-        return this.credentials.getValue()
-    }
-
-    onFinish(abort: AbortSignal): Promise<string | null> {
-        const abortController = new AbortController()
-        abort.addEventListener("abort", abortController.abort.bind(abortController))
-
-        return new Promise((resolve, reject) => {
-            this.credentialsFile.addChangeListener(() => {
-                const files = this.credentialsFile.getFiles()
-                if (files && files.length >= 1) {
-                    const file = files[0]
-
-                    file.text().then((credentials) => {
-                        abortController.abort()
-
-                        // Remove carriage return and new line
-                        resolve(
-                            credentials
-                                .replace(/\r/g, "")
-                                .replace(/\n/g, "")
-                        )
-                    })
-                }
-            }, { signal: abortController.signal })
-
-            super.onFinish(abortController.signal).then((data) => {
-                abortController.abort()
-                resolve(data)
-            }, (data) => {
-                abortController.abort()
-                reject(data)
-            })
-        })
-    }
-
-    mountForm(form: HTMLFormElement): void {
-        form.appendChild(this.text)
-
-        this.credentials.mount(form)
-        this.credentialsFile.mount(form)
-    }
-}
-
 export type Api = {
     host_url: string
-    credentials: string | null,
+    bearer: string | null,
 }
 
 export type ApiFetchInit = {
@@ -138,8 +73,8 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: { respo
     const headers: any = {
     };
 
-    if (isCredentialAuthenticationEnabled()) {
-        headers["Authorization"] = `Bearer ${api.credentials}`;
+    if (isUserPasswordAuthenticationEnabled()) {
+        headers["Authorization"] = `Bearer ${api.bearer}`;
     }
 
     if (init?.json) {
