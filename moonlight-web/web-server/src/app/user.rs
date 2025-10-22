@@ -6,7 +6,7 @@ use crate::app::{
     AppError, AppRef,
     auth::SessionToken,
     host::{Host, HostId},
-    storage::StorageUserModify,
+    storage::{StorageQueryHosts, StorageUserModify},
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -68,18 +68,46 @@ impl User {
         let app = self.app.access()?;
 
         app.storage
-            .modify_user(StorageUserModify { role: Some(role) })
-            .await;
+            .modify_user(StorageUserModify {
+                role: Some(role),
+                ..Default::default()
+            })
+            .await?;
 
         Ok(())
     }
 
     pub async fn hosts(&self) -> Result<Vec<Host>, AppError> {
-        todo!()
+        let app = self.app.access()?;
+
+        let hosts = app
+            .storage
+            .list_user_hosts(StorageQueryHosts { user_id: self.id })
+            .await?
+            .into_iter()
+            .map(|(host_id, host)| Host {
+                // TODO: use storage host
+                app: self.app.clone(),
+                id: host_id,
+            })
+            .collect();
+
+        Ok(hosts)
     }
 
     pub async fn host(&self, host_id: HostId) -> Result<Host, AppError> {
-        todo!()
+        let app = self.app.access()?;
+
+        let host = app.storage.get_host(host_id).await?;
+
+        if host.owner.is_none() || host.owner == Some(self.id) {
+            Ok(Host {
+                app: self.app.clone(),
+                id: host.id,
+            })
+        } else {
+            Err(AppError::Forbidden)
+        }
     }
 
     pub async fn host_add(&self, address: String, http_port: u16) -> Result<Host, AppError> {

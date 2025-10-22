@@ -19,8 +19,8 @@ use crate::app::{
     host::HostId,
     password::StoragePassword,
     storage::{
-        Storage, StorageHost, StorageHostAdd, StorageHostModify, StorageQueryHosts, StorageUser,
-        StorageUserAdd, StorageUserModify,
+        Storage, StorageHost, StorageHostAdd, StorageHostModify, StorageHostPairInfo,
+        StorageQueryHosts, StorageUser, StorageUserAdd, StorageUserModify,
         json::versions::{Json, V2, V2Host, V2User, V2UserPassword, migrate_to_latest},
     },
     user::UserId,
@@ -176,6 +176,22 @@ fn user_from_json(user_id: UserId, user: &V2User) -> StorageUser {
     }
 }
 
+fn host_from_json(host_id: HostId, host: &V2Host) -> StorageHost {
+    StorageHost {
+        id: host_id,
+        owner: host.owner.map(UserId),
+        address: host.address.clone(),
+        pair_info: host.pair_info.clone().map(|pair_info| StorageHostPairInfo {
+            // TODO: remove unwrap
+            client_certificate: pem::parse(pair_info.client_certificate).unwrap(),
+            client_private_key: pem::parse(pair_info.client_private_key).unwrap(),
+            server_certificate: pem::parse(pair_info.server_certificate).unwrap(),
+        }),
+        cache_name: host.cache.name.clone(),
+        cache_mac: host.cache.mac,
+    }
+}
+
 #[async_trait]
 impl Storage for JsonStorage {
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError> {
@@ -251,8 +267,18 @@ impl Storage for JsonStorage {
         user.ok_or(AppError::UserNotFound)
     }
     async fn remove_user(&self, user_id: UserId) -> Result<(), AppError> {
+        let mut users = self.users.write().await;
+
+        let result = match users.remove(&user_id.0) {
+            None => Err(AppError::UserNotFound),
+            Some(_) => Ok(()),
+        };
+
+        drop(users);
+
         self.force_write();
-        todo!()
+
+        result
     }
 
     async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError> {
@@ -266,10 +292,18 @@ impl Storage for JsonStorage {
         Ok(token)
     }
     async fn remove_session_token(&self, session: SessionToken) -> Result<(), AppError> {
-        todo!()
+        let mut sessions = self.sessions.write().await;
+
+        sessions.remove(&session);
+
+        Ok(())
     }
     async fn remove_all_user_session_tokens(&self, user_id: UserId) -> Result<(), AppError> {
-        todo!()
+        let mut sessions = self.sessions.write().await;
+
+        sessions.retain(|_, cmp_user_id| UserId(*cmp_user_id) != user_id);
+
+        Ok(())
     }
     async fn get_user_by_session_token(
         &self,
@@ -292,7 +326,12 @@ impl Storage for JsonStorage {
         todo!()
     }
     async fn get_host(&self, host_id: HostId) -> Result<StorageHost, AppError> {
-        todo!()
+        let hosts = self.hosts.read().await;
+
+        let host = hosts.get(&host_id.0).ok_or(AppError::HostNotFound)?;
+        let host = host.read().await;
+
+        Ok(host_from_json(host_id, &host))
     }
     async fn remove_host(&self, host_id: HostId) -> Result<(), AppError> {
         self.force_write();
@@ -302,7 +341,19 @@ impl Storage for JsonStorage {
     async fn list_user_hosts(
         &self,
         query: StorageQueryHosts,
-    ) -> Result<Vec<StorageHost>, AppError> {
-        todo!()
+    ) -> Result<Vec<(HostId, Option<StorageHost>)>, AppError> {
+        let hosts = self.hosts.read().await;
+
+        let mut user_hosts = Vec::new();
+        for (host_id, host) in &*hosts {
+            let host_id = HostId(*host_id);
+            let host = host.read().await;
+
+            if host.owner.is_none() || host.owner.map(UserId) == Some(query.user_id) {
+                user_hosts.push((host_id, Some(host_from_json(host_id, &host))));
+            }
+        }
+
+        Ok(user_hosts)
     }
 }

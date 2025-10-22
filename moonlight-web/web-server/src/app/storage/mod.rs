@@ -45,16 +45,18 @@ pub struct StorageUserAdd {
     pub name: String,
     pub password: StoragePassword,
 }
+#[derive(Default)]
 pub struct StorageUserModify {
     pub role: Option<Role>,
+    pub password: Option<StoragePassword>,
 }
 
 pub struct StorageHost {
     pub id: HostId,
     // If this is none it means the host is accessible by everyone
     pub owner: Option<UserId>,
-    pub hostport: String,
-    pub pair_info: Option<Pem>,
+    pub address: String,
+    pub pair_info: Option<StorageHostPairInfo>,
     pub cache_name: String,
     pub cache_mac: MacAddress,
 }
@@ -82,7 +84,7 @@ pub struct StorageHostModify {
 }
 
 pub struct StorageQueryHosts {
-    pub id: UserId,
+    pub user_id: UserId,
 }
 
 #[async_trait]
@@ -91,7 +93,7 @@ pub trait Storage {
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError>;
     async fn modify_user(&self, user: StorageUserModify) -> Result<(), AppError>;
     async fn get_user(&self, user_id: UserId) -> Result<StorageUser, AppError>;
-    /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data of the user directly
+    /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data directly
     async fn get_user_by_name(&self, name: &str)
     -> Result<(UserId, Option<StorageUser>), AppError>;
     async fn remove_user(&self, user_id: UserId) -> Result<(), AppError>;
@@ -100,7 +102,7 @@ pub trait Storage {
     async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError>;
     async fn remove_session_token(&self, session: SessionToken) -> Result<(), AppError>;
     async fn remove_all_user_session_tokens(&self, user_id: UserId) -> Result<(), AppError>;
-    /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data of the user directly
+    /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data directly
     async fn get_user_by_session_token(
         &self,
         session: SessionToken,
@@ -111,6 +113,11 @@ pub trait Storage {
     async fn get_host(&self, host_id: HostId) -> Result<StorageHost, AppError>;
     async fn remove_host(&self, host_id: HostId) -> Result<(), AppError>;
 
-    async fn list_user_hosts(&self, query: StorageQueryHosts)
-    -> Result<Vec<StorageHost>, AppError>;
+    /// Returns all hosts that either have no owner (global) or have the specified user_id as an owner
+    ///
+    /// The returned tuple in the Vec can contain a StorageHost if the Storage thinks it's more efficient to query all data directly
+    async fn list_user_hosts(
+        &self,
+        query: StorageQueryHosts,
+    ) -> Result<Vec<(HostId, Option<StorageHost>)>, AppError>;
 }

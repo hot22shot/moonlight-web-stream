@@ -68,6 +68,7 @@ impl ResponseError for AppError {
     }
 }
 
+#[derive(Clone)]
 struct AppRef {
     inner: Weak<AppInner>,
 }
@@ -192,6 +193,6 @@ impl App {
     }
 
     pub async fn delete_session(&self, session: SessionToken) -> Result<(), AppError> {
-        todo!()
+        self.inner.storage.remove_session_token(session).await
     }
 }

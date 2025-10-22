@@ -8,8 +8,8 @@ use crate::app::{AppError, AppRef, user::UserId};
 pub struct HostId(pub u32);
 
 pub struct Host {
-    app: AppRef,
-    id: HostId,
+    pub(super) app: AppRef,
+    pub(super) id: HostId,
 }
 
 impl Debug for Host {

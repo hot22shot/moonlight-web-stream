@@ -106,8 +106,8 @@ pub struct V2Host {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2HostCache {
-    name: String,
-    mac: MacAddress,
+    pub name: String,
+    pub mac: MacAddress,
 }
 
 pub fn migrate_to_latest(json: Json) -> Result<V2, anyhow::Error> {

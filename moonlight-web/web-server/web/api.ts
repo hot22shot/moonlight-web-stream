@@ -174,6 +174,17 @@ export async function apiLogin(api: Api, request: PostLoginRequest): Promise<boo
     return true
 }
 
+export async function apiLogout(api: Api): Promise<boolean> {
+    let response
+    try {
+        response = await fetchApi(api, "/logout", "post", { response: "ignore" })
+    } catch (e) {
+        throw e
+    }
+
+    return true
+}
+
 export async function apiAuthenticate(api: Api): Promise<boolean> {
     let response
     try {

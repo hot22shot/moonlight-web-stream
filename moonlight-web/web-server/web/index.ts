@@ -1,4 +1,4 @@
-import { Api, getApi, apiPutHost, FetchError } from "./api.js";
+import { Api, getApi, apiPutHost, FetchError, apiLogout } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -46,7 +46,15 @@ class MainApp implements Component {
 
     private divElement = document.createElement("div")
 
+    // Top Line
+    private topLine = document.createElement("div")
+
     private moonlightTextElement = document.createElement("h1")
+
+    private topLineActions = document.createElement("div")
+    private logoutButton = document.createElement("button")
+
+    // Actions
     private actionElement = document.createElement("div")
 
     private backToHostsButton: HTMLButtonElement = document.createElement("button")
@@ -54,6 +62,7 @@ class MainApp implements Component {
     private hostAddButton: HTMLButtonElement = document.createElement("button")
     private settingsButton: HTMLButtonElement = document.createElement("button")
 
+    // Different submenus
     private currentDisplay: DisplayStates | null = null
 
     private hostList: HostList
@@ -63,8 +72,23 @@ class MainApp implements Component {
     constructor(api: Api) {
         this.api = api
 
-        // Moonlight text
+        // Top Line
+        this.topLine.classList.add("top-line")
+
         this.moonlightTextElement.innerHTML = "Moonlight Web"
+        this.topLine.appendChild(this.moonlightTextElement)
+
+        this.topLine.appendChild(this.topLineActions)
+        this.topLineActions.classList.add("top-line-actions")
+
+        this.logoutButton.addEventListener("click", async () => {
+            await apiLogout(this.api)
+            window.location.reload()
+        })
+        this.logoutButton.classList.add("logout-button")
+        this.topLineActions.appendChild(this.logoutButton)
+
+        // TODO: admin panel?
 
         // Actions
         this.actionElement.classList.add("actions-list")
@@ -90,7 +114,7 @@ class MainApp implements Component {
         this.settings.addChangeListener(this.onSettingsChange.bind(this))
 
         // Append default elements
-        this.divElement.appendChild(this.moonlightTextElement)
+        this.divElement.appendChild(this.topLine)
         this.divElement.appendChild(this.actionElement)
 
         this.setCurrentDisplay("hosts")

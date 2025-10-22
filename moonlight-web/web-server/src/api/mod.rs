@@ -40,58 +40,6 @@ pub mod admin;
 pub mod auth;
 // mod stream;
 
-#[post("/login")]
-async fn login(
-    app: Data<App>,
-    Json(request): Json<PostLoginRequest>,
-) -> Result<HttpResponse, Error> {
-    let user = app
-        .user_by_name_password(&request.name, &request.password)
-        .await?;
-
-    let session = user.new_session().await?;
-    let mut session_bytes = [0; _];
-    let session_str = session.encode(&mut session_bytes);
-
-    let url_path_prefix = &app.config().web_server.url_path_prefix;
-
-    // TODO: expiration of cookie
-    Ok(HttpResponse::Ok()
-        .cookie(
-            Cookie::build(COOKIE_SESSION_TOKEN_NAME, session_str)
-                .path(url_path_prefix)
-                .same_site(SameSite::Strict)
-                .http_only(true) // not accessible via js
-                // TODO: add a secure option in the config
-                // .secure(true)
-                .finish(),
-        )
-        .finish())
-}
-
-#[post("/logout")]
-async fn logout(app: Data<App>, auth: UserAuth, req: HttpRequest) -> Result<HttpResponse, Error> {
-    let session = match auth {
-        UserAuth::Session(session) => session,
-        _ => return Ok(HttpResponse::BadRequest().finish()),
-    };
-
-    app.delete_session(session).await?;
-
-    let mut response = HttpResponse::Ok().finish();
-
-    if let Some(session_cookie) = req.cookie(COOKIE_SESSION_TOKEN_NAME) {
-        response.add_removal_cookie(&session_cookie)?;
-    }
-
-    Ok(response)
-}
-
-#[get("/authenticate")]
-async fn authenticate(_user: User) -> impl Responder {
-    HttpResponse::Ok()
-}
-
 #[get("/hosts")]
 async fn list_hosts(user: User) -> Result<Json<GetHostsResponse>, Error> {
     let hosts = user.hosts().await?;
@@ -385,9 +333,9 @@ pub fn api_service() -> impl HttpServiceFactory {
     web::scope("/api")
         // .wrap(middleware::from_fn(auth_middleware))
         .service(services![
-            login,
-            logout,
-            authenticate,
+            auth::login,
+            auth::logout,
+            auth::authenticate,
             list_hosts,
             get_host,
             put_host,

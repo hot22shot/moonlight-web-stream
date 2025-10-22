@@ -387,6 +387,29 @@ input[type=number] {
     transition: opacity 0.3s ease-in;
 }
 
+/** top line */
+.top-line {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.top-line-actions {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: right;
+}
+
+.logout-button {
+    background-color: red;
+    background-image: url("resources/new/logout-svgrepo-com.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
 /** Actions */
 .actions-list {
     display: flex;
