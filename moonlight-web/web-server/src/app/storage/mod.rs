@@ -56,6 +56,7 @@ pub struct StorageHost {
     // If this is none it means the host is accessible by everyone
     pub owner: Option<UserId>,
     pub address: String,
+    pub http_port: u16,
     pub pair_info: Option<StorageHostPairInfo>,
     pub cache_name: String,
     pub cache_mac: MacAddress,

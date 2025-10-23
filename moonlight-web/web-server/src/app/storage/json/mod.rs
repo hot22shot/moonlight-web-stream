@@ -181,6 +181,7 @@ fn host_from_json(host_id: HostId, host: &V2Host) -> StorageHost {
         id: host_id,
         owner: host.owner.map(UserId),
         address: host.address.clone(),
+        http_port: host.http_port,
         pair_info: host.pair_info.clone().map(|pair_info| StorageHostPairInfo {
             // TODO: remove unwrap
             client_certificate: pem::parse(pair_info.client_certificate).unwrap(),

@@ -8,6 +8,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use log::debug;
 use pem::Pem;
 use tokio::{
     net::UdpSocket,
@@ -147,6 +148,8 @@ where
         let mut client = self.client().await;
 
         if !has_cache {
+            debug!("Requesting HTTP info for {}", self.address);
+
             let http_address = self.http_address();
 
             let client_info = ClientInfo {
@@ -164,6 +167,8 @@ where
             && let Some(https_port) = https_port
             && self.is_paired().await == PairStatus::Paired
         {
+            debug!("Requesting HTTPS info for {}", self.address);
+
             let https_address = Self::build_https_address(&self.address, https_port);
 
             let client_info = ClientInfo {
@@ -282,6 +287,10 @@ where
     }
 
     pub async fn verify_paired(&self) -> Result<PairStatus, HostError<C::Error>> {
+        if self.is_paired().await == PairStatus::NotPaired {
+            return Ok(PairStatus::NotPaired);
+        }
+
         let https_address = match self.https_address().await {
             Err(err) => return Err(err),
             Ok(value) => value,

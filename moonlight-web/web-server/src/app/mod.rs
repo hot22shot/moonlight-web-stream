@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     ops::Deref,
     sync::{Arc, Weak},
 };
@@ -6,11 +7,17 @@ use std::{
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use common::config::Config;
 use hex::FromHexError;
+use moonlight_common::{
+    high::HostError,
+    network::reqwest::{ReqwestError, ReqwestMoonlightHost},
+};
 use openssl::error::ErrorStack;
 use thiserror::Error;
+use tokio::sync::RwLock;
 
 use crate::app::{
     auth::{SessionToken, UserAuth},
+    host::HostId,
     storage::{Storage, StorageUserAdd, create_storage},
     user::{Admin, User, UserId},
 };
@@ -45,6 +52,8 @@ pub enum AppError {
     OpenSSL(#[from] ErrorStack),
     #[error("hex error occured")]
     Hex(#[from] FromHexError),
+    #[error("moonlight client error")]
+    MoonlightHost(#[from] HostError<ReqwestError>),
 }
 
 impl ResponseError for AppError {
@@ -64,6 +73,7 @@ impl ResponseError for AppError {
             Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Hex(_) => StatusCode::BAD_REQUEST,
             Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
+            Self::MoonlightHost(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -82,6 +92,7 @@ impl AppRef {
 struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
+    loaded_hosts: RwLock<HashMap<(UserId, HostId), ReqwestMoonlightHost>>,
 }
 
 pub struct App {
@@ -93,6 +104,7 @@ impl App {
         let app = AppInner {
             storage: create_storage(config.data_storage.clone()).await?,
             config,
+            loaded_hosts: Default::default(),
         };
 
         Ok(Self {

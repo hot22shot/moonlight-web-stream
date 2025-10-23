@@ -41,14 +41,15 @@ pub mod auth;
 // mod stream;
 
 #[get("/hosts")]
-async fn list_hosts(user: User) -> Result<Json<GetHostsResponse>, Error> {
+async fn list_hosts(mut user: User) -> Result<Json<GetHostsResponse>, Error> {
     let hosts = user.hosts().await?;
 
     let mut undetailed_hosts = Vec::with_capacity(hosts.len());
     for host in hosts {
-        let undetailed = match host.undetailed_host().await {
+        let undetailed = match host.undetailed_host(&mut user).await {
             Ok(value) => value,
             Err(err) => {
+                // TODO: try to push the host based on cache and show error?
                 warn!("[Api] Failed to get undetailed data of host {host:?}: {err:?}");
                 continue;
             }
@@ -64,14 +65,14 @@ async fn list_hosts(user: User) -> Result<Json<GetHostsResponse>, Error> {
 
 #[get("/host")]
 async fn get_host(
-    user: User,
+    mut user: User,
     Query(query): Query<GetHostQuery>,
 ) -> Result<Json<GetHostResponse>, Error> {
     let host_id = HostId(query.host_id);
 
     let host = user.host(host_id).await?;
 
-    let detailed = host.detailed_host().await?;
+    let detailed = host.detailed_host(&mut user).await?;
 
     Ok(Json(GetHostResponse { host: detailed }))
 }
@@ -79,7 +80,7 @@ async fn get_host(
 #[put("/host")]
 async fn put_host(
     app: Data<App>,
-    user: User,
+    mut user: User,
     Json(query): Json<PutHostRequest>,
 ) -> Result<Json<PutHostResponse>, Error> {
     let host = user
@@ -92,7 +93,7 @@ async fn put_host(
         .await?;
 
     Ok(Json(PutHostResponse {
-        host: host.detailed_host().await?,
+        host: host.detailed_host(&mut user).await?,
     }))
 }
 //

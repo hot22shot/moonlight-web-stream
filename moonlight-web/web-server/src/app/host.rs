@@ -1,10 +1,19 @@
 use std::fmt::{Debug, Formatter};
 
 use common::api_bindings::{DetailedHost, UndetailedHost};
+use log::{error, warn};
+use moonlight_common::{
+    high::{HostError, MoonlightHost},
+    network::reqwest::ReqwestMoonlightHost,
+};
 
-use crate::app::{AppError, AppRef, user::UserId};
+use crate::app::{
+    AppError, AppInner, AppRef,
+    storage::StorageHost,
+    user::{User, UserId},
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HostId(pub u32);
 
 pub struct Host {
@@ -31,10 +40,68 @@ impl Host {
         Ok(host.owner)
     }
 
-    pub async fn undetailed_host(&self) -> Result<UndetailedHost, AppError> {
-        todo!()
+    async fn use_host<R>(
+        &self,
+        user: &mut User,
+        f: impl AsyncFnOnce(&AppInner, &ReqwestMoonlightHost) -> R,
+    ) -> Result<R, AppError> {
+        let app = self.app.access()?;
+        let key = (user.id(), self.id);
+
+        loop {
+            // Try to get host if already loaded
+            let hosts = app.loaded_hosts.read().await;
+            if let Some(host) = hosts.get(&key) {
+                return Ok(f(&app, host).await);
+            }
+            drop(hosts);
+
+            // Insert as a new host
+            let mut hosts = app.loaded_hosts.write().await;
+
+            let user_unique_id = user.host_unique_id().await?;
+            let host_data = self.storage_host(&app).await?;
+
+            let new_host =
+                MoonlightHost::new(host_data.address, host_data.http_port, Some(user_unique_id))?;
+
+            hosts.entry(key).or_insert(new_host);
+            drop(hosts);
+        }
     }
-    pub async fn detailed_host(&self) -> Result<DetailedHost, AppError> {
+
+    async fn storage_host(&self, app: &AppInner) -> Result<StorageHost, AppError> {
+        app.storage.get_host(self.id).await
+    }
+
+    pub async fn undetailed_host(&self, user: &mut User) -> Result<UndetailedHost, AppError> {
+        self.use_host(user, async |app, host| {
+            host.clear_cache().await;
+
+            let name = match host.host_name().await {
+                Ok(value) => value,
+                Err(HostError::LikelyOffline) => {
+                    let storage_host = self.storage_host(app).await?;
+                    storage_host.cache_name.clone()
+                }
+                Err(err) => {
+                    warn!("Failed to query host info for host {self:?}: {err:?}");
+
+                    let storage_host = self.storage_host(app).await?;
+                    storage_host.cache_name.clone()
+                }
+            };
+
+            Ok(UndetailedHost {
+                host_id: self.id.0,
+                name,
+                paired: host.verify_paired().await?.into(),
+                server_state: Some(host.state().await?.1.into()),
+            })
+        })
+        .await?
+    }
+    pub async fn detailed_host(&self, user: &mut User) -> Result<DetailedHost, AppError> {
         todo!()
     }
 

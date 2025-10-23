@@ -6,7 +6,7 @@ use crate::app::{
     AppError, AppRef,
     auth::SessionToken,
     host::{Host, HostId},
-    storage::{StorageQueryHosts, StorageUserModify},
+    storage::{StorageQueryHosts, StorageUser, StorageUserModify},
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -26,7 +26,7 @@ impl From<common::api_bindings::UserRole> for Role {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(pub u32);
 
 // TODO: maybe cache?
@@ -56,25 +56,34 @@ impl User {
         Ok(token)
     }
 
-    pub async fn role(&self) -> Result<Role, AppError> {
+    pub async fn modify(&self, _admin: Admin, modify: StorageUserModify) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        // TODO: clear all hosts from the loaded hosts if unique id changed
+
+        app.storage.modify_user(modify).await?;
+
+        Ok(())
+    }
+
+    async fn storage_user(&self) -> Result<StorageUser, AppError> {
         let app = self.app.access()?;
 
         let user = app.storage.get_user(self.id).await?;
 
+        Ok(user)
+    }
+    pub async fn role(&self) -> Result<Role, AppError> {
+        let user = self.storage_user().await?;
+
         Ok(user.role)
     }
 
-    pub async fn set_role(&self, role: Role) -> Result<(), AppError> {
-        let app = self.app.access()?;
+    pub async fn host_unique_id(&self) -> Result<String, AppError> {
+        let user = self.storage_user().await?;
 
-        app.storage
-            .modify_user(StorageUserModify {
-                role: Some(role),
-                ..Default::default()
-            })
-            .await?;
-
-        Ok(())
+        // TODO: have an override for user
+        Ok(user.name)
     }
 
     pub async fn hosts(&self) -> Result<Vec<Host>, AppError> {
