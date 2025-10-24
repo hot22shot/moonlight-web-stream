@@ -6,6 +6,7 @@ services:
       context: ./
       dockerfile: Dockerfile
     container_name: moonlight-web
+    restart: unless-stopped
     ports:
       - "8080:8080"
       - "40000-40100:40000-40100/udp"
