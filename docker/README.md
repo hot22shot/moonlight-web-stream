@@ -14,3 +14,44 @@ or
 ```bash
 docker run -d --net=host --name moonlight-web moonlight-web:v1.5
 ```
+
+# Running with Turn Server
+
+1. Set new Turn credentials in the [.env file](.env)
+```dotenv
+TURN_USER=myrandomuser
+TURN_PASS=myrandompass
+```
+
+2. Update the Moonlight Web config
+
+Edit the [default-config.json](default-config.json) (or the config.json inside the moonlight-server volume) to include the TURN server URL and credentials:
+
+```json
+"webrtc_ice_servers": [
+  {
+    "urls": [
+      "stun:l.google.com:19302",
+      "stun:stun.l.google.com:19302",
+      "stun:stun1.l.google.com:19302",
+      "stun:stun2.l.google.com:19302",
+      "stun:stun3.l.google.com:19302",
+      "stun:stun4.l.google.com:19302"
+    ],
+    "username": "",
+    "credential": ""
+  },
+  {
+    "urls": [
+      "turn:YOUR_PUBLIC_IP:3478",
+    ],
+    "username": "myrandomuser",
+    "credential": "myrandompass"
+  }
+],
+```
+
+3. Start with docker compose
+```bash
+docker compose -f docker-compose.with-turn.yaml up -d
+```
