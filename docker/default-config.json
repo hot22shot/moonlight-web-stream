@@ -22,7 +22,12 @@
     "min": 40000,
     "max": 40100
   },
-  "webrtc_nat_1to1": null,
+  "webrtc_nat_1to1": {
+    "ice_candidate_type": "srflx",
+    "ips": [
+      "127.0.0.1"
+    ]
+  },
   "webrtc_network_types": [
     "udp4",
     "udp6"
