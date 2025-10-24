@@ -43,7 +43,10 @@ Edit the [default-config.json](default-config.json) (or the config.json inside t
   },
   {
     "urls": [
-      "turn:YOUR_PUBLIC_IP:3478",
+      "turn:YOUR_PUBLIC_IP:3478?transport=udp",
+      "turn:YOUR_PUBLIC_IP:3478?transport=tcp",
+      "turn:YOUR_PUBLIC_IP:5349?transport=tcp",
+      "turn:YOUR_PUBLIC_IP:443?transport=tcp",
     ],
     "username": "myrandomuser",
     "credential": "myrandompass"
