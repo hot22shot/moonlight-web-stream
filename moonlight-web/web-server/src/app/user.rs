@@ -56,12 +56,13 @@ impl User {
         Ok(token)
     }
 
-    pub async fn modify(&self, _admin: Admin, modify: StorageUserModify) -> Result<(), AppError> {
+    // TODO: how to authenticate this?
+    pub async fn modify(&self, user_id: UserId, modify: StorageUserModify) -> Result<(), AppError> {
         let app = self.app.access()?;
 
         // TODO: clear all hosts from the loaded hosts if unique id changed
 
-        app.storage.modify_user(modify).await?;
+        app.storage.modify_user(user_id, modify).await?;
 
         Ok(())
     }

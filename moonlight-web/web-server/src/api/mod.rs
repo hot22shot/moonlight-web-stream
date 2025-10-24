@@ -9,7 +9,7 @@ use actix_web::{
 use futures::future::join_all;
 use log::{info, warn};
 use moonlight_common::{
-    PairPin, PairStatus,
+    PairPin,
     high::{HostError, broadcast_magic_packet},
     network::{
         ApiError,
@@ -17,14 +17,14 @@ use moonlight_common::{
     },
     pair::generate_new_client,
 };
-use std::io::Write as _;
-use tokio::sync::Mutex;
+use std::{io::Write as _, time::Duration};
+use tokio::{sync::Mutex, time::sleep};
 
 use crate::{
     Config,
     api::{admin::add_user, auth::COOKIE_SESSION_TOKEN_NAME},
     app::{
-        App,
+        App, AppError,
         auth::UserAuth,
         host::{Host, HostId},
         user::User,
@@ -32,8 +32,9 @@ use crate::{
 };
 use common::api_bindings::{
     DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
-    GetHostResponse, GetHostsResponse, PostLoginRequest, PostPairRequest, PostPairResponse1,
-    PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost,
+    GetHostResponse, GetHostsResponse, PairStatus, PostLoginRequest, PostPairRequest,
+    PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse,
+    UndetailedHost,
 };
 
 pub mod admin;
@@ -117,122 +118,87 @@ async fn put_host(
 //     HttpResponse::Ok().finish()
 // }
 //
-// #[post("/pair")]
-// async fn pair_host(
-//     data: Data<RuntimeApiData>,
-//     config: Data<Config>,
-//     Json(request): Json<PostPairRequest>,
-// ) -> HttpResponse {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = request.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return HttpResponse::NotFound().finish();
-//     };
-//
-//     let host = host.lock().await;
-//
-//     if matches!(host.moonlight.pair_status(), PairStatus::Paired) {
-//         return HttpResponse::NotModified().finish();
-//     }
-//
-//     let data = data.clone();
-//
-//     let stream = async_stream::stream! {
-//         let hosts = data.hosts.read().await;
-//         let Some(host) = hosts.get(host_id as usize) else {
-//             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//             return;
-//         };
-//         let mut host = host.lock().await;
-//
-//         let Ok(client_auth) = generate_new_client() else {
-//             warn!("[Api]: failed to generate new client to host authentication data");
-//
-//             let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//             return;
-//         };
-//
-//         let Ok(pin) = PairPin::generate() else {
-//             warn!("[Api]: failed to generate pin!");
-//
-//             return
-//         };
-//
-//             let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//         if let Err(err) = host.moonlight
-//             .pair(
-//                 &client_auth,
-//                 config.pair_device_name.to_string(),
-//                 pin,
-//             )
-//             .await
-//         {
-//             info!("[Api]: failed to pair host {}: {:?}", host.moonlight.address(), err);
-//
-//             let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
-//                 unreachable!()
-//             };
-//
-//             let bytes = Bytes::from_owner(text);
-//             yield Ok::<_, Error>(bytes);
-//
-//             return;
-//         };
-//
-//         let _ = data.file_writer.try_send(());
-//
-//         let detailed_host = match into_detailed_host(host_id as usize, &mut host.moonlight).await {
-//             Err(err) => {
-//                 warn!("[Api] failed to get host info after pairing for host {host_id}: {err:?}");
-//
-//                 let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
-//                     unreachable!()
-//                 };
-//
-//                 let bytes = Bytes::from_owner(text);
-//                 yield Ok::<_, Error>(bytes);
-//
-//                 return
-//             }
-//             Ok(value) => value,
-//         };
-//
-//         let mut text = Vec::new();
-//         let _ = writeln!(&mut text);
-//         if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(detailed_host)).is_err() {
-//             unreachable!()
-//         };
-//
-//         drop(host);
-//         drop(hosts);
-//
-//         let bytes = Bytes::from_owner(text);
-//         yield Ok::<_, Error>(bytes);
-//     };
-//
-//     HttpResponse::Ok()
-//         .insert_header(("Content-Type", "application/x-ndjson"))
-//         .streaming(stream)
-// }
+#[post("/pair")]
+async fn pair_host(
+    mut user: User,
+    Json(request): Json<PostPairRequest>,
+) -> Result<HttpResponse, AppError> {
+    let host_id = HostId(request.host_id);
+
+    let host = user.host(host_id).await?;
+
+    if matches!(host.is_paired(&mut user).await?, PairStatus::Paired) {
+        return Ok(HttpResponse::NotModified().finish());
+    }
+
+    let stream = async_stream::stream! {
+        // Generate pin
+        let Ok(pin) = PairPin::generate() else {
+            warn!("[Api]: failed to generate pin!");
+
+            return;
+        };
+
+        // Send pin response
+        let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
+            unreachable!()
+        };
+
+        let bytes = Bytes::from_owner(text);
+        yield Ok::<_, Error>(bytes);
+
+        // Initiate pairing
+        if let Err(err) = host
+            .pair(
+                &mut user,
+                pin,
+            )
+            .await
+        {
+            info!("[Api]: failed to pair host {host:?}: {err:?}");
+
+            let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
+                unreachable!()
+            };
+
+            let bytes = Bytes::from_owner(text);
+            yield Ok::<_, Error>(bytes);
+
+            return;
+        };
+
+        // Get detailed host after pairing succeeded
+        let detailed_host = match host.detailed_host(&mut user).await {
+            Err(err) => {
+                warn!("[Api] failed to get host info after pairing for host {host:?}: {err:?}");
+
+                let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
+                    unreachable!()
+                };
+
+                let bytes = Bytes::from_owner(text);
+                yield Ok::<_, Error>(bytes);
+
+                return
+            }
+            Ok(value) => value,
+        };
+
+        // Send detailed host back
+        let mut text = Vec::new();
+        let _ = writeln!(&mut text);
+        if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(detailed_host)).is_err() {
+            unreachable!()
+        };
+
+        let bytes = Bytes::from_owner(text);
+        yield Ok::<_, Error>(bytes);
+    };
+
+    Ok(HttpResponse::Ok()
+        .insert_header(("Content-Type", "application/x-ndjson"))
+        .streaming(stream))
+}
 //
 // #[post("/host/wake")]
 // async fn wake_host(
@@ -342,7 +308,7 @@ pub fn api_service() -> impl HttpServiceFactory {
             put_host,
             // wake_host,
             // delete_host,
-            // pair_host,
+            pair_host,
             // get_apps,
             // get_app_image,
             // -- Stream

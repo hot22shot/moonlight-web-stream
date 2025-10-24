@@ -9,6 +9,8 @@ use thiserror::Error;
 pub struct MacAddress([u8; 6]);
 
 impl MacAddress {
+    pub const NULL: MacAddress = MacAddress([0u8; 6]);
+
     pub fn from_bytes(bytes: [u8; 6]) -> Self {
         Self(bytes)
     }

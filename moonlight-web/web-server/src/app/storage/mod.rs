@@ -71,15 +71,15 @@ pub struct StorageHostCache {
     pub mac: MacAddress,
 }
 pub struct StorageHostPairInfo {
-    client_private_key: Pem,
-    client_certificate: Pem,
-    server_certificate: Pem,
+    pub client_private_key: Pem,
+    pub client_certificate: Pem,
+    pub server_certificate: Pem,
 }
+#[derive(Default)]
 pub struct StorageHostModify {
-    pub id: HostId,
     pub owner: Option<Option<UserId>>,
     pub hostport: Option<String>,
-    pub pair_info: Option<Option<Pem>>,
+    pub pair_info: Option<Option<StorageHostPairInfo>>,
     pub cache_name: Option<String>,
     pub cache_mac: Option<MacAddress>,
 }
@@ -92,7 +92,7 @@ pub struct StorageQueryHosts {
 pub trait Storage {
     /// No duplicate names are allowed!
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError>;
-    async fn modify_user(&self, user: StorageUserModify) -> Result<(), AppError>;
+    async fn modify_user(&self, user_id: UserId, user: StorageUserModify) -> Result<(), AppError>;
     async fn get_user(&self, user_id: UserId) -> Result<StorageUser, AppError>;
     /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data directly
     async fn get_user_by_name(&self, name: &str)
@@ -110,7 +110,7 @@ pub trait Storage {
     ) -> Result<(UserId, Option<StorageUser>), AppError>;
 
     async fn add_host(&self, host: StorageHostAdd) -> Result<StorageHost, AppError>;
-    async fn modify_host(&self, host: StorageHostModify) -> Result<(), AppError>;
+    async fn modify_host(&self, host_id: HostId, host: StorageHostModify) -> Result<(), AppError>;
     async fn get_host(&self, host_id: HostId) -> Result<StorageHost, AppError>;
     async fn remove_host(&self, host_id: HostId) -> Result<(), AppError>;
 

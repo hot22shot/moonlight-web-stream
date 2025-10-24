@@ -77,7 +77,7 @@ pub struct DetailedHost {
     pub host_id: u32,
     pub name: String,
     pub paired: PairStatus,
-    pub server_state: HostState,
+    pub server_state: Option<HostState>,
     pub address: String,
     pub http_port: u16,
     pub https_port: u16,

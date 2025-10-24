@@ -90,6 +90,17 @@ pub struct ServerVersion {
     pub mini_patch: i32,
 }
 
+impl ServerVersion {
+    pub fn new(major: i32, minor: i32, patch: i32, mini_patch: i32) -> ServerVersion {
+        Self {
+            major,
+            minor,
+            patch,
+            mini_patch,
+        }
+    }
+}
+
 impl Display for ServerVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

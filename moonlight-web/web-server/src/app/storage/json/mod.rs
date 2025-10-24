@@ -235,7 +235,7 @@ impl Storage for JsonStorage {
             role: user.role,
         })
     }
-    async fn modify_user(&self, user: StorageUserModify) -> Result<(), AppError> {
+    async fn modify_user(&self, user_id: UserId, user: StorageUserModify) -> Result<(), AppError> {
         self.force_write();
         todo!()
     }
@@ -322,7 +322,7 @@ impl Storage for JsonStorage {
         self.force_write();
         todo!()
     }
-    async fn modify_host(&self, host: StorageHostModify) -> Result<(), AppError> {
+    async fn modify_host(&self, host_id: HostId, host: StorageHostModify) -> Result<(), AppError> {
         self.force_write();
         todo!()
     }
