@@ -1,8 +1,9 @@
 use std::fmt::{Debug, Formatter};
 
-use common::api_bindings::{DetailedHost, UndetailedHost};
-use log::{error, warn};
+use common::api_bindings::{DetailedHost, HostState, PairStatus, UndetailedHost};
+use log::warn;
 use moonlight_common::{
+    ServerState,
     high::{HostError, MoonlightHost},
     network::reqwest::ReqwestMoonlightHost,
 };
@@ -76,8 +77,6 @@ impl Host {
 
     pub async fn undetailed_host(&self, user: &mut User) -> Result<UndetailedHost, AppError> {
         self.use_host(user, async |app, host| {
-            host.clear_cache().await;
-
             let name = match host.host_name().await {
                 Ok(value) => value,
                 Err(HostError::LikelyOffline) => {
@@ -91,12 +90,38 @@ impl Host {
                     storage_host.cache_name.clone()
                 }
             };
+            let paired = match host.verify_paired().await {
+                Ok(value) => PairStatus::from(value),
+                Err(HostError::LikelyOffline) => {
+                    if host.pair_info().await.is_some() {
+                        PairStatus::Paired
+                    } else {
+                        PairStatus::NotPaired
+                    }
+                }
+                Err(err) => {
+                    warn!("Failed to query if host is paired for host {self:?}: {err:?}");
+                    if host.pair_info().await.is_some() {
+                        PairStatus::Paired
+                    } else {
+                        PairStatus::NotPaired
+                    }
+                }
+            };
+            let server_state = match host.state().await {
+                Ok((_, state)) => Some(HostState::from(state)),
+                Err(HostError::LikelyOffline) => None,
+                Err(err) => {
+                    warn!("Failed to query server state for host {self:?}: {err:?}");
+                    None
+                }
+            };
 
             Ok(UndetailedHost {
                 host_id: self.id.0,
                 name,
-                paired: host.verify_paired().await?.into(),
-                server_state: Some(host.state().await?.1.into()),
+                paired,
+                server_state,
             })
         })
         .await?

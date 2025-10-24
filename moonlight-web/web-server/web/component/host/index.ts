@@ -88,7 +88,7 @@ export class Host implements Component {
                 name: "Show Details",
                 callback: this.showDetails.bind(this),
             })
-        } else {
+        } else if (this.cache?.paired == "Paired") {
             elements.push({
                 name: "Send Wake Up Packet",
                 callback: this.wakeUp.bind(this)
@@ -100,7 +100,7 @@ export class Host implements Component {
             callback: async () => this.forceFetch(true)
         })
 
-        if (this.cache?.paired == "NotPaired") {
+        if (this.cache?.server_state != null && this.cache?.paired == "NotPaired") {
             elements.push({
                 name: "Pair",
                 callback: this.pair.bind(this)
