@@ -41,6 +41,7 @@ pub mod admin;
 pub mod auth;
 // mod stream;
 
+// TODO: use response streaming to have longer timeouts on each individual host with json new line format
 #[get("/hosts")]
 async fn list_hosts(mut user: User) -> Result<Json<GetHostsResponse>, Error> {
     let hosts = user.hosts().await?;

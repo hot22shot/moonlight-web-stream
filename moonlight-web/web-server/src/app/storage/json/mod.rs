@@ -397,6 +397,9 @@ impl Storage for JsonStorage {
         if let Some(new_cache_name) = modify.cache_name {
             host.cache.name = new_cache_name;
         }
+        if let Some(new_cache_mac) = modify.cache_mac {
+            host.cache.mac = new_cache_mac;
+        }
 
         self.force_write();
 

@@ -1,10 +1,11 @@
 use std::ops::Deref;
 
-use moonlight_common::high::MoonlightHost;
+use moonlight_common::network::{ApiError, ClientInfo, host_info, request_client::RequestClient};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::app::{
-    AppError, AppRef,
+    AppError, AppRef, MoonlightClient,
     auth::SessionToken,
     host::{Host, HostId},
     storage::{
@@ -128,10 +129,17 @@ impl User {
 
         let unique_id = self.host_unique_id().await?;
 
-        let loaded_host = MoonlightHost::new(address.clone(), http_port, Some(unique_id))?;
-
-        let name = loaded_host.host_name().await?;
-        let mac = loaded_host.mac().await?;
+        let mut client = MoonlightClient::with_defaults().map_err(ApiError::RequestClient)?;
+        let info = host_info(
+            &mut client,
+            false,
+            &format!("{}:{}", address, http_port),
+            Some(ClientInfo {
+                uuid: Uuid::new_v4(),
+                unique_id: &unique_id,
+            }),
+        )
+        .await?;
 
         let host = app
             .storage
@@ -140,14 +148,12 @@ impl User {
                 address,
                 http_port,
                 pair_info: None,
-                cache: StorageHostCache { name, mac },
+                cache: StorageHostCache {
+                    name: info.host_name,
+                    mac: info.mac,
+                },
             })
             .await?;
-
-        {
-            let mut loaded_hosts = app.loaded_hosts.write().await;
-            loaded_hosts.insert((self.id, host.id), loaded_host);
-        }
 
         Ok(Host {
             // TODO: use storage_host

@@ -8,8 +8,12 @@ use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use common::config::Config;
 use hex::FromHexError;
 use moonlight_common::{
-    high::HostError,
-    network::reqwest::{ReqwestError, ReqwestMoonlightHost},
+    high::{HostError, PairInfo},
+    network::{
+        ApiError, ClientInfo,
+        request_client::RequestClient,
+        reqwest::{ReqwestClient, ReqwestError, ReqwestMoonlightHost},
+    },
 };
 use openssl::error::ErrorStack;
 use thiserror::Error;
@@ -36,6 +40,12 @@ pub enum AppError {
     UserNotFound,
     #[error("the host was not found")]
     HostNotFound,
+    #[error("the host was is already paired")]
+    HostPaired,
+    #[error("the host must be paired for this action")]
+    HostNotPaired,
+    #[error("the host was offline, but the action requires that the host is online")]
+    HostOffline,
     // TODO: rename the credentials error
     #[error("the credentials don't exists")]
     CredentialsWrong,
@@ -52,8 +62,8 @@ pub enum AppError {
     OpenSSL(#[from] ErrorStack),
     #[error("hex error occured")]
     Hex(#[from] FromHexError),
-    #[error("moonlight client error")]
-    MoonlightHost(#[from] HostError<ReqwestError>),
+    #[error("moonlight api error")]
+    MoonlightApi(#[from] ApiError<<MoonlightClient as RequestClient>::Error>),
 }
 
 impl ResponseError for AppError {
@@ -65,6 +75,9 @@ impl ResponseError for AppError {
         match self {
             Self::AppDestroyed => StatusCode::INTERNAL_SERVER_ERROR,
             Self::HostNotFound => StatusCode::NOT_FOUND,
+            Self::HostNotPaired => StatusCode::FORBIDDEN,
+            Self::HostPaired => StatusCode::NOT_MODIFIED,
+            Self::HostOffline => StatusCode::GATEWAY_TIMEOUT,
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::CredentialsWrong => StatusCode::UNAUTHORIZED,
             Self::SessionTokenNotFound => StatusCode::UNAUTHORIZED,
@@ -73,7 +86,7 @@ impl ResponseError for AppError {
             Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Hex(_) => StatusCode::BAD_REQUEST,
             Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
-            Self::MoonlightHost(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::MoonlightApi(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -92,9 +105,9 @@ impl AppRef {
 struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
-    // TODO: is there something like an RwHashMap as this can block very long because of pairing, or replace ReqwestMoonlightHost with custom impl for requests?
-    loaded_hosts: RwLock<HashMap<(UserId, HostId), ReqwestMoonlightHost>>,
 }
+
+pub type MoonlightClient = ReqwestClient;
 
 pub struct App {
     inner: Arc<AppInner>,
@@ -105,7 +118,6 @@ impl App {
         let app = AppInner {
             storage: create_storage(config.data_storage.clone()).await?,
             config,
-            loaded_hosts: Default::default(),
         };
 
         Ok(Self {

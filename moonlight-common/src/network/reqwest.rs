@@ -11,6 +11,7 @@ use crate::network::{
     request_client::{QueryParamsRef, RequestClient},
 };
 
+pub type ReqwestClient = reqwest::Client;
 #[cfg(feature = "high")]
 pub type ReqwestMoonlightHost = crate::high::MoonlightHost<reqwest::Client>;
 

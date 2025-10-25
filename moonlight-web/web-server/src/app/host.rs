@@ -1,17 +1,25 @@
-use std::fmt::{Debug, Formatter};
+use std::{
+    fmt::{Debug, Formatter},
+    str::FromStr,
+};
 
 use common::api_bindings::{DetailedHost, HostState, PairStatus, UndetailedHost};
 use log::{error, warn};
 use moonlight_common::{
-    PairPin, ServerVersion,
-    high::{HostError, MoonlightHost, PairInfo},
-    network::reqwest::{ReqwestError, ReqwestMoonlightHost},
-    pair::{PairError, generate_new_client},
+    PairPin, ServerState, ServerVersion,
+    high::{HostError, MoonlightHost, PairInfo, broadcast_magic_packet},
+    network::{
+        ApiError, ClientInfo, HostInfo, host_info,
+        request_client::RequestClient,
+        reqwest::{ReqwestApiError, ReqwestError, ReqwestMoonlightHost},
+    },
+    pair::{PairError, PairSuccess, generate_new_client, host_pair},
 };
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::app::{
-    AppError, AppInner, AppRef,
+    AppError, AppInner, AppRef, MoonlightClient,
     storage::{StorageHost, StorageHostModify, StorageHostPairInfo},
     user::{Admin, Role, User, UserId},
 };
@@ -52,211 +60,311 @@ impl Host {
         Ok(host.owner)
     }
 
-    async fn use_host_no_auth<R>(
+    async fn use_client<R>(
         &self,
+        app: &AppInner,
         user: &mut User,
-        f: impl AsyncFnOnce(&AppInner, &ReqwestMoonlightHost) -> R,
+        pairing: bool,
+        // app, https_capable, client, host, port, client_info
+        f: impl AsyncFnOnce(&AppInner, bool, &mut MoonlightClient, &str, u16, ClientInfo) -> R,
     ) -> Result<R, AppError> {
-        let app = self.app.access()?;
-        let key = (user.id(), self.id);
+        // TODO: make this mut and store client as cache
 
-        loop {
-            // Try to get host if already loaded
-            let hosts = app.loaded_hosts.read().await;
-            if let Some(host) = hosts.get(&key) {
-                return Ok(f(&app, host).await);
-            }
-            drop(hosts);
+        let user_unique_id = user.host_unique_id().await?;
+        let host_data = self.storage_host(app).await?;
 
-            // Insert as a new host
-            let mut hosts = app.loaded_hosts.write().await;
+        let (mut client, https_capable) = if pairing {
+            (
+                MoonlightClient::with_defaults_long_timeout().map_err(ApiError::RequestClient)?,
+                false,
+            )
+        } else if let Some(pair_info) = host_data.pair_info {
+            (
+                MoonlightClient::with_certificates(
+                    &pair_info.client_private_key,
+                    &pair_info.client_certificate,
+                    &pair_info.server_certificate,
+                )
+                .map_err(ApiError::RequestClient)?,
+                true,
+            )
+        } else {
+            (
+                MoonlightClient::with_defaults().map_err(ApiError::RequestClient)?,
+                false,
+            )
+        };
 
-            let user_unique_id = user.host_unique_id().await?;
-            let host_data = self.storage_host(&app).await?;
+        let info = ClientInfo {
+            unique_id: &user_unique_id,
+            uuid: Uuid::new_v4(),
+        };
 
-            let new_host =
-                MoonlightHost::new(host_data.address, host_data.http_port, Some(user_unique_id))?;
-            if let Some(pair_info) = host_data.pair_info {
-                new_host
-                    .set_pair_info(PairInfo {
-                        client_certificate: pair_info.client_certificate,
-                        client_private_key: pair_info.client_private_key,
-                        server_certificate: pair_info.server_certificate,
-                    })
-                    .await?;
-            }
-
-            hosts.entry(key).or_insert(new_host);
-            drop(hosts);
-        }
+        Ok(f(
+            app,
+            https_capable,
+            &mut client,
+            &host_data.address,
+            host_data.http_port,
+            info,
+        )
+        .await)
+    }
+    fn build_hostport(host: &str, port: u16) -> String {
+        format!("{host}:{port}")
     }
 
     async fn storage_host(&self, app: &AppInner) -> Result<StorageHost, AppError> {
         app.storage.get_host(self.id).await
     }
 
-    async fn internal_undetailed_host(
+    fn is_offline<T>(
+        &self,
+        result: Result<T, ApiError<ReqwestError>>,
+    ) -> Result<Option<T>, AppError> {
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(ApiError::RequestClient(ReqwestError::Reqwest(err)))
+                if err.is_timeout() || err.is_connect() =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(AppError::MoonlightApi(err)),
+        }
+    }
+    // None = Offline
+    async fn host_info(
         &self,
         app: &AppInner,
-        host: &ReqwestMoonlightHost,
-    ) -> Result<UndetailedHost, AppError> {
-        // TODO: maybe use the or_if_likely_offline from the detailed_host?
-        let name = match host.host_name().await {
-            Ok(value) => value,
-            Err(HostError::LikelyOffline) => {
-                let storage_host = self.storage_host(app).await?;
-                storage_host.cache.name.clone()
-            }
-            Err(err) => {
-                warn!("Failed to query host info for host {self:?}: {err:?}");
+        user: &mut User,
+    ) -> Result<Option<HostInfo>, AppError> {
+        // TODO: make this mut and store results as cache
 
-                let storage_host = self.storage_host(app).await?;
-                storage_host.cache.name.clone()
-            }
-        };
-        let paired = match host.verify_paired().await {
-            Ok(value) => PairStatus::from(value),
-            Err(HostError::LikelyOffline) => {
-                if host.pair_info().await.is_some() {
-                    PairStatus::Paired
-                } else {
-                    PairStatus::NotPaired
-                }
-            }
-            Err(err) => {
-                warn!("Failed to query if host is paired for host {self:?}: {err:?}");
-                if host.pair_info().await.is_some() {
-                    PairStatus::Paired
-                } else {
-                    PairStatus::NotPaired
-                }
-            }
-        };
-        let server_state = match host.state().await {
-            Ok((_, state)) => Some(HostState::from(state)),
-            Err(HostError::LikelyOffline) => None,
-            Err(err) => {
-                warn!("Failed to query server state for host {self:?}: {err:?}");
-                None
-            }
-        };
+        self.use_client(
+            app,
+            user,
+            false,
+            async |_app, https_capable, client, host, port, client_info| {
+                let mut info = match self.is_offline(
+                    host_info(
+                        client,
+                        false,
+                        &Self::build_hostport(host, port),
+                        Some(client_info),
+                    )
+                    .await,
+                ) {
+                    Ok(Some(value)) => value,
+                    err => return err,
+                };
 
-        Ok(UndetailedHost {
-            host_id: self.id.0,
-            name,
-            paired,
-            server_state,
-        })
-    }
-    pub async fn undetailed_host(&self, user: &mut User) -> Result<UndetailedHost, AppError> {
-        self.use_host_no_auth(user, async |app, host| {
-            self.internal_undetailed_host(app, host).await
-        })
+                if https_capable {
+                    info = host_info(
+                        client,
+                        true,
+                        &Self::build_hostport(host, info.https_port),
+                        Some(client_info),
+                    )
+                    .await?;
+                }
+
+                Ok(Some(info))
+            },
+        )
         .await?
+    }
+
+    pub async fn undetailed_host(&self, user: &mut User) -> Result<UndetailedHost, AppError> {
+        let app = self.app.access()?;
+
+        match self.host_info(&app, user).await {
+            Ok(Some(info)) => {
+                let server_state = match ServerState::from_str(&info.state_string) {
+                    Ok(state) => Some(state),
+                    Err(err) => {
+                        warn!(
+                            "failed to parse server state of host {self:?}: {:?}, {}",
+                            err, info.state_string
+                        );
+
+                        None
+                    }
+                };
+
+                Ok(UndetailedHost {
+                    host_id: self.id.0,
+                    name: info.host_name,
+                    paired: info.pair_status.into(),
+                    server_state: server_state.map(HostState::from),
+                })
+            }
+            Ok(None) => {
+                let host = self.storage_host(&app).await?;
+
+                let paired = if host.pair_info.is_some() {
+                    PairStatus::Paired
+                } else {
+                    PairStatus::NotPaired
+                };
+
+                Ok(UndetailedHost {
+                    host_id: self.id.0,
+                    name: host.cache.name,
+                    paired,
+                    server_state: None,
+                })
+            }
+            Err(err) => Err(err),
+        }
     }
     pub async fn detailed_host(&self, user: &mut User) -> Result<DetailedHost, AppError> {
-        fn or_if_likely_offline<T>(
-            result: Result<T, HostError<ReqwestError>>,
-            f: impl FnOnce() -> T,
-        ) -> Result<T, HostError<ReqwestError>> {
-            match result {
-                Ok(value) => Ok(value),
-                Err(HostError::LikelyOffline) => Ok(f()),
-                _ => result,
-            }
-        }
+        let app = self.app.access()?;
+        let host = self.storage_host(&app).await?;
 
-        self.use_host_no_auth(user, async |app, host| {
-            let UndetailedHost {
-                host_id,
-                name,
-                paired,
-                server_state,
-            } = self.internal_undetailed_host(app, host).await?;
+        match self.host_info(&app, user).await {
+            Ok(Some(info)) => {
+                let server_state = match ServerState::from_str(&info.state_string) {
+                    Ok(state) => Some(state),
+                    Err(err) => {
+                        warn!(
+                            "failed to parse server state of host {self:?}: {:?}, {}",
+                            err, info.state_string
+                        );
 
-            Ok(DetailedHost {
-                host_id,
-                name,
-                paired,
-                server_state,
-                http_port: host.http_port(),
-                address: host.address().to_string(),
-                https_port: or_if_likely_offline(host.https_port().await, || 0)?,
-                external_port: or_if_likely_offline(host.external_port().await, || 0)?,
-                current_game: or_if_likely_offline(host.current_game().await, || 0)?,
-                gfe_version: or_if_likely_offline(host.gfe_version().await, || {
-                    "OFFLINE".to_string()
-                })?,
-                local_ip: or_if_likely_offline(host.local_ip().await, || "OFFLINE".to_string())?,
-                mac: or_if_likely_offline(host.mac().await, || None)
-                    .map(|mac| mac.map(|mac| mac.to_string()))?,
-                max_luma_pixels_hevc: or_if_likely_offline(
-                    host.max_luma_pixels_hevc().await,
-                    || 0,
-                )?,
-                server_codec_mode_support: or_if_likely_offline(
-                    host.server_codec_mode_support_raw().await,
-                    || 0,
-                )?,
-                unique_id: or_if_likely_offline(host.unique_id().await, Uuid::nil)
-                    .map(|uuid| uuid.to_string())?,
-                version: or_if_likely_offline(host.version().await, || {
-                    ServerVersion::new(0, 0, 0, 0)
+                        None
+                    }
+                };
+
+                Ok(DetailedHost {
+                    host_id: self.id.0,
+                    name: info.host_name,
+                    paired: info.pair_status.into(),
+                    server_state: server_state.map(HostState::from),
+                    address: host.address,
+                    http_port: host.http_port,
+                    https_port: info.https_port,
+                    external_port: info.external_port,
+                    version: info.app_version.to_string(),
+                    gfe_version: info.gfe_version,
+                    unique_id: info.unique_id.to_string(),
+                    mac: info.mac.map(|mac| mac.to_string()),
+                    local_ip: info.local_ip,
+                    current_game: info.current_game,
+                    max_luma_pixels_hevc: info.max_luma_pixels_hevc,
+                    server_codec_mode_support: info.server_codec_mode_support,
                 })
-                .map(|version| version.to_string())?,
-            })
-        })
-        .await?
+            }
+            Ok(None) => {
+                let paired = if host.pair_info.is_some() {
+                    PairStatus::Paired
+                } else {
+                    PairStatus::NotPaired
+                };
+
+                Ok(DetailedHost {
+                    host_id: self.id.0,
+                    name: host.cache.name,
+                    paired,
+                    server_state: None,
+                    address: host.address,
+                    http_port: host.http_port,
+                    https_port: 0,
+                    external_port: 0,
+                    version: "Offline".to_string(),
+                    gfe_version: "Offline".to_string(),
+                    unique_id: "Offline".to_string(),
+                    mac: host.cache.mac.map(|mac| mac.to_string()),
+                    local_ip: "Offline".to_string(),
+                    current_game: 0,
+                    max_luma_pixels_hevc: 0,
+                    server_codec_mode_support: 0,
+                })
+            }
+            Err(err) => Err(err),
+        }
     }
 
     pub async fn is_paired(&self, user: &mut User) -> Result<PairStatus, AppError> {
-        // TODO: should we use is_paired or verify_paired?
-        self.use_host_no_auth(user, async |_app, host| host.is_paired().await)
-            .await
-            .map(PairStatus::from)
+        let app = self.app.access()?;
+
+        match self.host_info(&app, user).await? {
+            Some(info) => Ok(info.pair_status.into()),
+            None => Ok(PairStatus::NotPaired),
+        }
     }
 
     pub async fn pair(&self, user: &mut User, pin: PairPin) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
         // TODO: maybe generalize this in some private func?
         if self.owner().await? != Some(user.id()) && !matches!(user.role().await?, Role::Admin) {
             return Err(AppError::Forbidden);
         }
 
+        let info = self
+            .host_info(&app, user)
+            .await?
+            .ok_or(AppError::HostNotFound)?;
+
+        if matches!(info.pair_status.into(), PairStatus::Paired) {
+            // TODO: return not modified
+            todo!();
+        }
+
         let modify = self
-            .use_host_no_auth(user, async |_app, host| {
-                if matches!(
-                    PairStatus::from(host.verify_paired().await?),
-                    PairStatus::Paired
-                ) {
-                    // TODO
-                    todo!();
-                }
+            .use_client(
+                &app,
+                user,
+                true,
+                async |app, _https_capable, client, host, port, client_info| {
+                    let auth = generate_new_client()?;
 
-                let auth = generate_new_client()?;
+                    // TODO: device name
+                    let PairSuccess { server_certificate } = host_pair(
+                        client,
+                        &Self::build_hostport(host, port),
+                        client_info,
+                        &auth.private_key,
+                        &auth.certificate,
+                        "roth",
+                        info.app_version,
+                        pin,
+                    )
+                    .await
+                    // TODO: handle pair error correctly!
+                    .unwrap();
 
-                // TODO: device name
-                host.pair(&auth, "roth".to_string(), pin).await?;
+                    // Store pair info
 
-                // Store pair info
-                let Some(pair_info) = host.pair_info().await else {
-                    error!("Failed to store pair info back into storage.");
-                    return Err(AppError::MoonlightHost(HostError::Pair(PairError::Failed)));
-                };
+                    // TODO: we'll have to create a new client with certificates and store that in cache and use it here
+                    let mut client = MoonlightClient::with_certificates(&auth.private_key,&auth.certificate, &server_certificate).map_err(ApiError::RequestClient)?;
 
-                let name = host.host_name().await?;
-                let mac = host.mac().await?;
+                    let (name, mac) = match host_info(
+                        &mut client,
+                        true,
+                        &Self::build_hostport(host, info.https_port),
+                        Some(client_info),
+                    )
+                    .await
+                    {
+                        Ok(info) => (Some(info.host_name), Some(info.mac)),
+                        Err(err) => {
+                            error!("Failed to make https request to host {self:?} after pairing completed: {err}");
+                            (None, None)},
+                    };
 
-                Ok(StorageHostModify {
-                    pair_info: Some(Some(StorageHostPairInfo {
-                        client_private_key: pair_info.client_private_key,
-                        client_certificate: pair_info.client_certificate,
-                        server_certificate: pair_info.server_certificate,
-                    })),
-                    cache_name: Some(name),
-                    cache_mac: Some(mac),
-                    ..Default::default()
-                })
-            })
+                    Ok::<_, AppError>(StorageHostModify {
+                        pair_info: Some(Some(StorageHostPairInfo {
+                            client_private_key: auth.private_key,
+                            client_certificate: auth.certificate,
+                            server_certificate,
+                        })),
+                        cache_name: name,
+                        cache_mac: mac,
+                        ..Default::default()
+                    })
+                },
+            )
             .await??;
 
         self.modify(modify).await
@@ -267,7 +375,17 @@ impl Host {
     }
 
     pub async fn wake(&self) -> Result<(), AppError> {
-        todo!()
+        let app = self.app.access()?;
+
+        let storage = self.storage_host(&app).await?;
+
+        if let Some(mac) = storage.cache.mac {
+            // TODO: error
+            broadcast_magic_packet(mac).await.unwrap();
+            Ok(())
+        } else {
+            Err(AppError::HostNotFound)
+        }
     }
 
     pub async fn delete(self, user: &mut User) -> Result<(), AppError> {
@@ -284,9 +402,6 @@ impl Host {
     }
     pub async fn delete_no_auth(self) -> Result<(), AppError> {
         let app = self.app.access()?;
-
-        let mut hosts = app.loaded_hosts.write().await;
-        hosts.retain(|(_, host_id), _| *host_id != self.id);
 
         app.storage.remove_host(self.id).await?;
 
