@@ -3,13 +3,15 @@ use std::{
     str::FromStr,
 };
 
+use actix_web::web::Bytes;
 use common::api_bindings::{DetailedHost, HostState, PairStatus, UndetailedHost};
 use log::{error, warn};
 use moonlight_common::{
     PairPin, ServerState, ServerVersion,
     high::{HostError, MoonlightHost, PairInfo, broadcast_magic_packet},
     network::{
-        ApiError, ClientInfo, HostInfo, host_info,
+        ApiError, ClientAppBoxArtRequest, ClientInfo, HostInfo, host_app_box_art, host_app_list,
+        host_info,
         request_client::RequestClient,
         reqwest::{ReqwestApiError, ReqwestError, ReqwestMoonlightHost},
     },
@@ -36,6 +38,15 @@ impl Debug for Host {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.id)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AppId(pub u32);
+
+pub struct App {
+    pub id: AppId,
+    pub title: String,
+    pub is_hdr_supported: bool,
 }
 
 impl Host {
@@ -66,7 +77,7 @@ impl Host {
         user: &mut User,
         pairing: bool,
         // app, https_capable, client, host, port, client_info
-        f: impl AsyncFnOnce(&AppInner, bool, &mut MoonlightClient, &str, u16, ClientInfo) -> R,
+        f: impl AsyncFnOnce(bool, &mut MoonlightClient, &str, u16, ClientInfo) -> R,
     ) -> Result<R, AppError> {
         // TODO: make this mut and store client as cache
 
@@ -101,7 +112,6 @@ impl Host {
         };
 
         Ok(f(
-            app,
             https_capable,
             &mut client,
             &host_data.address,
@@ -144,7 +154,7 @@ impl Host {
             app,
             user,
             false,
-            async |_app, https_capable, client, host, port, client_info| {
+            async |https_capable, client, host, port, client_info| {
                 let mut info = match self.is_offline(
                     host_info(
                         client,
@@ -316,7 +326,7 @@ impl Host {
                 &app,
                 user,
                 true,
-                async |app, _https_capable, client, host, port, client_info| {
+                async |_https_capable, client, host, port, client_info| {
                     let auth = generate_new_client()?;
 
                     // TODO: device name
@@ -386,6 +396,76 @@ impl Host {
         } else {
             Err(AppError::HostNotFound)
         }
+    }
+
+    pub async fn list_apps(&self, user: &mut User) -> Result<Vec<App>, AppError> {
+        let app = self.app.access()?;
+
+        let info = self
+            .host_info(&app, user)
+            .await?
+            .ok_or(AppError::HostOffline)?;
+
+        self.use_client(
+            &app,
+            user,
+            false,
+            async |https_capable, client, host, _port, client_info| {
+                if !https_capable {
+                    return Err(AppError::HostNotPaired);
+                }
+
+                let apps = host_app_list(
+                    client,
+                    &Self::build_hostport(host, info.https_port),
+                    client_info,
+                )
+                .await?;
+
+                let apps = apps
+                    .apps
+                    .into_iter()
+                    .map(|app| App {
+                        id: AppId(app.id),
+                        title: app.title,
+                        is_hdr_supported: app.is_hdr_supported,
+                    })
+                    .collect::<Vec<_>>();
+
+                Ok(apps)
+            },
+        )
+        .await?
+    }
+    pub async fn app_image(&self, user: &mut User, app_id: AppId) -> Result<Bytes, AppError> {
+        let app = self.app.access()?;
+
+        let info = self
+            .host_info(&app, user)
+            .await?
+            .ok_or(AppError::HostOffline)?;
+
+        self.use_client(
+            &app,
+            user,
+            false,
+            async |https_capable, client, host, _port, client_info| {
+                if !https_capable {
+                    return Err(AppError::HostNotPaired);
+                }
+
+                let image = host_app_box_art(
+                    client,
+                    &Self::build_hostport(host, info.https_port),
+                    client_info,
+                    ClientAppBoxArtRequest { app_id: app_id.0 },
+                )
+                .await?;
+
+                Ok(image)
+            },
+        )
+        .await?
     }
 
     pub async fn delete(self, user: &mut User) -> Result<(), AppError> {

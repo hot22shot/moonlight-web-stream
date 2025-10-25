@@ -33,6 +33,7 @@ impl From<common::api_bindings::UserRole> for Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(pub u32);
 
+// TODO: make this an authenticated user and also have a unauthenticated user for everyone who shouldn't have access to that user
 // TODO: maybe cache?
 pub struct User {
     pub(super) app: AppRef,

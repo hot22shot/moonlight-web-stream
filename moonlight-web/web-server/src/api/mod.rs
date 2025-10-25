@@ -26,13 +26,13 @@ use crate::{
     app::{
         App, AppError,
         auth::UserAuth,
-        host::{Host, HostId},
+        host::{AppId, Host, HostId},
         user::User,
     },
 };
 use common::api_bindings::{
-    DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
-    GetHostResponse, GetHostsResponse, PairStatus, PostLoginRequest, PostPairRequest,
+    self, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
+    GetHostQuery, GetHostResponse, GetHostsResponse, PairStatus, PostLoginRequest, PostPairRequest,
     PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse,
     UndetailedHost,
 };
@@ -207,74 +207,43 @@ async fn wake_host(
     Ok(HttpResponse::Ok().finish())
 }
 
-// #[get("/apps")]
-// async fn get_apps(
-//     data: Data<RuntimeApiData>,
-//     Query(query): Query<GetAppsQuery>,
-// ) -> Either<Json<GetAppsResponse>, HttpResponse> {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = query.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return Either::Right(HttpResponse::NotFound().finish());
-//     };
-//     let mut host = host.lock().await;
-//
-//     if query.force_refresh {
-//         host.moonlight.clear_cache();
-//     }
-//
-//     let app_list = match host.moonlight.app_list().await {
-//         Err(err) => {
-//             warn!("[Api]: failed to get app list for host {host_id}: {err:?}");
-//
-//             return Either::Right(HttpResponse::InternalServerError().finish());
-//         }
-//         Ok(value) => value,
-//     };
-//
-//     Either::Left(Json(GetAppsResponse {
-//         apps: app_list.iter().map(|x| x.to_owned().into()).collect(),
-//     }))
-// }
-//
-// #[get("/app/image")]
-// async fn get_app_image(
-//     data: Data<RuntimeApiData>,
-//     Query(query): Query<GetAppImageQuery>,
-// ) -> Either<Bytes, HttpResponse> {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = query.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return Either::Right(HttpResponse::NotFound().finish());
-//     };
-//     let mut host = host.lock().await;
-//
-//     if query.force_refresh {
-//         host.app_images_cache.clear();
-//         host.moonlight.clear_cache();
-//     }
-//
-//     let app_id = query.app_id;
-//     if let Some(cache) = host.app_images_cache.get(&app_id) {
-//         return Either::Left(cache.clone());
-//     }
-//
-//     let image = host.moonlight.request_app_image(app_id).await;
-//     match image {
-//         Err(err) => {
-//             warn!("[Api]: failed to get host {host_id} app image {app_id}: {err:?}");
-//
-//             Either::Right(HttpResponse::InternalServerError().finish())
-//         }
-//         Ok(image) => {
-//             host.app_images_cache.insert(app_id, image.clone());
-//
-//             Either::Left(image)
-//         }
-//     }
-// }
+#[get("/apps")]
+async fn get_apps(
+    mut user: User,
+    Query(query): Query<GetAppsQuery>,
+) -> Result<Json<GetAppsResponse>, AppError> {
+    let host_id = HostId(query.host_id);
+
+    let host = user.host(host_id).await?;
+
+    let apps = host.list_apps(&mut user).await?;
+
+    Ok(Json(GetAppsResponse {
+        apps: apps
+            .into_iter()
+            .map(|app| api_bindings::App {
+                app_id: app.id.0,
+                title: app.title,
+                is_hdr_supported: app.is_hdr_supported,
+            })
+            .collect(),
+    }))
+}
+
+#[get("/app/image")]
+async fn get_app_image(
+    mut user: User,
+    Query(query): Query<GetAppImageQuery>,
+) -> Result<Bytes, AppError> {
+    let host_id = HostId(query.host_id);
+    let app_id = AppId(query.host_id);
+
+    let host = user.host(host_id).await?;
+
+    let image = host.app_image(&mut user, app_id).await?;
+
+    Ok(image)
+}
 
 pub fn api_service() -> impl HttpServiceFactory {
     web::scope("/api")
@@ -289,8 +258,8 @@ pub fn api_service() -> impl HttpServiceFactory {
             wake_host,
             delete_host,
             pair_host,
-            // get_apps,
-            // get_app_image,
+            get_apps,
+            get_app_image,
             // -- Stream
             // stream::start_host,
             // stream::cancel_host,
