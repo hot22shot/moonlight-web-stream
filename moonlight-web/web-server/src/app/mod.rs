@@ -141,13 +141,13 @@ impl App {
         &self,
         user: StorageUserAdd,
     ) -> Result<AuthenticatedUser, AppError> {
-        // TODO: use storage user
         let user = self.inner.storage.add_user(user).await?;
 
         Ok(AuthenticatedUser {
             inner: User {
                 app: self.new_ref(),
                 id: user.id,
+                cache_storage: Some(user),
             },
         })
     }
@@ -158,8 +158,10 @@ impl App {
                 // TODO: allow a default user to exist
                 Err(AppError::Unauthorized)
             }
-            UserAuth::UserPassword { username, password } => {
-                self.user_by_name_password(&username, &password).await
+            UserAuth::UserPassword { ref username, .. } => {
+                let mut user = self.user_by_name(&username).await?;
+
+                user.authenticate(&auth).await
             }
             UserAuth::Session(session) => {
                 let user = self.user_by_session(session).await?;
@@ -172,33 +174,19 @@ impl App {
             }
         }
     }
-    pub async fn user_by_name_password(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<AuthenticatedUser, AppError> {
-        let user = self.user_by_name_no_auth(username).await?;
-
-        if !user.verify_password(password).await? {
-            return Err(AppError::CredentialsWrong);
-        }
-
-        Ok(user)
-    }
 
     pub async fn user_no_auth(&self, user: User) -> Result<AuthenticatedUser, AppError> {
         Ok(AuthenticatedUser { inner: user })
     }
-    pub async fn user_by_name_no_auth(&self, name: &str) -> Result<AuthenticatedUser, AppError> {
+    pub async fn user_by_name(&self, name: &str) -> Result<User, AppError> {
         let (user_id, user) = self.inner.storage.get_user_by_name(name).await?;
 
         // TODO: use optional user field
 
-        Ok(AuthenticatedUser {
-            inner: User {
-                app: self.new_ref(),
-                id: user_id,
-            },
+        Ok(User {
+            app: self.new_ref(),
+            id: user_id,
+            cache_storage: user,
         })
     }
     pub async fn user_by_session(
@@ -217,6 +205,7 @@ impl App {
             inner: User {
                 app: self.new_ref(),
                 id: user_id,
+                cache_storage: user,
             },
         })
     }

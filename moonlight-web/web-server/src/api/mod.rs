@@ -181,7 +181,7 @@ async fn pair_host(
 
 #[post("/host/wake")]
 async fn wake_host(
-    user: AuthenticatedUser,
+    mut user: AuthenticatedUser,
     Json(request): Json<PostWakeUpRequest>,
 ) -> Result<HttpResponse, AppError> {
     let host_id = HostId(request.host_id);

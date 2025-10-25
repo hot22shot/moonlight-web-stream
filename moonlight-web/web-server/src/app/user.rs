@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use moonlight_common::network::{ApiError, ClientInfo, host_info, request_client::RequestClient};
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::app::{
     AppError, AppRef, MoonlightClient,
-    auth::SessionToken,
+    auth::{SessionToken, UserAuth},
     host::{Host, HostId},
     storage::{
         StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
@@ -36,15 +36,62 @@ pub struct UserId(pub u32);
 pub struct User {
     pub(super) app: AppRef,
     pub(super) id: UserId,
+    pub(super) cache_storage: Option<StorageUser>,
 }
 
 impl User {
     pub fn id(&self) -> UserId {
         self.id
     }
+
+    async fn storage_user(&mut self) -> Result<StorageUser, AppError> {
+        if let Some(storage) = self.cache_storage.as_ref() {
+            return Ok(storage.clone());
+        }
+
+        let app = self.app.access()?;
+
+        let user = app.storage.get_user(self.id).await?;
+
+        self.cache_storage = Some(user.clone());
+
+        Ok(user)
+    }
+
+    pub async fn authenticate(mut self, auth: &UserAuth) -> Result<AuthenticatedUser, AppError> {
+        match auth {
+            UserAuth::UserPassword { username, password } => {
+                let storage = self.storage_user().await?;
+
+                if username.as_str() != storage.name.as_str() {
+                    // TODO: maybe another error?
+                    return Err(AppError::Unauthorized);
+                }
+
+                if storage.password.verify(password)? {
+                    Ok(AuthenticatedUser { inner: self })
+                } else {
+                    Err(AppError::Unauthorized)
+                }
+            }
+            UserAuth::Session(session) => {
+                let app = self.app.access()?;
+
+                let (id, user) = app.storage.get_user_by_session_token(*session).await?;
+
+                if self.id != id {
+                    return Err(AppError::Unauthorized);
+                }
+
+                self.cache_storage = self.cache_storage.or(user);
+
+                Ok(AuthenticatedUser { inner: self })
+            }
+            _ => Err(AppError::Unauthorized),
+        }
+    }
 }
 
-// TODO: maybe cache?
 pub struct AuthenticatedUser {
     pub(super) inner: User,
 }
@@ -56,16 +103,13 @@ impl Deref for AuthenticatedUser {
         &self.inner
     }
 }
+impl DerefMut for AuthenticatedUser {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
 
 impl AuthenticatedUser {
-    pub async fn verify_password(&self, password: &str) -> Result<bool, AppError> {
-        let app = self.app.access()?;
-
-        let user = app.storage.get_user(self.id).await?;
-
-        user.password.verify(password)
-    }
-
     pub async fn new_session(&self) -> Result<SessionToken, AppError> {
         let app = self.app.access()?;
 
@@ -75,37 +119,30 @@ impl AuthenticatedUser {
     }
 
     // TODO: how to authenticate this?
-    pub async fn modify(&self, _: Admin, modify: StorageUserModify) -> Result<(), AppError> {
+    pub async fn modify(&mut self, _: Admin, modify: StorageUserModify) -> Result<(), AppError> {
         let app = self.app.access()?;
 
-        // TODO: clear all hosts from the loaded hosts if unique id changed
+        self.cache_storage = None;
 
         app.storage.modify_user(self.id, modify).await?;
 
         Ok(())
     }
 
-    async fn storage_user(&self) -> Result<StorageUser, AppError> {
-        let app = self.app.access()?;
-
-        let user = app.storage.get_user(self.id).await?;
-
-        Ok(user)
-    }
-    pub async fn role(&self) -> Result<Role, AppError> {
+    pub async fn role(&mut self) -> Result<Role, AppError> {
         let user = self.storage_user().await?;
 
         Ok(user.role)
     }
 
-    pub async fn host_unique_id(&self) -> Result<String, AppError> {
+    pub async fn host_unique_id(&mut self) -> Result<String, AppError> {
         let user = self.storage_user().await?;
 
         // TODO: have an override for user
         Ok(user.name)
     }
 
-    pub async fn hosts(&self) -> Result<Vec<Host>, AppError> {
+    pub async fn hosts(&mut self) -> Result<Vec<Host>, AppError> {
         let app = self.app.access()?;
 
         let hosts = app
@@ -124,7 +161,7 @@ impl AuthenticatedUser {
         Ok(hosts)
     }
 
-    pub async fn host(&self, host_id: HostId) -> Result<Host, AppError> {
+    pub async fn host(&mut self, host_id: HostId) -> Result<Host, AppError> {
         let app = self.app.access()?;
 
         let host = app.storage.get_host(host_id).await?;
@@ -141,7 +178,7 @@ impl AuthenticatedUser {
         }
     }
 
-    pub async fn host_add(&self, address: String, http_port: u16) -> Result<Host, AppError> {
+    pub async fn host_add(&mut self, address: String, http_port: u16) -> Result<Host, AppError> {
         let app = self.app.access()?;
 
         let unique_id = self.host_unique_id().await?;
@@ -197,7 +234,7 @@ impl AuthenticatedUser {
 pub struct Admin(AuthenticatedUser);
 
 impl Admin {
-    pub async fn try_from(user: AuthenticatedUser) -> Result<Self, AppError> {
+    pub async fn try_from(mut user: AuthenticatedUser) -> Result<Self, AppError> {
         match user.role().await? {
             Role::Admin => Ok(Self(user)),
             _ => Err(AppError::Forbidden),

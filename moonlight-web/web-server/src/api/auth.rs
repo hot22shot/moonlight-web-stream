@@ -100,7 +100,10 @@ async fn login(
     Json(request): Json<PostLoginRequest>,
 ) -> Result<HttpResponse, Error> {
     let user = app
-        .user_by_name_password(&request.name, &request.password)
+        .user_by_auth(UserAuth::UserPassword {
+            username: request.name,
+            password: request.password,
+        })
         .await?;
 
     let session = user.new_session().await?;
