@@ -19,9 +19,12 @@ use crate::app::{
     host::HostId,
     password::StoragePassword,
     storage::{
-        Storage, StorageHost, StorageHostAdd, StorageHostModify, StorageHostPairInfo,
-        StorageQueryHosts, StorageUser, StorageUserAdd, StorageUserModify,
-        json::versions::{Json, V2, V2Host, V2User, V2UserPassword, migrate_to_latest},
+        Storage, StorageHost, StorageHostAdd, StorageHostCache, StorageHostModify,
+        StorageHostPairInfo, StorageQueryHosts, StorageUser, StorageUserAdd, StorageUserModify,
+        json::versions::{
+            Json, V1HostPairInfo, V2, V2Host, V2HostCache, V2User, V2UserPassword,
+            migrate_to_latest,
+        },
     },
     user::UserId,
 };
@@ -188,8 +191,10 @@ fn host_from_json(host_id: HostId, host: &V2Host) -> StorageHost {
             client_private_key: pem::parse(pair_info.client_private_key).unwrap(),
             server_certificate: pem::parse(pair_info.server_certificate).unwrap(),
         }),
-        cache_name: host.cache.name.clone(),
-        cache_mac: host.cache.mac,
+        cache: StorageHostCache {
+            name: host.cache.name.clone(),
+            mac: host.cache.mac,
+        },
     }
 }
 
@@ -319,12 +324,83 @@ impl Storage for JsonStorage {
     }
 
     async fn add_host(&self, host: StorageHostAdd) -> Result<StorageHost, AppError> {
+        let host = V2Host {
+            owner: host.owner.map(|user_id| user_id.0),
+            address: host.address,
+            http_port: host.http_port,
+            pair_info: None,
+            cache: V2HostCache {
+                name: host.cache.name,
+                mac: host.cache.mac,
+            },
+        };
+
+        let mut hosts = self.hosts.write().await;
+
+        let mut id;
+        loop {
+            let mut id_bytes = [0u8; 4];
+            rand_bytes(&mut id_bytes)?;
+            id = u32::from_be_bytes(id_bytes);
+
+            if !hosts.contains_key(&id) {
+                break;
+            }
+        }
+        hosts.insert(id, RwLock::new(host.clone()));
+
         self.force_write();
-        todo!()
+
+        Ok(StorageHost {
+            id: HostId(id),
+            owner: host.owner.map(UserId),
+            address: host.address,
+            http_port: host.http_port,
+            pair_info: host.pair_info.map(|pair_info| StorageHostPairInfo {
+                // TODO: don't unwrap
+                client_private_key: pem::parse(pair_info.client_private_key).unwrap(),
+                client_certificate: pem::parse(pair_info.client_certificate).unwrap(),
+                server_certificate: pem::parse(pair_info.server_certificate).unwrap(),
+            }),
+            cache: StorageHostCache {
+                name: host.cache.name,
+                mac: host.cache.mac,
+            },
+        })
     }
-    async fn modify_host(&self, host_id: HostId, host: StorageHostModify) -> Result<(), AppError> {
+    async fn modify_host(
+        &self,
+        host_id: HostId,
+        modify: StorageHostModify,
+    ) -> Result<(), AppError> {
+        let hosts = self.hosts.read().await;
+
+        let host = hosts.get(&host_id.0).ok_or(AppError::HostNotFound)?;
+        let mut host = host.write().await;
+
+        if let Some(new_owner) = modify.owner {
+            host.owner = new_owner.map(|user_id| user_id.0);
+        }
+        if let Some(new_address) = modify.address {
+            host.address = new_address;
+        }
+        if let Some(new_http_port) = modify.http_port {
+            host.http_port = new_http_port;
+        }
+        if let Some(new_pair_info) = modify.pair_info {
+            host.pair_info = new_pair_info.map(|new_pair_info| V1HostPairInfo {
+                client_private_key: new_pair_info.client_private_key.to_string(),
+                client_certificate: new_pair_info.client_certificate.to_string(),
+                server_certificate: new_pair_info.server_certificate.to_string(),
+            });
+        }
+        if let Some(new_cache_name) = modify.cache_name {
+            host.cache.name = new_cache_name;
+        }
+
         self.force_write();
-        todo!()
+
+        Ok(())
     }
     async fn get_host(&self, host_id: HostId) -> Result<StorageHost, AppError> {
         let hosts = self.hosts.read().await;
@@ -335,8 +411,15 @@ impl Storage for JsonStorage {
         Ok(host_from_json(host_id, &host))
     }
     async fn remove_host(&self, host_id: HostId) -> Result<(), AppError> {
+        let mut hosts = self.hosts.write().await;
+
+        if hosts.remove(&host_id.0).is_none() {
+            return Err(AppError::HostNotFound);
+        }
+
         self.force_write();
-        todo!()
+
+        Ok(())
     }
 
     async fn list_user_hosts(

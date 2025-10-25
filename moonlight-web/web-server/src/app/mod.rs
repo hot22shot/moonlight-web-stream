@@ -92,6 +92,7 @@ impl AppRef {
 struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
+    // TODO: is there something like an RwHashMap as this can block very long because of pairing, or replace ReqwestMoonlightHost with custom impl for requests?
     loaded_hosts: RwLock<HashMap<(UserId, HostId), ReqwestMoonlightHost>>,
 }
 

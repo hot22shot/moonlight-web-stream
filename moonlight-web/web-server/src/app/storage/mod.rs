@@ -58,17 +58,18 @@ pub struct StorageHost {
     pub address: String,
     pub http_port: u16,
     pub pair_info: Option<StorageHostPairInfo>,
-    pub cache_name: String,
-    pub cache_mac: MacAddress,
+    pub cache: StorageHostCache,
 }
 pub struct StorageHostAdd {
-    pub owner: UserId,
-    pub hostport: String,
+    pub owner: Option<UserId>,
+    pub address: String,
+    pub http_port: u16,
     pub pair_info: Option<StorageHostPairInfo>,
+    pub cache: StorageHostCache,
 }
 pub struct StorageHostCache {
     pub name: String,
-    pub mac: MacAddress,
+    pub mac: Option<MacAddress>,
 }
 pub struct StorageHostPairInfo {
     pub client_private_key: Pem,
@@ -78,10 +79,11 @@ pub struct StorageHostPairInfo {
 #[derive(Default)]
 pub struct StorageHostModify {
     pub owner: Option<Option<UserId>>,
-    pub hostport: Option<String>,
+    pub address: Option<String>,
+    pub http_port: Option<u16>,
     pub pair_info: Option<Option<StorageHostPairInfo>>,
     pub cache_name: Option<String>,
-    pub cache_mac: Option<MacAddress>,
+    pub cache_mac: Option<Option<MacAddress>>,
 }
 
 pub struct StorageQueryHosts {

@@ -97,27 +97,19 @@ async fn put_host(
         host: host.detailed_host(&mut user).await?,
     }))
 }
-//
-// #[delete("/host")]
-// async fn delete_host(
-//     data: Data<RuntimeApiData>,
-//     Query(query): Query<DeleteHostQuery>,
-// ) -> HttpResponse {
-//     let mut hosts = data.hosts.write().await;
-//
-//     let host = hosts.try_remove(query.host_id as usize);
-//
-//     drop(hosts);
-//
-//     if host.is_none() {
-//         return HttpResponse::NotFound().finish();
-//     } else {
-//         let _ = data.file_writer.try_send(());
-//     }
-//
-//     HttpResponse::Ok().finish()
-// }
-//
+
+#[delete("/host")]
+async fn delete_host(
+    mut user: User,
+    Query(query): Query<DeleteHostQuery>,
+) -> Result<HttpResponse, AppError> {
+    let host_id = HostId(query.host_id);
+
+    user.host_delete(host_id).await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 #[post("/pair")]
 async fn pair_host(
     mut user: User,
@@ -199,34 +191,21 @@ async fn pair_host(
         .insert_header(("Content-Type", "application/x-ndjson"))
         .streaming(stream))
 }
-//
-// #[post("/host/wake")]
-// async fn wake_host(
-//     data: Data<RuntimeApiData>,
-//     Json(request): Json<PostWakeUpRequest>,
-// ) -> HttpResponse {
-//     let hosts = data.hosts.read().await;
-//
-//     let host_id = request.host_id;
-//     let Some(host) = hosts.get(host_id as usize) else {
-//         return HttpResponse::NotFound().finish();
-//     };
-//     let host = host.lock().await;
-//
-//     let mac = host.cache.mac;
-//
-//     if let Some(mac) = mac {
-//         if let Err(err) = broadcast_magic_packet(mac).await {
-//             warn!("failed to send magic(wake on lan) packet: {err:?}");
-//             return HttpResponse::InternalServerError().finish();
-//         }
-//     } else {
-//         return HttpResponse::InternalServerError().finish();
-//     }
-//
-//     HttpResponse::Ok().finish()
-// }
-//
+
+#[post("/host/wake")]
+async fn wake_host(
+    user: User,
+    Json(request): Json<PostWakeUpRequest>,
+) -> Result<HttpResponse, AppError> {
+    let host_id = HostId(request.host_id);
+
+    let host = user.host(host_id).await?;
+
+    host.wake().await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
 // #[get("/apps")]
 // async fn get_apps(
 //     data: Data<RuntimeApiData>,
@@ -306,8 +285,8 @@ pub fn api_service() -> impl HttpServiceFactory {
             list_hosts,
             get_host,
             put_host,
-            // wake_host,
-            // delete_host,
+            wake_host,
+            delete_host,
             pair_host,
             // get_apps,
             // get_app_image,

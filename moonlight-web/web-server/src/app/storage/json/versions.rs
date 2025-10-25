@@ -38,6 +38,7 @@ pub struct V1HostCache {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V1HostPairInfo {
+    // TODO: create V2 Host pair info using pem serde
     pub client_private_key: String,
     pub client_certificate: String,
     pub server_certificate: String,
@@ -54,10 +55,7 @@ pub fn migrate_v1_to_v2(old: V1) -> V2 {
             pair_info: old_host.paired,
             cache: V2HostCache {
                 name: old_host.cache.name.unwrap_or_else(|| "Unknown".to_string()),
-                mac: old_host
-                    .cache
-                    .mac
-                    .unwrap_or_else(|| MacAddress::from_bytes([0; 6])),
+                mac: old_host.cache.mac,
             },
         };
 
@@ -107,7 +105,7 @@ pub struct V2Host {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2HostCache {
     pub name: String,
-    pub mac: MacAddress,
+    pub mac: Option<MacAddress>,
 }
 
 pub fn migrate_to_latest(json: Json) -> Result<V2, anyhow::Error> {

@@ -1,12 +1,15 @@
 use std::ops::Deref;
 
+use moonlight_common::high::MoonlightHost;
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
     AppError, AppRef,
     auth::SessionToken,
     host::{Host, HostId},
-    storage::{StorageQueryHosts, StorageUser, StorageUserModify},
+    storage::{
+        StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
+    },
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -121,11 +124,44 @@ impl User {
     }
 
     pub async fn host_add(&self, address: String, http_port: u16) -> Result<Host, AppError> {
-        todo!()
+        let app = self.app.access()?;
+
+        let unique_id = self.host_unique_id().await?;
+
+        let loaded_host = MoonlightHost::new(address.clone(), http_port, Some(unique_id))?;
+
+        let name = loaded_host.host_name().await?;
+        let mac = loaded_host.mac().await?;
+
+        let host = app
+            .storage
+            .add_host(StorageHostAdd {
+                owner: Some(self.id),
+                address,
+                http_port,
+                pair_info: None,
+                cache: StorageHostCache { name, mac },
+            })
+            .await?;
+
+        {
+            let mut loaded_hosts = app.loaded_hosts.write().await;
+            loaded_hosts.insert((self.id, host.id), loaded_host);
+        }
+
+        Ok(Host {
+            // TODO: use storage_host
+            app: self.app.clone(),
+            id: host.id,
+        })
     }
 
-    pub async fn host_delete(&self, host_id: HostId) -> Result<(), AppError> {
-        todo!()
+    pub async fn host_delete(&mut self, host_id: HostId) -> Result<(), AppError> {
+        let host = self.host(host_id).await?;
+
+        host.delete(self).await?;
+
+        Ok(())
     }
 
     pub async fn delete(self) -> Result<(), AppError> {

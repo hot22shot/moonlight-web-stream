@@ -4,7 +4,7 @@ use common::api_bindings::{DetailedHost, HostState, PairStatus, UndetailedHost};
 use log::{error, warn};
 use moonlight_common::{
     PairPin, ServerVersion,
-    high::{HostError, MoonlightHost},
+    high::{HostError, MoonlightHost, PairInfo},
     network::reqwest::{ReqwestError, ReqwestMoonlightHost},
     pair::{PairError, generate_new_client},
 };
@@ -76,6 +76,15 @@ impl Host {
 
             let new_host =
                 MoonlightHost::new(host_data.address, host_data.http_port, Some(user_unique_id))?;
+            if let Some(pair_info) = host_data.pair_info {
+                new_host
+                    .set_pair_info(PairInfo {
+                        client_certificate: pair_info.client_certificate,
+                        client_private_key: pair_info.client_private_key,
+                        server_certificate: pair_info.server_certificate,
+                    })
+                    .await?;
+            }
 
             hosts.entry(key).or_insert(new_host);
             drop(hosts);
@@ -96,13 +105,13 @@ impl Host {
             Ok(value) => value,
             Err(HostError::LikelyOffline) => {
                 let storage_host = self.storage_host(app).await?;
-                storage_host.cache_name.clone()
+                storage_host.cache.name.clone()
             }
             Err(err) => {
                 warn!("Failed to query host info for host {self:?}: {err:?}");
 
                 let storage_host = self.storage_host(app).await?;
-                storage_host.cache_name.clone()
+                storage_host.cache.name.clone()
             }
         };
         let paired = match host.verify_paired().await {
@@ -213,7 +222,7 @@ impl Host {
             return Err(AppError::Forbidden);
         }
 
-        let pair_info = self
+        let modify = self
             .use_host_no_auth(user, async |_app, host| {
                 if matches!(
                     PairStatus::from(host.verify_paired().await?),
@@ -234,19 +243,23 @@ impl Host {
                     return Err(AppError::MoonlightHost(HostError::Pair(PairError::Failed)));
                 };
 
-                Ok(pair_info)
+                let name = host.host_name().await?;
+                let mac = host.mac().await?;
+
+                Ok(StorageHostModify {
+                    pair_info: Some(Some(StorageHostPairInfo {
+                        client_private_key: pair_info.client_private_key,
+                        client_certificate: pair_info.client_certificate,
+                        server_certificate: pair_info.server_certificate,
+                    })),
+                    cache_name: Some(name),
+                    cache_mac: Some(mac),
+                    ..Default::default()
+                })
             })
             .await??;
 
-        self.modify(StorageHostModify {
-            pair_info: Some(Some(StorageHostPairInfo {
-                client_private_key: pair_info.client_private_key,
-                client_certificate: pair_info.client_certificate,
-                server_certificate: pair_info.server_certificate,
-            })),
-            ..Default::default()
-        })
-        .await
+        self.modify(modify).await
     }
 
     pub async fn unpair(&self, user_id: UserId) -> Result<Host, AppError> {
@@ -270,6 +283,13 @@ impl Host {
         }
     }
     pub async fn delete_no_auth(self) -> Result<(), AppError> {
-        todo!()
+        let app = self.app.access()?;
+
+        let mut hosts = app.loaded_hosts.write().await;
+        hosts.retain(|(_, host_id), _| *host_id != self.id);
+
+        app.storage.remove_host(self.id).await?;
+
+        Ok(())
     }
 }
