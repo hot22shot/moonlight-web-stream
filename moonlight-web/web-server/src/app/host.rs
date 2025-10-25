@@ -11,7 +11,8 @@ use moonlight_common::{
     high::broadcast_magic_packet,
     network::{
         self, ApiError, ClientAppBoxArtRequest, ClientInfo, HostInfo, host_app_box_art,
-        host_app_list, host_info, request_client::RequestClient, reqwest::ReqwestError,
+        host_app_list, host_cancel, host_info, request_client::RequestClient,
+        reqwest::ReqwestError,
     },
     pair::{PairSuccess, generate_new_client, host_pair},
 };
@@ -70,7 +71,19 @@ impl Host {
         self.id
     }
 
-    pub async fn modify(&self, modify: StorageHostModify) -> Result<(), AppError> {
+    async fn can_use(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
+        if self.owner().await? == Some(user.id()) || matches!(user.role().await?, Role::Admin) {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+
+    pub async fn modify(
+        &self,
+        user: &mut AuthenticatedUser,
+        modify: StorageHostModify,
+    ) -> Result<(), AppError> {
         let app = self.app.access()?;
 
         // TODO: clear cache
@@ -144,7 +157,12 @@ impl Host {
         app.storage.get_host(self.id).await
     }
 
-    pub async fn address_port(&self) -> Result<(String, u16), AppError> {
+    pub async fn address_port(
+        &self,
+        user: &mut AuthenticatedUser,
+    ) -> Result<(String, u16), AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         let host = app.storage.get_host(self.id).await?;
@@ -152,7 +170,12 @@ impl Host {
         Ok((host.address, host.http_port))
     }
 
-    pub async fn pair_info(&self) -> Result<StorageHostPairInfo, AppError> {
+    pub async fn pair_info(
+        &self,
+        user: &mut AuthenticatedUser,
+    ) -> Result<StorageHostPairInfo, AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         let host = app.storage.get_host(self.id).await?;
@@ -220,6 +243,8 @@ impl Host {
         &self,
         user: &mut AuthenticatedUser,
     ) -> Result<UndetailedHost, AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         match self.host_info(&app, user).await {
@@ -266,6 +291,8 @@ impl Host {
         &self,
         user: &mut AuthenticatedUser,
     ) -> Result<DetailedHost, AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
         let host = self.storage_host(&app).await?;
 
@@ -344,11 +371,6 @@ impl Host {
     pub async fn pair(&self, user: &mut AuthenticatedUser, pin: PairPin) -> Result<(), AppError> {
         let app = self.app.access()?;
 
-        // TODO: maybe generalize this in some private func?
-        if self.owner().await? != Some(user.id()) && !matches!(user.role().await?, Role::Admin) {
-            return Err(AppError::Forbidden);
-        }
-
         let info = self
             .host_info(&app, user)
             .await?
@@ -415,10 +437,10 @@ impl Host {
             )
             .await??;
 
-        self.modify(modify).await
+        self.modify(user, modify).await
     }
 
-    pub async fn unpair(&self, user_id: UserId) -> Result<Host, AppError> {
+    pub async fn unpair(&self, user: &mut AuthenticatedUser) -> Result<Host, AppError> {
         todo!()
     }
 
@@ -437,6 +459,8 @@ impl Host {
     }
 
     pub async fn list_apps(&self, user: &mut AuthenticatedUser) -> Result<Vec<App>, AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         let info = self
@@ -476,6 +500,8 @@ impl Host {
         user: &mut AuthenticatedUser,
         app_id: AppId,
     ) -> Result<Bytes, AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         let info = self
@@ -501,6 +527,39 @@ impl Host {
                 .await?;
 
                 Ok(image)
+            },
+        )
+        .await?
+    }
+
+    pub async fn cancel_app(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
+        self.can_use(user).await?;
+
+        let app = self.app.access()?;
+
+        let info = self
+            .host_info(&app, user)
+            .await?
+            .ok_or(AppError::HostOffline)?;
+
+        self.use_client(
+            &app,
+            user,
+            false,
+            async |https_capable, client, host, _port, client_info| {
+                if !https_capable {
+                    return Err(AppError::Forbidden);
+                }
+
+                // TODO: use success
+                let success = host_cancel(
+                    client,
+                    &Self::build_hostport(host, info.https_port),
+                    client_info,
+                )
+                .await?;
+
+                Ok(())
             },
         )
         .await?

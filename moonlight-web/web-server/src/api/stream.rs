@@ -141,7 +141,7 @@ pub async fn start_host(
             return;
         };
 
-        let (address, http_port) = match host.address_port().await {
+        let (address, http_port) = match host.address_port(&mut user).await {
             Ok(address_port) => address_port,
             Err(err) => {
                 warn!("failed to start stream for host {host_id:?} (at get address_port): {err:?}");
@@ -153,7 +153,7 @@ pub async fn start_host(
             }
         };
 
-        let pair_info = match host.pair_info().await {
+        let pair_info = match host.pair_info(&mut user).await {
             Ok(pair_info) => pair_info,
             Err(err) => {
                 warn!("failed to start stream for host {host_id:?} (at get pair_info): {err:?}");
@@ -308,8 +308,15 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
 
 #[post("/host/cancel")]
 pub async fn cancel_host(
-    user: AuthenticatedUser,
+    mut user: AuthenticatedUser,
     Json(request): Json<PostCancelRequest>,
 ) -> Result<Json<PostCancelResponse>, AppError> {
-    todo!()
+    let host_id = HostId(request.host_id);
+
+    let host = user.host(host_id).await?;
+
+    host.cancel_app(&mut user).await?;
+
+    // TODO: this response is a crime to all coders, don't have a success field!
+    Ok(Json(PostCancelResponse { success: true }))
 }
