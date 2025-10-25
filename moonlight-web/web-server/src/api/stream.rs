@@ -104,7 +104,7 @@ pub async fn start_host(
         };
 
         // -- Collect host data
-        let host = match user.host(host_id).await {
+        let mut host = match user.host(host_id).await {
             Ok(host) => host,
             Err(AppError::HostNotFound) => {
                 let _ = send_ws_message(&mut session, StreamServerMessage::HostNotFound).await;
@@ -313,7 +313,7 @@ pub async fn cancel_host(
 ) -> Result<Json<PostCancelResponse>, AppError> {
     let host_id = HostId(request.host_id);
 
-    let host = user.host(host_id).await?;
+    let mut host = user.host(host_id).await?;
 
     host.cancel_app(&mut user).await?;
 

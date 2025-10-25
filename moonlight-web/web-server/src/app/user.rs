@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::app::{
     AppError, AppRef, MoonlightClient,
-    auth::{SessionToken, UserAuth},
+    auth::SessionToken,
     host::{Host, HostId},
     storage::{
         StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
@@ -114,9 +114,10 @@ impl AuthenticatedUser {
             .await?
             .into_iter()
             .map(|(host_id, host)| Host {
-                // TODO: use storage host
                 app: self.app.clone(),
                 id: host_id,
+                cache_storage: host,
+                cache_host_info: None,
             })
             .collect();
 
@@ -132,6 +133,8 @@ impl AuthenticatedUser {
             Ok(Host {
                 app: self.app.clone(),
                 id: host.id,
+                cache_storage: Some(host),
+                cache_host_info: None,
             })
         } else {
             Err(AppError::Forbidden)
@@ -173,6 +176,8 @@ impl AuthenticatedUser {
             // TODO: use storage_host
             app: self.app.clone(),
             id: host.id,
+            cache_storage: Some(host),
+            cache_host_info: None,
         })
     }
 

@@ -4,6 +4,7 @@ use crate::app::AppError;
 
 const HASH_ITERATIONS: usize = 150_000;
 
+#[derive(Clone)]
 pub struct StoragePassword {
     pub salt: [u8; 16],
     pub hash: [u8; 32],

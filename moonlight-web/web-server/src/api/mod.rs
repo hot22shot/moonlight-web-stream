@@ -32,7 +32,8 @@ async fn list_hosts(mut user: AuthenticatedUser) -> Result<Json<GetHostsResponse
     let hosts = user.hosts().await?;
 
     let mut undetailed_hosts = Vec::with_capacity(hosts.len());
-    for host in hosts {
+    // TODO: do this parallel?
+    for mut host in hosts {
         let undetailed = match host.undetailed_host(&mut user).await {
             Ok(value) => value,
             Err(err) => {
@@ -57,7 +58,7 @@ async fn get_host(
 ) -> Result<Json<GetHostResponse>, Error> {
     let host_id = HostId(query.host_id);
 
-    let host = user.host(host_id).await?;
+    let mut host = user.host(host_id).await?;
 
     let detailed = host.detailed_host(&mut user).await?;
 
@@ -70,7 +71,7 @@ async fn put_host(
     mut user: AuthenticatedUser,
     Json(query): Json<PutHostRequest>,
 ) -> Result<Json<PutHostResponse>, Error> {
-    let host = user
+    let mut host = user
         .host_add(
             query.address,
             query
@@ -103,7 +104,7 @@ async fn pair_host(
 ) -> Result<HttpResponse, AppError> {
     let host_id = HostId(request.host_id);
 
-    let host = user.host(host_id).await?;
+    let mut host = user.host(host_id).await?;
 
     if matches!(host.is_paired(&mut user).await?, PairStatus::Paired) {
         return Ok(HttpResponse::NotModified().finish());
@@ -199,7 +200,7 @@ async fn get_apps(
 ) -> Result<Json<GetAppsResponse>, AppError> {
     let host_id = HostId(query.host_id);
 
-    let host = user.host(host_id).await?;
+    let mut host = user.host(host_id).await?;
 
     let apps = host.list_apps(&mut user).await?;
 
@@ -223,7 +224,7 @@ async fn get_app_image(
     let host_id = HostId(query.host_id);
     let app_id = AppId(query.app_id);
 
-    let host = user.host(host_id).await?;
+    let mut host = user.host(host_id).await?;
 
     let image = host.app_image(&mut user, app_id).await?;
 

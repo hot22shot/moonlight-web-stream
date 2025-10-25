@@ -30,6 +30,8 @@ pub struct HostId(pub u32);
 pub struct Host {
     pub(super) app: AppRef,
     pub(super) id: HostId,
+    pub(super) cache_storage: Option<StorageHost>,
+    pub(super) cache_host_info: Option<HostInfo>,
 }
 
 impl Debug for Host {
@@ -80,13 +82,14 @@ impl Host {
     }
 
     pub async fn modify(
-        &self,
+        &mut self,
         user: &mut AuthenticatedUser,
         modify: StorageHostModify,
     ) -> Result<(), AppError> {
         let app = self.app.access()?;
 
-        // TODO: clear cache
+        self.cache_storage = None;
+
         app.storage.modify_host(self.id, modify).await?;
 
         Ok(())
@@ -101,12 +104,12 @@ impl Host {
     }
 
     async fn use_client<R>(
-        &self,
+        &mut self,
         app: &AppInner,
         user: &mut AuthenticatedUser,
         pairing: bool,
         // app, https_capable, client, host, port, client_info
-        f: impl AsyncFnOnce(bool, &mut MoonlightClient, &str, u16, ClientInfo) -> R,
+        f: impl AsyncFnOnce(&mut Self, bool, &mut MoonlightClient, &str, u16, ClientInfo) -> R,
     ) -> Result<R, AppError> {
         // TODO: make this mut and store client as cache
 
@@ -141,6 +144,7 @@ impl Host {
         };
 
         Ok(f(
+            self,
             https_capable,
             &mut client,
             &host_data.address,
@@ -154,6 +158,10 @@ impl Host {
     }
 
     async fn storage_host(&self, app: &AppInner) -> Result<StorageHost, AppError> {
+        if let Some(host) = self.cache_storage.as_ref() {
+            return Ok(host.clone());
+        }
+
         app.storage.get_host(self.id).await
     }
 
@@ -199,18 +207,16 @@ impl Host {
     }
     // None = Offline
     async fn host_info(
-        &self,
+        &mut self,
         app: &AppInner,
         user: &mut AuthenticatedUser,
     ) -> Result<Option<HostInfo>, AppError> {
-        // TODO: make this mut and store results as cache
-
         self.use_client(
             app,
             user,
             false,
-            async |https_capable, client, host, port, client_info| {
-                let mut info = match self.is_offline(
+            async |this, https_capable, client, host, port, client_info| {
+                let mut info = match this.is_offline(
                     host_info(
                         client,
                         false,
@@ -233,6 +239,8 @@ impl Host {
                     .await?;
                 }
 
+                this.cache_host_info = Some(info.clone());
+
                 Ok(Some(info))
             },
         )
@@ -240,7 +248,7 @@ impl Host {
     }
 
     pub async fn undetailed_host(
-        &self,
+        &mut self,
         user: &mut AuthenticatedUser,
     ) -> Result<UndetailedHost, AppError> {
         self.can_use(user).await?;
@@ -288,7 +296,7 @@ impl Host {
         }
     }
     pub async fn detailed_host(
-        &self,
+        &mut self,
         user: &mut AuthenticatedUser,
     ) -> Result<DetailedHost, AppError> {
         self.can_use(user).await?;
@@ -359,7 +367,10 @@ impl Host {
         }
     }
 
-    pub async fn is_paired(&self, user: &mut AuthenticatedUser) -> Result<PairStatus, AppError> {
+    pub async fn is_paired(
+        &mut self,
+        user: &mut AuthenticatedUser,
+    ) -> Result<PairStatus, AppError> {
         let app = self.app.access()?;
 
         match self.host_info(&app, user).await? {
@@ -368,7 +379,11 @@ impl Host {
         }
     }
 
-    pub async fn pair(&self, user: &mut AuthenticatedUser, pin: PairPin) -> Result<(), AppError> {
+    pub async fn pair(
+        &mut self,
+        user: &mut AuthenticatedUser,
+        pin: PairPin,
+    ) -> Result<(), AppError> {
         let app = self.app.access()?;
 
         let info = self
@@ -377,8 +392,7 @@ impl Host {
             .ok_or(AppError::HostNotFound)?;
 
         if matches!(info.pair_status.into(), PairStatus::Paired) {
-            // TODO: return not modified
-            todo!();
+            return Err(AppError::HostPaired);
         }
 
         let modify = self
@@ -386,7 +400,7 @@ impl Host {
                 &app,
                 user,
                 true,
-                async |_https_capable, client, host, port, client_info| {
+                async |this,_https_capable, client, host, port, client_info| {
                     let auth = generate_new_client()?;
 
                     // TODO: device name
@@ -406,7 +420,6 @@ impl Host {
 
                     // Store pair info
 
-                    // TODO: we'll have to create a new client with certificates and store that in cache and use it here
                     let mut client = MoonlightClient::with_certificates(&auth.private_key,&auth.certificate, &server_certificate).map_err(ApiError::RequestClient)?;
 
                     let (name, mac) = match host_info(
@@ -417,9 +430,13 @@ impl Host {
                     )
                     .await
                     {
-                        Ok(info) => (Some(info.host_name), Some(info.mac)),
+                        Ok(info) => {
+                            this.cache_host_info = Some(info.clone());
+
+                            (Some(info.host_name), Some(info.mac))
+                        },
                         Err(err) => {
-                            error!("Failed to make https request to host {self:?} after pairing completed: {err}");
+                            error!("Failed to make https request to host {this:?} after pairing completed: {err}");
                             (None, None)},
                     };
 
@@ -458,7 +475,7 @@ impl Host {
         }
     }
 
-    pub async fn list_apps(&self, user: &mut AuthenticatedUser) -> Result<Vec<App>, AppError> {
+    pub async fn list_apps(&mut self, user: &mut AuthenticatedUser) -> Result<Vec<App>, AppError> {
         self.can_use(user).await?;
 
         let app = self.app.access()?;
@@ -472,7 +489,7 @@ impl Host {
             &app,
             user,
             false,
-            async |https_capable, client, host, _port, client_info| {
+            async |_this, https_capable, client, host, _port, client_info| {
                 if !https_capable {
                     return Err(AppError::HostNotPaired);
                 }
@@ -496,7 +513,7 @@ impl Host {
         .await?
     }
     pub async fn app_image(
-        &self,
+        &mut self,
         user: &mut AuthenticatedUser,
         app_id: AppId,
     ) -> Result<Bytes, AppError> {
@@ -513,7 +530,7 @@ impl Host {
             &app,
             user,
             false,
-            async |https_capable, client, host, _port, client_info| {
+            async |_this, https_capable, client, host, _port, client_info| {
                 if !https_capable {
                     return Err(AppError::HostNotPaired);
                 }
@@ -532,7 +549,7 @@ impl Host {
         .await?
     }
 
-    pub async fn cancel_app(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
+    pub async fn cancel_app(&mut self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
         self.can_use(user).await?;
 
         let app = self.app.access()?;
@@ -546,7 +563,7 @@ impl Host {
             &app,
             user,
             false,
-            async |https_capable, client, host, _port, client_info| {
+            async |_this, https_capable, client, host, _port, client_info| {
                 if !https_capable {
                     return Err(AppError::Forbidden);
                 }

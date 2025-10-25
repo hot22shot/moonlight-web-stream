@@ -90,7 +90,7 @@ struct AppRef {
 }
 
 impl AppRef {
-    fn access(&self) -> Result<impl Deref<Target = AppInner>, AppError> {
+    fn access(&self) -> Result<impl Deref<Target = AppInner> + 'static, AppError> {
         Weak::upgrade(&self.inner).ok_or(AppError::AppDestroyed)
     }
 }

@@ -34,23 +34,26 @@ pub async fn create_storage(
 // Storages:
 // - If two options are in a Modify struct it means: First option = change the field, second option = should pair info exist
 
+#[derive(Clone)]
 pub struct StorageUser {
     pub id: UserId,
     pub name: String,
     pub password: StoragePassword,
     pub role: Role,
 }
+#[derive(Clone)]
 pub struct StorageUserAdd {
     pub role: Role,
     pub name: String,
     pub password: StoragePassword,
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct StorageUserModify {
     pub role: Option<Role>,
     pub password: Option<StoragePassword>,
 }
 
+#[derive(Clone)]
 pub struct StorageHost {
     pub id: HostId,
     // If this is none it means the host is accessible by everyone
@@ -60,6 +63,7 @@ pub struct StorageHost {
     pub pair_info: Option<StorageHostPairInfo>,
     pub cache: StorageHostCache,
 }
+#[derive(Clone)]
 pub struct StorageHostAdd {
     pub owner: Option<UserId>,
     pub address: String,
@@ -67,16 +71,18 @@ pub struct StorageHostAdd {
     pub pair_info: Option<StorageHostPairInfo>,
     pub cache: StorageHostCache,
 }
+#[derive(Clone)]
 pub struct StorageHostCache {
     pub name: String,
     pub mac: Option<MacAddress>,
 }
+#[derive(Clone)]
 pub struct StorageHostPairInfo {
     pub client_private_key: Pem,
     pub client_certificate: Pem,
     pub server_certificate: Pem,
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct StorageHostModify {
     pub owner: Option<Option<UserId>>,
     pub address: Option<String>,
@@ -86,6 +92,7 @@ pub struct StorageHostModify {
     pub cache_mac: Option<Option<MacAddress>>,
 }
 
+#[derive(Clone)]
 pub struct StorageQueryHosts {
     pub user_id: UserId,
 }
