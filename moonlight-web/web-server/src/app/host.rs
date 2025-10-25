@@ -5,7 +5,7 @@ use std::{
 
 use actix_web::web::Bytes;
 use common::api_bindings::{self, DetailedHost, HostState, PairStatus, UndetailedHost};
-use log::{error, warn};
+use log::{error, info, warn};
 use moonlight_common::{
     PairPin, ServerState,
     high::broadcast_magic_packet,
@@ -230,13 +230,25 @@ impl Host {
                 };
 
                 if https_capable {
-                    info = host_info(
+                    match host_info(
                         client,
                         true,
                         &Self::build_hostport(host, info.https_port),
                         Some(client_info),
                     )
-                    .await?;
+                    .await
+                    {
+                        Ok(new_info) => {
+                            info = new_info;
+                        }
+                        Err(ApiError::RequestClient(ReqwestError::Reqwest(err)))
+                            if err.is_request() =>
+                        {
+                            // The host likely removed our paired certificate
+                            warn!("Host {this:?} has an error related to a request {err:?}. This likely happened because the device was removed from sunshine.");
+                        }
+                        Err(err) => return Err(err.into()),
+                    }
                 }
 
                 this.cache_host_info = Some(info.clone());
