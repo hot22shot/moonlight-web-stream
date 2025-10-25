@@ -22,7 +22,7 @@ use crate::app::{
         Storage, StorageHost, StorageHostAdd, StorageHostCache, StorageHostModify,
         StorageHostPairInfo, StorageQueryHosts, StorageUser, StorageUserAdd, StorageUserModify,
         json::versions::{
-            Json, V1HostPairInfo, V2, V2Host, V2HostCache, V2User, V2UserPassword,
+            Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2User, V2UserPassword,
             migrate_to_latest,
         },
     },
@@ -157,16 +157,6 @@ async fn file_writer(mut store_receiver: Receiver<()>, json: Arc<JsonStorage>) {
     }
 }
 
-fn user_into_json(user: StorageUser) -> V2User {
-    V2User {
-        role: user.role,
-        name: user.name,
-        password: V2UserPassword {
-            salt: user.password.salt,
-            hash: user.password.hash,
-        },
-    }
-}
 fn user_from_json(user_id: UserId, user: &V2User) -> StorageUser {
     StorageUser {
         id: user_id,
@@ -186,10 +176,9 @@ fn host_from_json(host_id: HostId, host: &V2Host) -> StorageHost {
         address: host.address.clone(),
         http_port: host.http_port,
         pair_info: host.pair_info.clone().map(|pair_info| StorageHostPairInfo {
-            // TODO: remove unwrap
-            client_certificate: pem::parse(pair_info.client_certificate).unwrap(),
-            client_private_key: pem::parse(pair_info.client_private_key).unwrap(),
-            server_certificate: pem::parse(pair_info.server_certificate).unwrap(),
+            client_certificate: pair_info.client_certificate,
+            client_private_key: pair_info.client_private_key,
+            server_certificate: pair_info.server_certificate,
         }),
         cache: StorageHostCache {
             name: host.cache.name.clone(),
@@ -240,7 +229,11 @@ impl Storage for JsonStorage {
             role: user.role,
         })
     }
-    async fn modify_user(&self, user_id: UserId, user: StorageUserModify) -> Result<(), AppError> {
+    async fn modify_user(
+        &self,
+        _user_id: UserId,
+        _user: StorageUserModify,
+    ) -> Result<(), AppError> {
         self.force_write();
         todo!()
     }
@@ -328,7 +321,11 @@ impl Storage for JsonStorage {
             owner: host.owner.map(|user_id| user_id.0),
             address: host.address,
             http_port: host.http_port,
-            pair_info: None,
+            pair_info: host.pair_info.map(|pair_info| V2HostPairInfo {
+                client_private_key: pair_info.client_private_key,
+                client_certificate: pair_info.client_certificate,
+                server_certificate: pair_info.server_certificate,
+            }),
             cache: V2HostCache {
                 name: host.cache.name,
                 mac: host.cache.mac,
@@ -357,10 +354,9 @@ impl Storage for JsonStorage {
             address: host.address,
             http_port: host.http_port,
             pair_info: host.pair_info.map(|pair_info| StorageHostPairInfo {
-                // TODO: don't unwrap
-                client_private_key: pem::parse(pair_info.client_private_key).unwrap(),
-                client_certificate: pem::parse(pair_info.client_certificate).unwrap(),
-                server_certificate: pem::parse(pair_info.server_certificate).unwrap(),
+                client_private_key: pair_info.client_private_key,
+                client_certificate: pair_info.client_certificate,
+                server_certificate: pair_info.server_certificate,
             }),
             cache: StorageHostCache {
                 name: host.cache.name,
@@ -388,10 +384,10 @@ impl Storage for JsonStorage {
             host.http_port = new_http_port;
         }
         if let Some(new_pair_info) = modify.pair_info {
-            host.pair_info = new_pair_info.map(|new_pair_info| V1HostPairInfo {
-                client_private_key: new_pair_info.client_private_key.to_string(),
-                client_certificate: new_pair_info.client_certificate.to_string(),
-                server_certificate: new_pair_info.server_certificate.to_string(),
+            host.pair_info = new_pair_info.map(|new_pair_info| V2HostPairInfo {
+                client_private_key: new_pair_info.client_private_key,
+                client_certificate: new_pair_info.client_certificate,
+                server_certificate: new_pair_info.server_certificate,
             });
         }
         if let Some(new_cache_name) = modify.cache_name {

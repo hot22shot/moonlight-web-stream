@@ -442,6 +442,7 @@ export class StreamInput {
                         this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
                     }
                 } else if (this.touchMouseAction == "screenKeyboard") {
+                    // TODO: fix keyboard touch gesture
                     const distanceY = touch.clientY - oldTouch.originY
 
                     if (distanceY < -TOUCHES_AS_KEYBOARD_DISTANCE) {

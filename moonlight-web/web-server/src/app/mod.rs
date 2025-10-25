@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     ops::Deref,
     sync::{Arc, Weak},
 };
@@ -7,23 +6,14 @@ use std::{
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use common::config::Config;
 use hex::FromHexError;
-use moonlight_common::{
-    high::{HostError, PairInfo},
-    network::{
-        ApiError, ClientInfo,
-        request_client::RequestClient,
-        reqwest::{ReqwestClient, ReqwestError, ReqwestMoonlightHost},
-    },
-};
+use moonlight_common::network::{ApiError, request_client::RequestClient, reqwest::ReqwestClient};
 use openssl::error::ErrorStack;
 use thiserror::Error;
-use tokio::sync::RwLock;
 
 use crate::app::{
     auth::{SessionToken, UserAuth},
-    host::HostId,
     storage::{Storage, StorageUserAdd, create_storage},
-    user::{Admin, AuthenticatedUser, User, UserId},
+    user::{Admin, AuthenticatedUser, User},
 };
 
 pub mod auth;
@@ -40,7 +30,7 @@ pub enum AppError {
     UserNotFound,
     #[error("the host was not found")]
     HostNotFound,
-    #[error("the host was is already paired")]
+    #[error("the host was already paired")]
     HostPaired,
     #[error("the host must be paired for this action")]
     HostNotPaired,
@@ -58,6 +48,8 @@ pub enum AppError {
     Forbidden,
     #[error("the authorization header is not a bearer")]
     AuthorizationNotBearer,
+    #[error("the authorization header is not a bearer")]
+    BearerMalformed,
     #[error("openssl error occured")]
     OpenSSL(#[from] ErrorStack),
     #[error("hex error occured")]
@@ -86,6 +78,7 @@ impl ResponseError for AppError {
             Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Hex(_) => StatusCode::BAD_REQUEST,
             Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
+            Self::BearerMalformed => StatusCode::BAD_REQUEST,
             Self::MoonlightApi(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

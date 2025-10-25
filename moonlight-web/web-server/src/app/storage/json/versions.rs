@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
+use log::error;
 use moonlight_common::mac::MacAddress;
+use pem::Pem;
 use serde::{Deserialize, Serialize};
 
 use crate::app::user::Role;
@@ -38,10 +40,17 @@ pub struct V1HostCache {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V1HostPairInfo {
-    // TODO: create V2 Host pair info using pem serde
     pub client_private_key: String,
     pub client_certificate: String,
     pub server_certificate: String,
+}
+
+fn migrate_certificates_v1_to_v2(v1: V1HostPairInfo) -> Option<V2HostPairInfo> {
+    Some(V2HostPairInfo {
+        client_private_key: v1.client_private_key.parse().ok()?,
+        client_certificate: v1.client_certificate.parse().ok()?,
+        server_certificate: v1.server_certificate.parse().ok()?,
+    })
 }
 
 pub fn migrate_v1_to_v2(old: V1) -> V2 {
@@ -52,7 +61,15 @@ pub fn migrate_v1_to_v2(old: V1) -> V2 {
             owner: None,
             address: old_host.address,
             http_port: old_host.http_port,
-            pair_info: old_host.paired,
+            pair_info: old_host
+                .paired
+                .and_then(|v1| match migrate_certificates_v1_to_v2(v1) {
+                    Some(value) => Some(value),
+                    None => {
+                        error!("Migrating old pair data failed! Discarding this data!");
+                        None
+                    }
+                }),
             cache: V2HostCache {
                 name: old_host.cache.name.unwrap_or_else(|| "Unknown".to_string()),
                 mac: old_host.cache.mac,
@@ -98,8 +115,15 @@ pub struct V2Host {
     pub owner: Option<u32>,
     pub address: String,
     pub http_port: u16,
-    pub pair_info: Option<V1HostPairInfo>,
+    pub pair_info: Option<V2HostPairInfo>,
     pub cache: V2HostCache,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2HostPairInfo {
+    pub client_private_key: Pem,
+    pub client_certificate: Pem,
+    pub server_certificate: Pem,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

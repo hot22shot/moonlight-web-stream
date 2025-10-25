@@ -1,40 +1,25 @@
 use actix_web::{
-    Either, Error, HttpRequest, HttpResponse, Responder,
-    cookie::{Cookie, SameSite},
-    delete,
+    Error, HttpResponse, delete,
     dev::HttpServiceFactory,
-    get, middleware, post, put, services,
+    get, post, put, services,
     web::{self, Bytes, Data, Json, Query},
 };
-use futures::future::join_all;
 use log::{info, warn};
-use moonlight_common::{
-    PairPin,
-    high::{HostError, broadcast_magic_packet},
-    network::{
-        ApiError,
-        reqwest::{ReqwestError, ReqwestMoonlightHost},
-    },
-    pair::generate_new_client,
-};
-use std::{io::Write as _, time::Duration};
-use tokio::{sync::Mutex, time::sleep};
+use moonlight_common::PairPin;
+use std::io::Write as _;
 
 use crate::{
-    Config,
-    api::{admin::add_user, auth::COOKIE_SESSION_TOKEN_NAME},
+    api::admin::add_user,
     app::{
         App, AppError,
-        auth::UserAuth,
-        host::{AppId, Host, HostId},
+        host::{AppId, HostId},
         user::AuthenticatedUser,
     },
 };
 use common::api_bindings::{
-    self, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
-    GetHostQuery, GetHostResponse, GetHostsResponse, PairStatus, PostLoginRequest, PostPairRequest,
-    PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse,
-    UndetailedHost,
+    self, DeleteHostQuery, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
+    GetHostResponse, GetHostsResponse, PairStatus, PostPairRequest, PostPairResponse1,
+    PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse,
 };
 
 pub mod admin;
@@ -274,54 +259,3 @@ pub fn api_service() -> impl HttpServiceFactory {
             add_user,
         )
 }
-
-// async fn into_undetailed_host(
-//     id: usize,
-//     name: impl FnOnce() -> String,
-//     host: &mut ReqwestMoonlightHost,
-// ) -> UndetailedHost {
-//     let name = host
-//         .host_name()
-//         .await
-//         .map(str::to_string)
-//         .unwrap_or_else(|_| name());
-//
-//     let paired = host.is_paired();
-//
-//     let server_state = host
-//         .state()
-//         .await
-//         .map(|(_, state)| Option::Some(state))
-//         .unwrap_or(None);
-//
-//     UndetailedHost {
-//         host_id: id as u32,
-//         name,
-//         paired: paired.into(),
-//         server_state: server_state.map(Into::into),
-//     }
-// }
-// async fn into_detailed_host(
-//     id: usize,
-//     host: &mut ReqwestMoonlightHost,
-// ) -> Result<DetailedHost, HostError<ReqwestError>> {
-//     Ok(DetailedHost {
-//         host_id: id as u32,
-//         name: host.host_name().await?.to_string(),
-//         paired: host.is_paired().into(),
-//         server_state: host.state().await?.1.into(),
-//         address: host.address().to_string(),
-//         http_port: host.http_port(),
-//         https_port: host.https_port().await?,
-//         external_port: host.external_port().await?,
-//         version: host.version().await?.to_string(),
-//         gfe_version: host.gfe_version().await?.to_string(),
-//         unique_id: host.unique_id().await?.to_string(),
-//         mac: host.mac().await?.map(|mac| mac.to_string()),
-//         local_ip: host.local_ip().await?.to_string(),
-//         current_game: host.current_game().await?,
-//         max_luma_pixels_hevc: host.max_luma_pixels_hevc().await?,
-//         server_codec_mode_support: host.server_codec_mode_support_raw().await?,
-//     })
-// }
-//

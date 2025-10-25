@@ -32,8 +32,9 @@ fn extract_user_auth(req: &HttpRequest) -> Result<UserAuth, AppError> {
 
     if let Some(bearer) = req.headers().get("Authorization") {
         // Look for bearer
-        // TODO: error handling, use header Malformed request?
-        let bearer = bearer.to_str().unwrap();
+        let Ok(bearer) = bearer.to_str() else {
+            return Err(AppError::BearerMalformed);
+        };
 
         let token_str = bearer
             .strip_prefix("Bearer")
