@@ -246,26 +246,24 @@ async fn get_app_image(
 }
 
 pub fn api_service() -> impl HttpServiceFactory {
-    web::scope("/api")
-        // .wrap(middleware::from_fn(auth_middleware))
-        .service(services![
-            auth::login,
-            auth::logout,
-            auth::authenticate,
-            list_hosts,
-            get_host,
-            put_host,
-            wake_host,
-            delete_host,
-            pair_host,
-            get_apps,
-            get_app_image,
-            // -- Stream
-            // stream::start_host,
-            // stream::cancel_host,
-            // -- Admin
-            add_user,
-        ])
+    web::scope("/api").service(services![
+        auth::login,
+        auth::logout,
+        auth::authenticate,
+        list_hosts,
+        get_host,
+        put_host,
+        wake_host,
+        delete_host,
+        pair_host,
+        get_apps,
+        get_app_image,
+        // -- Stream
+        // stream::start_host,
+        // stream::cancel_host,
+        // -- Admin
+        add_user,
+    ])
 }
 
 // async fn into_undetailed_host(

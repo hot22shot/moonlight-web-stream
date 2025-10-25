@@ -14,14 +14,19 @@ use tokio::{
 use crate::{
     StreamSettings,
     api_bindings::{StreamClientMessage, StreamServerMessage},
-    config::Config,
+    config::{WebRtcConfig, WebRtcNat1To1IceCandidateType},
 };
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ServerIpcConfig {
+    pub webrtc: WebRtcConfig,
+}
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerIpcMessage {
     Init {
-        server_config: Config,
+        config: ServerIpcConfig,
         stream_settings: StreamSettings,
         host_address: String,
         host_http_port: u16,

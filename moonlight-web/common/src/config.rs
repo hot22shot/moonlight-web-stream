@@ -47,13 +47,13 @@ fn default_data_storage() -> StorageConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebRtcConfig {
     #[serde(default = "default_ice_servers")]
-    pub webrtc_ice_servers: Vec<RtcIceServer>,
+    pub ice_servers: Vec<RtcIceServer>,
     #[serde(default)]
-    pub webrtc_port_range: Option<PortRange>,
+    pub port_range: Option<PortRange>,
     #[serde(default)]
-    pub webrtc_nat_1to1: Option<WebRtcNat1To1Mapping>,
+    pub nat_1to1: Option<WebRtcNat1To1Mapping>,
     #[serde(default = "default_network_types")]
-    pub webrtc_network_types: Vec<WebRtcNetworkType>,
+    pub network_types: Vec<WebRtcNetworkType>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -91,10 +91,10 @@ pub struct PortRange {
 impl Default for WebRtcConfig {
     fn default() -> Self {
         Self {
-            webrtc_ice_servers: default_ice_servers(),
-            webrtc_port_range: None,
-            webrtc_nat_1to1: None,
-            webrtc_network_types: default_network_types(),
+            ice_servers: default_ice_servers(),
+            port_range: None,
+            nat_1to1: None,
+            network_types: default_network_types(),
         }
     }
 }

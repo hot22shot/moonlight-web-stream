@@ -10,7 +10,7 @@ use common::{
 use log::{LevelFilter, debug, info, warn};
 use moonlight_common::{
     MoonlightError,
-    high::HostError,
+    high::{HostError, PairInfo},
     network::reqwest::ReqwestMoonlightHost,
     pair::ClientAuth,
     stream::{
@@ -106,7 +106,7 @@ async fn main() {
         .await;
 
     let (
-        server_config,
+        config,
         stream_settings,
         host_address,
         host_http_port,
@@ -118,7 +118,7 @@ async fn main() {
     ) = loop {
         match ipc_receiver.recv().await {
             Some(ServerIpcMessage::Init {
-                server_config,
+                config,
                 stream_settings,
                 host_address,
                 host_http_port,
@@ -137,7 +137,7 @@ async fn main() {
                 );
 
                 break (
-                    server_config,
+                    config,
                     stream_settings,
                     host_address,
                     host_http_port,
@@ -162,18 +162,19 @@ async fn main() {
         .await;
 
     // -- Create the host and pair it
-    let mut host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
+    // TODO: hosts should use the old mutable way!
+    let host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
         .expect("failed to create host");
 
-    host.set_pair_info(
-        &ClientAuth {
-            private_key: Pem::from_str(&client_private_key_pem)
-                .expect("failed to parse client private key"),
-            certificate: Pem::from_str(&client_certificate_pem)
-                .expect("failed to parse client certificate"),
-        },
-        &Pem::from_str(&server_certificate_pem).expect("failed to parse server certificate"),
-    )
+    host.set_pair_info(PairInfo {
+        client_certificate: Pem::from_str(&client_certificate_pem)
+            .expect("failed to deserialize pem into pem struct"),
+        client_private_key: Pem::from_str(&client_private_key_pem)
+            .expect("failed to deserialize pem into pem struct"),
+        server_certificate: Pem::from_str(&server_certificate_pem)
+            .expect("failed to deserialize pem into pem struct"),
+    })
+    .await
     .expect("failed to set pairing info");
 
     // -- Configure moonlight
@@ -181,8 +182,9 @@ async fn main() {
 
     // -- Configure WebRTC
     let rtc_config = RTCConfiguration {
-        ice_servers: server_config
-            .webrtc_ice_servers
+        ice_servers: config
+            .webrtc
+            .ice_servers
             .clone()
             .into_iter()
             .map(into_webrtc_ice)
@@ -191,7 +193,7 @@ async fn main() {
     };
     let mut api_settings = SettingEngine::default();
 
-    if let Some(PortRange { min, max }) = server_config.webrtc_port_range {
+    if let Some(PortRange { min, max }) = config.webrtc.port_range {
         match EphemeralUDP::new(min, max) {
             Ok(udp) => {
                 api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
@@ -201,15 +203,16 @@ async fn main() {
             }
         }
     }
-    if let Some(mapping) = server_config.webrtc_nat_1to1 {
+    if let Some(mapping) = config.webrtc.nat_1to1 {
         api_settings.set_nat_1to1_ips(
             mapping.ips.clone(),
             into_webrtc_ice_candidate(mapping.ice_candidate_type),
         );
     }
     api_settings.set_network_types(
-        server_config
-            .webrtc_network_types
+        config
+            .webrtc
+            .network_types
             .iter()
             .copied()
             .map(into_webrtc_network_type)
