@@ -19,6 +19,8 @@ tokio = { workspace = true, features = [
     "sync",
 ] }
 
+pem = { workspace = true, features = ["serde"] }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 

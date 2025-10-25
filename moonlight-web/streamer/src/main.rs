@@ -12,13 +12,11 @@ use moonlight_common::{
     MoonlightError,
     high::{HostError, PairInfo},
     network::reqwest::ReqwestMoonlightHost,
-    pair::ClientAuth,
     stream::{
         MoonlightInstance, MoonlightStream,
         bindings::{ColorRange, HostFeatures},
     },
 };
-use pem::Pem;
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use tokio::{
     io::{stdin, stdout},
@@ -111,9 +109,9 @@ async fn main() {
         host_address,
         host_http_port,
         host_unique_id,
-        client_private_key_pem,
-        client_certificate_pem,
-        server_certificate_pem,
+        client_private_key,
+        client_certificate,
+        server_certificate,
         app_id,
     ) = loop {
         match ipc_receiver.recv().await {
@@ -123,9 +121,9 @@ async fn main() {
                 host_address,
                 host_http_port,
                 host_unique_id,
-                client_private_key_pem,
-                client_certificate_pem,
-                server_certificate_pem,
+                client_private_key: client_private_key,
+                client_certificate: client_certificate,
+                server_certificate: server_certificate,
                 app_id,
             }) => {
                 debug!(
@@ -142,9 +140,9 @@ async fn main() {
                     host_address,
                     host_http_port,
                     host_unique_id,
-                    client_private_key_pem,
-                    client_certificate_pem,
-                    server_certificate_pem,
+                    client_private_key,
+                    client_certificate,
+                    server_certificate,
                     app_id,
                 );
             }
@@ -167,12 +165,9 @@ async fn main() {
         .expect("failed to create host");
 
     host.set_pair_info(PairInfo {
-        client_certificate: Pem::from_str(&client_certificate_pem)
-            .expect("failed to deserialize pem into pem struct"),
-        client_private_key: Pem::from_str(&client_private_key_pem)
-            .expect("failed to deserialize pem into pem struct"),
-        server_certificate: Pem::from_str(&server_certificate_pem)
-            .expect("failed to deserialize pem into pem struct"),
+        client_certificate,
+        client_private_key,
+        server_certificate,
     })
     .await
     .expect("failed to set pairing info");
@@ -584,7 +579,7 @@ impl StreamConnection {
                 }
             }
             // This should already be done
-            StreamClientMessage::AuthenticateAndInit { .. } => {}
+            StreamClientMessage::Init { .. } => {}
         }
     }
 

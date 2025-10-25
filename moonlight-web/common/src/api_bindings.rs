@@ -265,8 +265,7 @@ pub enum StreamSignalingMessage {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamClientMessage {
-    AuthenticateAndInit {
-        credentials: Option<String>,
+    Init {
         host_id: u32,
         app_id: u32,
         bitrate: u32,

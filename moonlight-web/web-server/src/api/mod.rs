@@ -39,7 +39,7 @@ use common::api_bindings::{
 
 pub mod admin;
 pub mod auth;
-// mod stream;
+pub mod stream;
 
 // TODO: use response streaming to have longer timeouts on each individual host with json new line format
 #[get("/hosts")]
@@ -246,24 +246,33 @@ async fn get_app_image(
 }
 
 pub fn api_service() -> impl HttpServiceFactory {
-    web::scope("/api").service(services![
-        auth::login,
-        auth::logout,
-        auth::authenticate,
-        list_hosts,
-        get_host,
-        put_host,
-        wake_host,
-        delete_host,
-        pair_host,
-        get_apps,
-        get_app_image,
-        // -- Stream
-        // stream::start_host,
-        // stream::cancel_host,
-        // -- Admin
-        add_user,
-    ])
+    web::scope("/api")
+        .service(services![
+            // -- Auth
+            auth::login,
+            auth::logout,
+            auth::authenticate
+        ])
+        .service(services![
+            // -- Host
+            list_hosts,
+            get_host,
+            put_host,
+            wake_host,
+            delete_host,
+            pair_host,
+            get_apps,
+            get_app_image,
+        ])
+        .service(services![
+            // -- Stream
+            stream::start_host,
+            stream::cancel_host,
+        ])
+        .service(
+            // -- Admin
+            add_user,
+        )
 }
 
 // async fn into_undetailed_host(

@@ -4,26 +4,23 @@ use std::{
 };
 
 use actix_web::web::Bytes;
-use common::api_bindings::{DetailedHost, HostState, PairStatus, UndetailedHost};
+use common::api_bindings::{self, DetailedHost, HostState, PairStatus, UndetailedHost};
 use log::{error, warn};
 use moonlight_common::{
-    PairPin, ServerState, ServerVersion,
-    high::{HostError, MoonlightHost, PairInfo, broadcast_magic_packet},
+    PairPin, ServerState,
+    high::broadcast_magic_packet,
     network::{
-        ApiError, ClientAppBoxArtRequest, ClientInfo, HostInfo, host_app_box_art, host_app_list,
-        host_info,
-        request_client::RequestClient,
-        reqwest::{ReqwestApiError, ReqwestError, ReqwestMoonlightHost},
+        self, ApiError, ClientAppBoxArtRequest, ClientInfo, HostInfo, host_app_box_art,
+        host_app_list, host_info, request_client::RequestClient, reqwest::ReqwestError,
     },
-    pair::{PairError, PairSuccess, generate_new_client, host_pair},
+    pair::{PairSuccess, generate_new_client, host_pair},
 };
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::app::{
     AppError, AppInner, AppRef, MoonlightClient,
     storage::{StorageHost, StorageHostModify, StorageHostPairInfo},
-    user::{Admin, AuthenticatedUser, Role, UserId},
+    user::{AuthenticatedUser, Role, UserId},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -47,6 +44,25 @@ pub struct App {
     pub id: AppId,
     pub title: String,
     pub is_hdr_supported: bool,
+}
+
+impl From<network::App> for App {
+    fn from(value: network::App) -> Self {
+        Self {
+            id: AppId(value.id),
+            title: value.title,
+            is_hdr_supported: value.is_hdr_supported,
+        }
+    }
+}
+impl From<App> for api_bindings::App {
+    fn from(value: App) -> Self {
+        Self {
+            app_id: value.id.0,
+            title: value.title,
+            is_hdr_supported: value.is_hdr_supported,
+        }
+    }
 }
 
 impl Host {
@@ -126,6 +142,22 @@ impl Host {
 
     async fn storage_host(&self, app: &AppInner) -> Result<StorageHost, AppError> {
         app.storage.get_host(self.id).await
+    }
+
+    pub async fn address_port(&self) -> Result<(String, u16), AppError> {
+        let app = self.app.access()?;
+
+        let host = app.storage.get_host(self.id).await?;
+
+        Ok((host.address, host.http_port))
+    }
+
+    pub async fn pair_info(&self) -> Result<StorageHostPairInfo, AppError> {
+        let app = self.app.access()?;
+
+        let host = app.storage.get_host(self.id).await?;
+
+        host.pair_info.ok_or(AppError::HostNotPaired)
     }
 
     fn is_offline<T>(
@@ -431,11 +463,7 @@ impl Host {
                 let apps = apps
                     .apps
                     .into_iter()
-                    .map(|app| App {
-                        id: AppId(app.id),
-                        title: app.title,
-                        is_hdr_supported: app.is_hdr_supported,
-                    })
+                    .map(|app| App::from(app))
                     .collect::<Vec<_>>();
 
                 Ok(apps)

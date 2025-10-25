@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use log::warn;
+use pem::Pem;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{
     io::{
@@ -18,7 +19,7 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ServerIpcConfig {
+pub struct StreamerConfig {
     pub webrtc: WebRtcConfig,
 }
 
@@ -26,14 +27,14 @@ pub struct ServerIpcConfig {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerIpcMessage {
     Init {
-        config: ServerIpcConfig,
+        config: StreamerConfig,
         stream_settings: StreamSettings,
         host_address: String,
         host_http_port: u16,
         host_unique_id: Option<String>,
-        client_private_key_pem: String,
-        client_certificate_pem: String,
-        server_certificate_pem: String,
+        client_private_key: Pem,
+        client_certificate: Pem,
+        server_certificate: Pem,
         app_id: u32,
     },
     WebSocket(StreamClientMessage),

@@ -77,8 +77,7 @@ export class Stream {
         const fps = this.settings.fps
 
         this.sendWsMessage({
-            AuthenticateAndInit: {
-                credentials: this.api.bearer,
+            Init: {
                 host_id: this.hostId,
                 app_id: this.appId,
                 bitrate: this.settings.bitrate,
