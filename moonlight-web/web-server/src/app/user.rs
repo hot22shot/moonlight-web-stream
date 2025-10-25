@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::app::{
     AppError, AppRef, MoonlightClient,
-    auth::SessionToken,
+    auth::{SessionToken, UserAuth},
     host::{Host, HostId},
     storage::{
         StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
@@ -33,8 +33,6 @@ impl From<common::api_bindings::UserRole> for Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(pub u32);
 
-// TODO: make this an authenticated user and also have a unauthenticated user for everyone who shouldn't have access to that user
-// TODO: maybe cache?
 pub struct User {
     pub(super) app: AppRef,
     pub(super) id: UserId,
@@ -44,7 +42,22 @@ impl User {
     pub fn id(&self) -> UserId {
         self.id
     }
+}
 
+// TODO: maybe cache?
+pub struct AuthenticatedUser {
+    pub(super) inner: User,
+}
+
+impl Deref for AuthenticatedUser {
+    type Target = User;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl AuthenticatedUser {
     pub async fn verify_password(&self, password: &str) -> Result<bool, AppError> {
         let app = self.app.access()?;
 
@@ -56,18 +69,18 @@ impl User {
     pub async fn new_session(&self) -> Result<SessionToken, AppError> {
         let app = self.app.access()?;
 
-        let token = app.storage.create_session_token(self.id()).await?;
+        let token = app.storage.create_session_token(self.id).await?;
 
         Ok(token)
     }
 
     // TODO: how to authenticate this?
-    pub async fn modify(&self, user_id: UserId, modify: StorageUserModify) -> Result<(), AppError> {
+    pub async fn modify(&self, _: Admin, modify: StorageUserModify) -> Result<(), AppError> {
         let app = self.app.access()?;
 
         // TODO: clear all hosts from the loaded hosts if unique id changed
 
-        app.storage.modify_user(user_id, modify).await?;
+        app.storage.modify_user(self.id, modify).await?;
 
         Ok(())
     }
@@ -176,10 +189,10 @@ impl User {
     }
 }
 
-pub struct Admin(User);
+pub struct Admin(AuthenticatedUser);
 
 impl Admin {
-    pub async fn try_from(user: User) -> Result<Self, AppError> {
+    pub async fn try_from(user: AuthenticatedUser) -> Result<Self, AppError> {
         match user.role().await? {
             Role::Admin => Ok(Self(user)),
             _ => Err(AppError::Forbidden),
@@ -188,7 +201,7 @@ impl Admin {
 }
 
 impl Deref for Admin {
-    type Target = User;
+    type Target = AuthenticatedUser;
 
     fn deref(&self) -> &Self::Target {
         &self.0

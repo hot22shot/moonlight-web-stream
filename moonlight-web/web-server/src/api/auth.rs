@@ -13,7 +13,7 @@ use futures::future::{Ready, ready};
 use crate::app::{
     App, AppError,
     auth::{SessionToken, UserAuth},
-    user::{Admin, User},
+    user::{Admin, AuthenticatedUser},
 };
 
 pub const COOKIE_SESSION_TOKEN_NAME: &str = "mlSession";
@@ -37,7 +37,8 @@ fn extract_user_auth(req: &HttpRequest) -> Result<UserAuth, AppError> {
 
         let token_str = bearer
             .strip_prefix("Bearer")
-            .ok_or(AppError::AuthorizationNotBearer)?;
+            .ok_or(AppError::AuthorizationNotBearer)?
+            .trim();
 
         let token = SessionToken::decode(token_str)?;
 
@@ -52,7 +53,7 @@ fn extract_user_auth(req: &HttpRequest) -> Result<UserAuth, AppError> {
     }
 }
 
-impl FromRequest for User {
+impl FromRequest for AuthenticatedUser {
     type Error = AppError;
 
     type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
@@ -69,7 +70,7 @@ impl FromRequest for User {
         Box::pin(async move {
             let auth = auth_future.await?;
 
-            let user = app.user(auth).await?;
+            let user = app.user_by_auth(auth).await?;
 
             Ok(user)
         })
@@ -82,7 +83,7 @@ impl FromRequest for Admin {
     type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
 
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
-        let future = User::from_request(req, payload);
+        let future = AuthenticatedUser::from_request(req, payload);
 
         Box::pin(async move {
             let user = future.await?;
@@ -140,6 +141,6 @@ async fn logout(app: Data<App>, auth: UserAuth, req: HttpRequest) -> Result<Http
 }
 
 #[get("/authenticate")]
-async fn authenticate(_user: User) -> HttpResponse {
+async fn authenticate(_user: AuthenticatedUser) -> HttpResponse {
     HttpResponse::Ok().finish()
 }

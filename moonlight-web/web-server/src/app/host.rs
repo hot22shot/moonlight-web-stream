@@ -23,7 +23,7 @@ use uuid::Uuid;
 use crate::app::{
     AppError, AppInner, AppRef, MoonlightClient,
     storage::{StorageHost, StorageHostModify, StorageHostPairInfo},
-    user::{Admin, Role, User, UserId},
+    user::{Admin, AuthenticatedUser, Role, UserId},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -74,7 +74,7 @@ impl Host {
     async fn use_client<R>(
         &self,
         app: &AppInner,
-        user: &mut User,
+        user: &mut AuthenticatedUser,
         pairing: bool,
         // app, https_capable, client, host, port, client_info
         f: impl AsyncFnOnce(bool, &mut MoonlightClient, &str, u16, ClientInfo) -> R,
@@ -146,7 +146,7 @@ impl Host {
     async fn host_info(
         &self,
         app: &AppInner,
-        user: &mut User,
+        user: &mut AuthenticatedUser,
     ) -> Result<Option<HostInfo>, AppError> {
         // TODO: make this mut and store results as cache
 
@@ -184,7 +184,10 @@ impl Host {
         .await?
     }
 
-    pub async fn undetailed_host(&self, user: &mut User) -> Result<UndetailedHost, AppError> {
+    pub async fn undetailed_host(
+        &self,
+        user: &mut AuthenticatedUser,
+    ) -> Result<UndetailedHost, AppError> {
         let app = self.app.access()?;
 
         match self.host_info(&app, user).await {
@@ -227,7 +230,10 @@ impl Host {
             Err(err) => Err(err),
         }
     }
-    pub async fn detailed_host(&self, user: &mut User) -> Result<DetailedHost, AppError> {
+    pub async fn detailed_host(
+        &self,
+        user: &mut AuthenticatedUser,
+    ) -> Result<DetailedHost, AppError> {
         let app = self.app.access()?;
         let host = self.storage_host(&app).await?;
 
@@ -294,7 +300,7 @@ impl Host {
         }
     }
 
-    pub async fn is_paired(&self, user: &mut User) -> Result<PairStatus, AppError> {
+    pub async fn is_paired(&self, user: &mut AuthenticatedUser) -> Result<PairStatus, AppError> {
         let app = self.app.access()?;
 
         match self.host_info(&app, user).await? {
@@ -303,7 +309,7 @@ impl Host {
         }
     }
 
-    pub async fn pair(&self, user: &mut User, pin: PairPin) -> Result<(), AppError> {
+    pub async fn pair(&self, user: &mut AuthenticatedUser, pin: PairPin) -> Result<(), AppError> {
         let app = self.app.access()?;
 
         // TODO: maybe generalize this in some private func?
@@ -398,7 +404,7 @@ impl Host {
         }
     }
 
-    pub async fn list_apps(&self, user: &mut User) -> Result<Vec<App>, AppError> {
+    pub async fn list_apps(&self, user: &mut AuthenticatedUser) -> Result<Vec<App>, AppError> {
         let app = self.app.access()?;
 
         let info = self
@@ -437,7 +443,11 @@ impl Host {
         )
         .await?
     }
-    pub async fn app_image(&self, user: &mut User, app_id: AppId) -> Result<Bytes, AppError> {
+    pub async fn app_image(
+        &self,
+        user: &mut AuthenticatedUser,
+        app_id: AppId,
+    ) -> Result<Bytes, AppError> {
         let app = self.app.access()?;
 
         let info = self
@@ -468,7 +478,7 @@ impl Host {
         .await?
     }
 
-    pub async fn delete(self, user: &mut User) -> Result<(), AppError> {
+    pub async fn delete(self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
         let app = self.app.access()?;
 
         let host = app.storage.get_host(self.id).await?;

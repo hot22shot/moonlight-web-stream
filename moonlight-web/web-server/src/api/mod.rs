@@ -27,7 +27,7 @@ use crate::{
         App, AppError,
         auth::UserAuth,
         host::{AppId, Host, HostId},
-        user::User,
+        user::AuthenticatedUser,
     },
 };
 use common::api_bindings::{
@@ -43,7 +43,7 @@ pub mod auth;
 
 // TODO: use response streaming to have longer timeouts on each individual host with json new line format
 #[get("/hosts")]
-async fn list_hosts(mut user: User) -> Result<Json<GetHostsResponse>, Error> {
+async fn list_hosts(mut user: AuthenticatedUser) -> Result<Json<GetHostsResponse>, Error> {
     let hosts = user.hosts().await?;
 
     let mut undetailed_hosts = Vec::with_capacity(hosts.len());
@@ -67,7 +67,7 @@ async fn list_hosts(mut user: User) -> Result<Json<GetHostsResponse>, Error> {
 
 #[get("/host")]
 async fn get_host(
-    mut user: User,
+    mut user: AuthenticatedUser,
     Query(query): Query<GetHostQuery>,
 ) -> Result<Json<GetHostResponse>, Error> {
     let host_id = HostId(query.host_id);
@@ -82,7 +82,7 @@ async fn get_host(
 #[put("/host")]
 async fn put_host(
     app: Data<App>,
-    mut user: User,
+    mut user: AuthenticatedUser,
     Json(query): Json<PutHostRequest>,
 ) -> Result<Json<PutHostResponse>, Error> {
     let host = user
@@ -101,7 +101,7 @@ async fn put_host(
 
 #[delete("/host")]
 async fn delete_host(
-    mut user: User,
+    mut user: AuthenticatedUser,
     Query(query): Query<DeleteHostQuery>,
 ) -> Result<HttpResponse, AppError> {
     let host_id = HostId(query.host_id);
@@ -113,7 +113,7 @@ async fn delete_host(
 
 #[post("/pair")]
 async fn pair_host(
-    mut user: User,
+    mut user: AuthenticatedUser,
     Json(request): Json<PostPairRequest>,
 ) -> Result<HttpResponse, AppError> {
     let host_id = HostId(request.host_id);
@@ -195,7 +195,7 @@ async fn pair_host(
 
 #[post("/host/wake")]
 async fn wake_host(
-    user: User,
+    user: AuthenticatedUser,
     Json(request): Json<PostWakeUpRequest>,
 ) -> Result<HttpResponse, AppError> {
     let host_id = HostId(request.host_id);
@@ -209,7 +209,7 @@ async fn wake_host(
 
 #[get("/apps")]
 async fn get_apps(
-    mut user: User,
+    mut user: AuthenticatedUser,
     Query(query): Query<GetAppsQuery>,
 ) -> Result<Json<GetAppsResponse>, AppError> {
     let host_id = HostId(query.host_id);
@@ -232,11 +232,11 @@ async fn get_apps(
 
 #[get("/app/image")]
 async fn get_app_image(
-    mut user: User,
+    mut user: AuthenticatedUser,
     Query(query): Query<GetAppImageQuery>,
 ) -> Result<Bytes, AppError> {
     let host_id = HostId(query.host_id);
-    let app_id = AppId(query.host_id);
+    let app_id = AppId(query.app_id);
 
     let host = user.host(host_id).await?;
 

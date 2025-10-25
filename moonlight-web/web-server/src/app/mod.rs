@@ -23,7 +23,7 @@ use crate::app::{
     auth::{SessionToken, UserAuth},
     host::HostId,
     storage::{Storage, StorageUserAdd, create_storage},
-    user::{Admin, User, UserId},
+    user::{Admin, AuthenticatedUser, User, UserId},
 };
 
 pub mod auth;
@@ -136,21 +136,30 @@ impl App {
     }
 
     /// admin: The admin that tries to do this action
-    pub async fn add_user(&self, _: &Admin, user: StorageUserAdd) -> Result<User, AppError> {
+    pub async fn add_user(
+        &self,
+        _: &Admin,
+        user: StorageUserAdd,
+    ) -> Result<AuthenticatedUser, AppError> {
         self.add_user_no_auth(user).await
     }
 
-    pub async fn add_user_no_auth(&self, user: StorageUserAdd) -> Result<User, AppError> {
+    pub async fn add_user_no_auth(
+        &self,
+        user: StorageUserAdd,
+    ) -> Result<AuthenticatedUser, AppError> {
         // TODO: use storage user
         let user = self.inner.storage.add_user(user).await?;
 
-        Ok(User {
-            app: self.new_ref(),
-            id: user.id,
+        Ok(AuthenticatedUser {
+            inner: User {
+                app: self.new_ref(),
+                id: user.id,
+            },
         })
     }
 
-    pub async fn user(&self, auth: UserAuth) -> Result<User, AppError> {
+    pub async fn user_by_auth(&self, auth: UserAuth) -> Result<AuthenticatedUser, AppError> {
         match auth {
             UserAuth::None => {
                 // TODO: allow a default user to exist
@@ -174,7 +183,7 @@ impl App {
         &self,
         username: &str,
         password: &str,
-    ) -> Result<User, AppError> {
+    ) -> Result<AuthenticatedUser, AppError> {
         let user = self.user_by_name_no_auth(username).await?;
 
         if !user.verify_password(password).await? {
@@ -184,25 +193,25 @@ impl App {
         Ok(user)
     }
 
-    pub async fn user_no_auth(&self, id: UserId) -> Result<User, AppError> {
-        let user = self.inner.storage.get_user(id).await?;
-
-        Ok(User {
-            app: self.new_ref(),
-            id: user.id,
-        })
+    pub async fn user_no_auth(&self, user: User) -> Result<AuthenticatedUser, AppError> {
+        Ok(AuthenticatedUser { inner: user })
     }
-    pub async fn user_by_name_no_auth(&self, name: &str) -> Result<User, AppError> {
+    pub async fn user_by_name_no_auth(&self, name: &str) -> Result<AuthenticatedUser, AppError> {
         let (user_id, user) = self.inner.storage.get_user_by_name(name).await?;
 
         // TODO: use optional user field
 
-        Ok(User {
-            app: self.new_ref(),
-            id: user_id,
+        Ok(AuthenticatedUser {
+            inner: User {
+                app: self.new_ref(),
+                id: user_id,
+            },
         })
     }
-    pub async fn user_by_session(&self, session: SessionToken) -> Result<User, AppError> {
+    pub async fn user_by_session(
+        &self,
+        session: SessionToken,
+    ) -> Result<AuthenticatedUser, AppError> {
         let (user_id, user) = self
             .inner
             .storage
@@ -211,9 +220,11 @@ impl App {
 
         // TODO: use optional user field
 
-        Ok(User {
-            app: self.new_ref(),
-            id: user_id,
+        Ok(AuthenticatedUser {
+            inner: User {
+                app: self.new_ref(),
+                id: user_id,
+            },
         })
     }
 
