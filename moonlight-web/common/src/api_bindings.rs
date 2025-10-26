@@ -220,6 +220,21 @@ pub enum UserRole {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub struct GetUserQuery {
+    pub name: Option<String>,
+    pub user_id: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct DetailedUser {
+    pub id: u32,
+    pub name: String,
+    pub role: UserRole,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub struct PutUserRequest {
     pub name: String,
     pub password: String,

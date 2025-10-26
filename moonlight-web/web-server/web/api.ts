@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -63,6 +63,15 @@ export function isDetailedHost(host: UndetailedHost | DetailedHost): host is Det
 }
 
 function buildRequest(api: Api, endpoint: string, method: string, init?: { response?: "json" | "ignore" } & ApiFetchInit): [string, RequestInit] {
+    // Remove all null values from query, these cause problems in rust
+    if (init?.query != null) {
+        for (const key in init?.query) {
+            if (init.query[key] === null) {
+                delete init.query[key]
+            }
+        }
+    }
+
     const query = new URLSearchParams(init?.query)
     const queryString = query.size > 0 ? `?${query.toString()}` : "";
     const url = `${api.host_url}${endpoint}${queryString}`
@@ -202,6 +211,12 @@ export async function apiAuthenticate(api: Api): Promise<boolean> {
     }
 
     return response != null
+}
+
+export async function apiGetUser(api: Api, query: GetUserQuery): Promise<DetailedUser> {
+    const response = await fetchApi(api, "/user", "get", { query })
+
+    return response as DetailedUser
 }
 
 export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {

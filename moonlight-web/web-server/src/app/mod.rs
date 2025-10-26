@@ -13,7 +13,7 @@ use thiserror::Error;
 use crate::app::{
     auth::{SessionToken, UserAuth},
     storage::{Storage, StorageUserAdd, create_storage},
-    user::{Admin, AuthenticatedUser, User},
+    user::{Admin, AuthenticatedUser, User, UserId},
 };
 
 pub mod auth;
@@ -36,20 +36,24 @@ pub enum AppError {
     HostNotPaired,
     #[error("the host was offline, but the action requires that the host is online")]
     HostOffline,
-    // TODO: rename the credentials error
+    // -- Unauthorized
     #[error("the credentials don't exists")]
     CredentialsWrong,
     #[error("the host was not found")]
     SessionTokenNotFound,
-    // CredentialsWrong and SessionToken not found describe this more exact
     #[error("the action is not allowed because the user is not authorized, 401")]
     Unauthorized,
+    // --
     #[error("the action is not allowed with the current privileges, 403")]
     Forbidden,
+    // -- Bad Request
     #[error("the authorization header is not a bearer")]
     AuthorizationNotBearer,
     #[error("the authorization header is not a bearer")]
     BearerMalformed,
+    #[error("the authorization header is not a bearer")]
+    BadRequest,
+    // --
     #[error("openssl error occured")]
     OpenSSL(#[from] ErrorStack),
     #[error("hex error occured")]
@@ -79,6 +83,7 @@ impl ResponseError for AppError {
             Self::Hex(_) => StatusCode::BAD_REQUEST,
             Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
             Self::BearerMalformed => StatusCode::BAD_REQUEST,
+            Self::BadRequest => StatusCode::BAD_REQUEST,
             Self::MoonlightApi(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -175,8 +180,16 @@ impl App {
         }
     }
 
-    pub async fn user_no_auth(&self, user: User) -> Result<AuthenticatedUser, AppError> {
-        Ok(AuthenticatedUser { inner: user })
+    pub async fn user_by_id(&self, user_id: UserId) -> Result<User, AppError> {
+        let user = self.inner.storage.get_user(user_id).await?;
+
+        // TODO: use optional user field
+
+        Ok(User {
+            app: self.new_ref(),
+            id: user_id,
+            cache_storage: Some(user),
+        })
     }
     pub async fn user_by_name(&self, name: &str) -> Result<User, AppError> {
         let (user_id, user) = self.inner.storage.get_user_by_name(name).await?;

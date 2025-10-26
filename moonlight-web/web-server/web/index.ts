@@ -1,4 +1,4 @@
-import { Api, getApi, apiPutHost, FetchError, apiLogout } from "./api.js";
+import { Api, getApi, apiPutHost, FetchError, apiLogout, apiGetUser } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -7,9 +7,10 @@ import { showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
-import { App } from "./api_bindings.js";
+import { App, DetailedUser } from "./api_bindings.js";
 import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
 import { setTouchContextMenuEnabled } from "./ios_right_click.js";
+import { buildUrl } from "./config_.js";
 
 async function startApp() {
     setTouchContextMenuEnabled(true)
@@ -43,6 +44,7 @@ function pushAppState(state: AppState) {
 
 class MainApp implements Component {
     private api: Api
+    private user: DetailedUser | null = null
 
     private divElement = document.createElement("div")
 
@@ -53,6 +55,7 @@ class MainApp implements Component {
 
     private topLineActions = document.createElement("div")
     private logoutButton = document.createElement("button")
+    private adminButton = document.createElement("button")
 
     // Actions
     private actionElement = document.createElement("div")
@@ -88,7 +91,10 @@ class MainApp implements Component {
         this.logoutButton.classList.add("logout-button")
         this.topLineActions.appendChild(this.logoutButton)
 
-        // TODO: admin panel?
+        this.adminButton.addEventListener("click", async () => {
+            window.location.href = buildUrl("/admin.html")
+        })
+        this.adminButton.classList.add("admin-button")
 
         // Actions
         this.actionElement.classList.add("actions-list")
@@ -252,6 +258,8 @@ class MainApp implements Component {
     }
 
     async forceFetch() {
+        const promiseUser = this.refreshUserRole()
+
         await Promise.all([
             this.hostList.forceFetch(),
             this.gameList?.forceFetch(true)
@@ -264,7 +272,25 @@ class MainApp implements Component {
             this.setCurrentDisplay("hosts")
         }
 
-        await this.refreshGameListActiveGame()
+        await Promise.all([
+            promiseUser,
+            this.refreshGameListActiveGame()
+        ])
+    }
+    private async refreshUserRole() {
+        this.user = await apiGetUser(this.api, {
+            // This will get it for the current user
+            name: null,
+            user_id: null,
+        })
+
+        const hasAdminButton = this.topLineActions.contains(this.adminButton)
+        if ((this.user?.role == "Admin") != hasAdminButton) {
+            this.topLineActions.appendChild(this.adminButton)
+        }
+        if ((this.user?.role != "Admin") != hasAdminButton) {
+            this.topLineActions.removeChild(this.adminButton)
+        }
     }
     private async refreshGameListActiveGame() {
         const gameList = this.gameList

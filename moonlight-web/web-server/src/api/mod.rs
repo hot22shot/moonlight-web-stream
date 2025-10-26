@@ -13,18 +13,53 @@ use crate::{
     app::{
         App, AppError,
         host::{AppId, HostId},
-        user::AuthenticatedUser,
+        user::{AuthenticatedUser, User, UserId},
     },
 };
 use common::api_bindings::{
-    self, DeleteHostQuery, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
-    GetHostResponse, GetHostsResponse, PairStatus, PostPairRequest, PostPairResponse1,
-    PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse,
+    self, DeleteHostQuery, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
+    GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, PairStatus, PostPairRequest,
+    PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse,
 };
 
 pub mod admin;
 pub mod auth;
 pub mod stream;
+
+#[get("/user")]
+async fn get_user(
+    app: Data<App>,
+    mut user: AuthenticatedUser,
+    Query(query): Query<GetUserQuery>,
+) -> Result<Json<DetailedUser>, Error> {
+    async fn user_into_response(user: &mut User) -> Result<Json<DetailedUser>, Error> {
+        let name = user.name().await?;
+        let role = user.role().await?;
+
+        Ok(Json(DetailedUser {
+            id: user.id().0,
+            name,
+            role: role.into(),
+        }))
+    }
+
+    match (query.name, query.user_id) {
+        (None, None) => user_into_response(&mut user).await,
+        (None, Some(user_id)) => {
+            let user_id = UserId(user_id);
+
+            let mut user = app.user_by_id(user_id).await?;
+
+            user_into_response(&mut user).await
+        }
+        (Some(name), None) => {
+            let mut user = app.user_by_name(&name).await?;
+
+            user_into_response(&mut user).await
+        }
+        (Some(_), Some(_)) => Err(AppError::BadRequest.into()),
+    }
+}
 
 // TODO: use response streaming to have longer timeouts on each individual host with json new line format
 #[get("/hosts")]
@@ -241,6 +276,7 @@ pub fn api_service() -> impl HttpServiceFactory {
         ])
         .service(services![
             // -- Host
+            get_user,
             list_hosts,
             get_host,
             put_host,

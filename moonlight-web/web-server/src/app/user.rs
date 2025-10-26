@@ -1,5 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
+use common::api_bindings::{self};
 use moonlight_common::network::{ApiError, ClientInfo, host_info, request_client::RequestClient};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -19,7 +20,16 @@ pub enum Role {
     Admin,
 }
 
-impl From<common::api_bindings::UserRole> for Role {
+impl From<Role> for api_bindings::UserRole {
+    fn from(value: Role) -> Self {
+        match value {
+            Role::User => Self::User,
+            Role::Admin => Self::Admin,
+        }
+    }
+}
+
+impl From<api_bindings::UserRole> for Role {
     fn from(value: common::api_bindings::UserRole) -> Self {
         use common::api_bindings::UserRole;
 
@@ -58,6 +68,17 @@ impl User {
         Ok(user)
     }
 
+    pub async fn name(&mut self) -> Result<String, AppError> {
+        let storage = self.storage_user().await?;
+
+        Ok(storage.name)
+    }
+    pub async fn role(&mut self) -> Result<Role, AppError> {
+        let storage = self.storage_user().await?;
+
+        Ok(storage.role)
+    }
+
     pub async fn authenticate(mut self, auth: &UserAuth) -> Result<AuthenticatedUser, AppError> {
         match auth {
             UserAuth::UserPassword { username, password } => {
@@ -71,7 +92,7 @@ impl User {
                 if storage.password.verify(password)? {
                     Ok(AuthenticatedUser { inner: self })
                 } else {
-                    Err(AppError::Unauthorized)
+                    Err(AppError::CredentialsWrong)
                 }
             }
             UserAuth::Session(session) => {
@@ -80,7 +101,7 @@ impl User {
                 let (id, user) = app.storage.get_user_by_session_token(*session).await?;
 
                 if self.id != id {
-                    return Err(AppError::Unauthorized);
+                    return Err(AppError::SessionTokenNotFound);
                 }
 
                 self.cache_storage = self.cache_storage.or(user);
@@ -127,12 +148,6 @@ impl AuthenticatedUser {
         app.storage.modify_user(self.id, modify).await?;
 
         Ok(())
-    }
-
-    pub async fn role(&mut self) -> Result<Role, AppError> {
-        let user = self.storage_user().await?;
-
-        Ok(user.role)
     }
 
     pub async fn host_unique_id(&mut self) -> Result<String, AppError> {

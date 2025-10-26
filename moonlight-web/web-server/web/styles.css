@@ -400,9 +400,22 @@ input[type=number] {
     justify-content: right;
 }
 
-.logout-button {
+.top-line button {
     background-color: red;
+}
+
+.logout-button {
     background-image: url("resources/new/logout-svgrepo-com.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
+.admin-button {
+    /* TODO */
+    background-image: url("resources/new/admin-svgrepo-com.svg");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 60px;
