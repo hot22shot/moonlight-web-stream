@@ -1,8 +1,8 @@
 use actix_web::{
-    HttpResponse, get, put,
+    get, put,
     web::{Data, Json},
 };
-use common::api_bindings::{self, GetUsersResponse, PutUserRequest};
+use common::api_bindings::{DetailedUser, GetUsersResponse, PutUserRequest};
 use futures::future::join_all;
 use log::warn;
 
@@ -13,8 +13,8 @@ pub async fn add_user(
     app: Data<App>,
     admin: Admin,
     Json(request): Json<PutUserRequest>,
-) -> Result<HttpResponse, AppError> {
-    let _user = app
+) -> Result<Json<DetailedUser>, AppError> {
+    let mut user = app
         .add_user(
             &admin,
             StorageUserAdd {
@@ -25,7 +25,9 @@ pub async fn add_user(
         )
         .await?;
 
-    Ok(HttpResponse::Ok().finish())
+    let detailed_user = user.detailed_user().await?;
+
+    Ok(Json(detailed_user))
 }
 
 #[get("/users")]

@@ -189,7 +189,7 @@ export class SelectComponent extends ElementWithLabel {
             inputElement.value = ""
         } else {
             const selectElement = (this.optionRoot as HTMLSelectElement)
-            selectElement.value = ""
+            selectElement.value = this.preSelectedOption
         }
     }
 

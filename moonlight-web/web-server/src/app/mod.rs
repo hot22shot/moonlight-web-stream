@@ -151,6 +151,7 @@ impl App {
         &self,
         user: StorageUserAdd,
     ) -> Result<AuthenticatedUser, AppError> {
+        // TODO: prevent empty name / password
         let user = self.inner.storage.add_user(user).await?;
 
         Ok(AuthenticatedUser {
