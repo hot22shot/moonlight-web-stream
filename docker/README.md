@@ -7,7 +7,7 @@
 ```json
 {
     "webrtc_nat_1to1": {
-        "ice_candidate_type": "srflx",
+        "ice_candidate_type": "host",
         "ips": [
             "127.0.0.1"
         ]
@@ -69,7 +69,7 @@ TURN_PASS=myrandompass
     }
   ],
   "webrtc_nat_1to1": {
-      "ice_candidate_type": "srflx",
+      "ice_candidate_type": "host",
       "ips": [
           "127.0.0.1"
       ]
