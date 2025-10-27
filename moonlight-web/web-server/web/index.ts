@@ -285,10 +285,10 @@ class MainApp implements Component {
         })
 
         const hasAdminButton = this.topLineActions.contains(this.adminButton)
-        if ((this.user?.role == "Admin") != hasAdminButton) {
+        if ((this.user.role == "Admin") && !hasAdminButton) {
             this.topLineActions.appendChild(this.adminButton)
         }
-        if ((this.user?.role != "Admin") != hasAdminButton) {
+        if (this.user.role != "Admin" && hasAdminButton) {
             this.topLineActions.removeChild(this.adminButton)
         }
     }
