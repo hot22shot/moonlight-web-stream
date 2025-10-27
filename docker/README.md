@@ -3,11 +3,14 @@
 
 1. Download [this folder](https://download-directory.github.io/?url=https%3A%2F%2Fgithub.com%2FMrCreativ3001%2Fmoonlight-web-stream%2Ftree%2Fmaster%2Fdocker)
 
-2. Change the [Nat 1 to 1 ips](https://github.com/MrCreativ3001/moonlight-web-stream?tab=readme-ov-file#webrtc-nat-1-to-1-ips) to the ip address of the device where you want to run the image on (this is required because docker is normally not able to see the ip of the device)
+2. Edit the [default-config.json](default-config.json) (or the config.json inside the moonlight-server volume)
+
+- Change the [Nat 1 to 1 ips](https://github.com/MrCreativ3001/moonlight-web-stream?tab=readme-ov-file#webrtc-nat-1-to-1-ips) to the ip address of the device where you want to run the image on (this is required because docker is normally not able to see the ip of the device)
+
 ```json
 {
     "webrtc_nat_1to1": {
-        "ice_candidate_type": "srflx",
+        "ice_candidate_type": "host",
         "ips": [
             "127.0.0.1"
         ]
@@ -69,7 +72,7 @@ TURN_PASS=myrandompass
     }
   ],
   "webrtc_nat_1to1": {
-      "ice_candidate_type": "srflx",
+      "ice_candidate_type": "host",
       "ips": [
           "127.0.0.1"
       ]
