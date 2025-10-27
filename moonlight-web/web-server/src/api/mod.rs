@@ -267,6 +267,8 @@ async fn get_app_image(
 }
 
 pub fn api_service() -> impl HttpServiceFactory {
+    // TODO: take a look at: https://docs.rs/actix-web/latest/actix_web/middleware/struct.Logger.html
+
     web::scope("/api")
         .service(services![
             // -- Auth

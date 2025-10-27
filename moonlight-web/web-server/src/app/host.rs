@@ -449,7 +449,8 @@ impl Host {
                         },
                         Err(err) => {
                             error!("Failed to make https request to host {this:?} after pairing completed: {err}");
-                            (None, None)},
+                            (None, None)
+                        },
                     };
 
                     Ok::<_, AppError>(StorageHostModify {
@@ -513,11 +514,7 @@ impl Host {
                 )
                 .await?;
 
-                let apps = apps
-                    .apps
-                    .into_iter()
-                    .map(|app| App::from(app))
-                    .collect::<Vec<_>>();
+                let apps = apps.apps.into_iter().map(App::from).collect::<Vec<_>>();
 
                 Ok(apps)
             },
@@ -538,27 +535,44 @@ impl Host {
             .await?
             .ok_or(AppError::HostOffline)?;
 
-        self.use_client(
-            &app,
-            user,
-            false,
-            async |_this, https_capable, client, host, _port, client_info| {
-                if !https_capable {
-                    return Err(AppError::HostNotPaired);
-                }
+        // TODO: how to reload app images?
+        let cache_key = (user.id(), self.id, app_id);
+        {
+            let app_images = app.app_image_cache.read().await;
+            if let Some(app_image) = app_images.get(&cache_key) {
+                return Ok(app_image.clone());
+            }
+        }
 
-                let image = host_app_box_art(
-                    client,
-                    &Self::build_hostport(host, info.https_port),
-                    client_info,
-                    ClientAppBoxArtRequest { app_id: app_id.0 },
-                )
-                .await?;
+        let app_image = self
+            .use_client(
+                &app,
+                user,
+                false,
+                async |_this, https_capable, client, host, _port, client_info| {
+                    if !https_capable {
+                        return Err(AppError::HostNotPaired);
+                    }
 
-                Ok(image)
-            },
-        )
-        .await?
+                    let image = host_app_box_art(
+                        client,
+                        &Self::build_hostport(host, info.https_port),
+                        client_info,
+                        ClientAppBoxArtRequest { app_id: app_id.0 },
+                    )
+                    .await?;
+
+                    Ok(image)
+                },
+            )
+            .await??;
+
+        {
+            let mut app_images = app.app_image_cache.write().await;
+            app_images.insert(cache_key, app_image.clone());
+        }
+
+        Ok(app_image)
     }
 
     pub async fn cancel_app(&mut self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
@@ -600,6 +614,11 @@ impl Host {
         let host = app.storage.get_host(self.id).await?;
 
         if host.owner == Some(user.id()) || matches!(user.role().await?, Role::Admin) {
+            {
+                let mut app_images = app.app_image_cache.write().await;
+                app_images.retain(|(_, host_id, _), _| *host_id != self.id);
+            }
+
             drop(app);
             self.delete_no_auth().await
         } else {

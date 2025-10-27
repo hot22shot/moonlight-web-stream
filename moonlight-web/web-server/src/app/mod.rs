@@ -1,17 +1,20 @@
 use std::{
+    collections::HashMap,
     ops::Deref,
     sync::{Arc, Weak},
 };
 
-use actix_web::{HttpResponse, ResponseError, http::StatusCode};
+use actix_web::{HttpResponse, ResponseError, http::StatusCode, web::Bytes};
 use common::config::Config;
 use hex::FromHexError;
 use moonlight_common::network::{ApiError, request_client::RequestClient, reqwest::ReqwestClient};
 use openssl::error::ErrorStack;
 use thiserror::Error;
+use tokio::sync::RwLock;
 
 use crate::app::{
     auth::{SessionToken, UserAuth},
+    host::{AppId, HostId},
     storage::{Storage, StorageUserAdd, create_storage},
     user::{Admin, AuthenticatedUser, User, UserId},
 };
@@ -103,6 +106,7 @@ impl AppRef {
 struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
+    app_image_cache: RwLock<HashMap<(UserId, HostId, AppId), Bytes>>,
 }
 
 pub type MoonlightClient = ReqwestClient;
@@ -116,6 +120,7 @@ impl App {
         let app = AppInner {
             storage: create_storage(config.data_storage.clone()).await?,
             config,
+            app_image_cache: Default::default(),
         };
 
         Ok(Self {
