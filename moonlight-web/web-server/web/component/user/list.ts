@@ -18,7 +18,7 @@ export class UserList extends FetchListComponent<DetailedUser, User> {
         this.updateCache(response.users)
     }
 
-    protected insertList(dataId: number, data: DetailedUser): void {
+    public insertList(dataId: number, data: DetailedUser): void {
         const newUser = new User(this.api, data)
 
         this.list.append(newUser)

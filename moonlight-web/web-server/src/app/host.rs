@@ -74,7 +74,9 @@ impl Host {
     }
 
     async fn can_use(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
-        if self.owner().await? == Some(user.id()) || matches!(user.role().await?, Role::Admin) {
+        let owner = self.owner().await?;
+        if owner.is_none() || owner == Some(user.id()) || matches!(user.role().await?, Role::Admin)
+        {
             Ok(())
         } else {
             Err(AppError::Forbidden)

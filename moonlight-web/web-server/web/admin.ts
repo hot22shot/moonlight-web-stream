@@ -1,15 +1,18 @@
-import { Api, apiPutUser, getApi } from "./api.js";
+import { Api, apiGetUser, apiPutUser, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { setTouchContextMenuEnabled } from "./ios_right_click.js";
 import { UserList } from "./component/user/list.js";
 import { AddUserModal } from "./component/user/add_modal.js";
-import { showModal } from "./component/modal/index.js";
+import { showMessage, showModal } from "./component/modal/index.js";
+import { buildUrl } from "./config_.js";
 
 async function startApp() {
     setTouchContextMenuEnabled(true)
 
     const api = await getApi()
+
+    checkPermissions(api)
 
     const rootElement = document.getElementById("root")
     if (rootElement == null) {
@@ -21,6 +24,19 @@ async function startApp() {
     app.mount(rootElement)
 
     app.forceFetch()
+}
+
+async function checkPermissions(api: Api) {
+    const user = await apiGetUser(api, {
+        name: null,
+        user_id: null
+    })
+
+    if (user.role != "Admin") {
+        await showMessage("You are not authorized to view this page!")
+
+        window.location.href = buildUrl("/")
+    }
 }
 
 startApp()
@@ -44,10 +60,12 @@ class AdminApp implements Component {
         this.addUserButton.addEventListener("click", async () => {
             const addUserModal = new AddUserModal()
 
-            const user = await showModal(addUserModal)
+            const userRequest = await showModal(addUserModal)
 
-            if (user) {
-                await apiPutUser(this.api, user)
+            if (userRequest) {
+                const newUser = await apiPutUser(this.api, userRequest)
+
+                this.userList.insertList(newUser.id, newUser)
             }
         })
         this.userPanel.appendChild(this.addUserButton)
