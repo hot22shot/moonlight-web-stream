@@ -1,6 +1,9 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt::{Debug, Formatter},
+    ops::{Deref, DerefMut},
+};
 
-use common::api_bindings::{self};
+use common::api_bindings::{self, DetailedUser};
 use moonlight_common::network::{ApiError, ClientInfo, host_info, request_client::RequestClient};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -49,6 +52,12 @@ pub struct User {
     pub(super) cache_storage: Option<StorageUser>,
 }
 
+impl Debug for User {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.id)
+    }
+}
+
 impl User {
     pub fn id(&self) -> UserId {
         self.id
@@ -77,6 +86,24 @@ impl User {
         let storage = self.storage_user().await?;
 
         Ok(storage.role)
+    }
+
+    pub async fn detailed_user(
+        &mut self,
+        requesting_user: &mut AuthenticatedUser,
+    ) -> Result<DetailedUser, AppError> {
+        if requesting_user.role().await? == Role::Admin || self.id() == requesting_user.id() {
+            self.detailed_user_no_auth().await
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+    pub async fn detailed_user_no_auth(&mut self) -> Result<DetailedUser, AppError> {
+        Ok(DetailedUser {
+            id: self.id.0,
+            name: self.name().await?,
+            role: self.role().await?.into(),
+        })
     }
 
     pub async fn authenticate(mut self, auth: &UserAuth) -> Result<AuthenticatedUser, AppError> {
@@ -131,6 +158,10 @@ impl DerefMut for AuthenticatedUser {
 }
 
 impl AuthenticatedUser {
+    pub async fn detailed_user(&mut self) -> Result<DetailedUser, AppError> {
+        self.detailed_user_no_auth().await
+    }
+
     pub async fn new_session(&self) -> Result<SessionToken, AppError> {
         let app = self.app.access()?;
 

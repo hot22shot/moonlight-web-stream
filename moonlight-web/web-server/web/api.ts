@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -217,6 +217,11 @@ export async function apiGetUser(api: Api, query: GetUserQuery): Promise<Detaile
     const response = await fetchApi(api, "/user", "get", { query })
 
     return response as DetailedUser
+}
+export async function apiGetUsers(api: Api): Promise<GetUsersResponse> {
+    const response = await fetchApi(api, "/users", "get")
+
+    return response as GetUsersResponse
 }
 
 export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {

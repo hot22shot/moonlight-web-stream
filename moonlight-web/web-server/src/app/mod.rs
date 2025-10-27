@@ -15,7 +15,7 @@ use tokio::sync::RwLock;
 use crate::app::{
     auth::{SessionToken, UserAuth},
     host::{AppId, HostId},
-    storage::{Storage, StorageUserAdd, create_storage},
+    storage::{Either, Storage, StorageUserAdd, create_storage},
     user::{Admin, AuthenticatedUser, User, UserId},
 };
 
@@ -169,7 +169,7 @@ impl App {
                 Err(AppError::Unauthorized)
             }
             UserAuth::UserPassword { ref username, .. } => {
-                let mut user = self.user_by_name(&username).await?;
+                let user = self.user_by_name(username).await?;
 
                 user.authenticate(&auth).await
             }
@@ -179,6 +179,7 @@ impl App {
                 Ok(user)
             }
             UserAuth::ForwardedHeaders { username } => {
+                let _ = username;
                 // TODO: look if config enabled so we can trust or not
                 todo!()
             }
@@ -226,6 +227,31 @@ impl App {
                 cache_storage: user,
             },
         })
+    }
+
+    pub async fn all_users(&self, _: Admin) -> Result<Vec<User>, AppError> {
+        let users = self.inner.storage.list_users().await?;
+
+        let users = match users {
+            Either::Left(user_ids) => user_ids
+                .into_iter()
+                .map(|id| User {
+                    app: self.new_ref(),
+                    id,
+                    cache_storage: None,
+                })
+                .collect::<Vec<_>>(),
+            Either::Right(users) => users
+                .into_iter()
+                .map(|user| User {
+                    app: self.new_ref(),
+                    id: user.id,
+                    cache_storage: Some(user),
+                })
+                .collect::<Vec<_>>(),
+        };
+
+        Ok(users)
     }
 
     pub async fn delete_session(&self, session: SessionToken) -> Result<(), AppError> {

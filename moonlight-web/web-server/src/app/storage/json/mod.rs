@@ -19,7 +19,7 @@ use crate::app::{
     host::HostId,
     password::StoragePassword,
     storage::{
-        Storage, StorageHost, StorageHostAdd, StorageHostCache, StorageHostModify,
+        Either, Storage, StorageHost, StorageHostAdd, StorageHostCache, StorageHostModify,
         StorageHostPairInfo, StorageQueryHosts, StorageUser, StorageUserAdd, StorageUserModify,
         json::versions::{
             Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2User, V2UserPassword,
@@ -278,6 +278,20 @@ impl Storage for JsonStorage {
         self.force_write();
 
         result
+    }
+    async fn list_users(&self) -> Result<Either<Vec<UserId>, Vec<StorageUser>>, AppError> {
+        let users = self.users.read().await;
+
+        let futures = users.iter().map(|(id, value)| {
+            let id = *id;
+            async move {
+                let user = value.read().await.clone();
+                user_from_json(UserId(id), &user)
+            }
+        });
+
+        let out = join_all(futures).await;
+        Ok(Either::Right(out))
     }
 
     async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError> {

@@ -241,6 +241,12 @@ pub struct PutUserRequest {
     pub role: UserRole,
 }
 
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetUsersResponse {
+    pub users: Vec<DetailedUser>,
+}
+
 // -- Stream
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]

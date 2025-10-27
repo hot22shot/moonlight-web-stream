@@ -97,6 +97,11 @@ pub struct StorageQueryHosts {
     pub user_id: UserId,
 }
 
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
 #[async_trait]
 pub trait Storage {
     /// No duplicate names are allowed!
@@ -107,6 +112,8 @@ pub trait Storage {
     async fn get_user_by_name(&self, name: &str)
     -> Result<(UserId, Option<StorageUser>), AppError>;
     async fn remove_user(&self, user_id: UserId) -> Result<(), AppError>;
+    /// The returned tuple can contain a Vec<UserId> or Vec<StorageUser> if the Storage thinks it's more efficient to query all data directly
+    async fn list_users(&self) -> Result<Either<Vec<UserId>, Vec<StorageUser>>, AppError>;
 
     // TODO: maybe expiration date?
     async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError>;

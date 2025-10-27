@@ -9,11 +9,11 @@ use moonlight_common::PairPin;
 use std::io::Write as _;
 
 use crate::{
-    api::admin::add_user,
+    api::admin::{add_user, list_users},
     app::{
         App, AppError,
         host::{AppId, HostId},
-        user::{AuthenticatedUser, User, UserId},
+        user::{AuthenticatedUser, UserId},
     },
 };
 use common::api_bindings::{
@@ -31,39 +31,36 @@ async fn get_user(
     app: Data<App>,
     mut user: AuthenticatedUser,
     Query(query): Query<GetUserQuery>,
-) -> Result<Json<DetailedUser>, Error> {
-    async fn user_into_response(user: &mut User) -> Result<Json<DetailedUser>, Error> {
-        let name = user.name().await?;
-        let role = user.role().await?;
-
-        Ok(Json(DetailedUser {
-            id: user.id().0,
-            name,
-            role: role.into(),
-        }))
-    }
-
+) -> Result<Json<DetailedUser>, AppError> {
     match (query.name, query.user_id) {
-        (None, None) => user_into_response(&mut user).await,
+        (None, None) => {
+            let detailed_user = user.detailed_user().await?;
+
+            Ok(Json(detailed_user))
+        }
         (None, Some(user_id)) => {
-            let user_id = UserId(user_id);
+            let target_user_id = UserId(user_id);
 
-            let mut user = app.user_by_id(user_id).await?;
+            let mut target_user = app.user_by_id(target_user_id).await?;
 
-            user_into_response(&mut user).await
+            let detailed_user = target_user.detailed_user(&mut user).await?;
+
+            Ok(Json(detailed_user))
         }
         (Some(name), None) => {
-            let mut user = app.user_by_name(&name).await?;
+            let mut target_user = app.user_by_name(&name).await?;
 
-            user_into_response(&mut user).await
+            let detailed_user = target_user.detailed_user(&mut user).await?;
+
+            Ok(Json(detailed_user))
         }
-        (Some(_), Some(_)) => Err(AppError::BadRequest.into()),
+        (Some(_), Some(_)) => Err(AppError::BadRequest),
     }
 }
 
 // TODO: use response streaming to have longer timeouts on each individual host with json new line format
 #[get("/hosts")]
-async fn list_hosts(mut user: AuthenticatedUser) -> Result<Json<GetHostsResponse>, Error> {
+async fn list_hosts(mut user: AuthenticatedUser) -> Result<Json<GetHostsResponse>, AppError> {
     let hosts = user.hosts().await?;
 
     let mut undetailed_hosts = Vec::with_capacity(hosts.len());
@@ -90,7 +87,7 @@ async fn list_hosts(mut user: AuthenticatedUser) -> Result<Json<GetHostsResponse
 async fn get_host(
     mut user: AuthenticatedUser,
     Query(query): Query<GetHostQuery>,
-) -> Result<Json<GetHostResponse>, Error> {
+) -> Result<Json<GetHostResponse>, AppError> {
     let host_id = HostId(query.host_id);
 
     let mut host = user.host(host_id).await?;
@@ -105,7 +102,7 @@ async fn put_host(
     app: Data<App>,
     mut user: AuthenticatedUser,
     Json(query): Json<PutHostRequest>,
-) -> Result<Json<PutHostResponse>, Error> {
+) -> Result<Json<PutHostResponse>, AppError> {
     let mut host = user
         .host_add(
             query.address,
@@ -293,8 +290,8 @@ pub fn api_service() -> impl HttpServiceFactory {
             stream::start_host,
             stream::cancel_host,
         ])
-        .service(
+        .service(services![
             // -- Admin
-            add_user,
-        )
+            add_user, list_users,
+        ])
 }
