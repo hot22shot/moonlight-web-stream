@@ -38,6 +38,14 @@ export class User implements Component {
         this.nameElement.innerText = user.name
     }
 
+    getCache(): DetailedUser | null {
+        if ("name" in this.user) {
+            return this.user
+        } else {
+            return null
+        }
+    }
+
     getUserId(): number {
         return this.user.id
     }

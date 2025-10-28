@@ -5,7 +5,7 @@ export abstract class FetchListComponent<Data, T extends Component> implements F
     protected list: ListComponent<T>
 
     constructor(listInit?: ListComponentInit) {
-        this.list = new ListComponent([], listInit)
+        this.list = new ListComponent<T>([], listInit)
     }
 
     protected abstract updateComponentData(component: T, data: Data): void

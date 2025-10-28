@@ -6,8 +6,11 @@ export type ListComponentInit = {
     remountIsInsert?: boolean
 }
 
+export type ListFilter<T extends Component> = (component: T) => boolean
+
 export class ListComponent<T extends Component> implements Component {
 
+    private unfilteredList: Array<T>
     private list: Array<T>
 
     private mounted: number = 0
@@ -18,10 +21,8 @@ export class ListComponent<T extends Component> implements Component {
     private liClasses: string[]
 
     constructor(list?: Array<T>, init?: ListComponentInit) {
-        this.list = list ?? []
-        if (list) {
-            this.internalMountFrom(0)
-        }
+        this.unfilteredList = list ?? []
+        this.list = []
 
         this.listElement.classList.add("list-like")
         if (init?.listClasses) {
@@ -30,6 +31,8 @@ export class ListComponent<T extends Component> implements Component {
         this.liClasses = init?.elementLiClasses ?? []
 
         this.remountIsInsertTransition = init?.remountIsInsert ?? true
+
+        this.syncLists()
     }
 
     private elementAt(index: number): HTMLLIElement {
@@ -59,71 +62,67 @@ export class ListComponent<T extends Component> implements Component {
         }
     }
 
-    private internalUnmountUntil(index: number) {
-        for (let i = this.list.length - 1; i >= index; i--) {
-            const liElement = this.elementAt(i)
-            this.listElement.removeChild(liElement)
-
-            const element = this.list[i]
-            element.unmount(liElement)
+    private currentFilter: ListFilter<T> = () => true
+    setFilter(filter?: ListFilter<T>) {
+        if (!filter) {
+            filter = () => true
         }
+
+        this.currentFilter = filter
+
+        this.syncLists()
     }
-    private internalMountFrom(index: number) {
-        if (this.mounted <= 0) {
-            return;
+    private syncLists() {
+        const newList = this.unfilteredList.filter(this.currentFilter)
+
+        // Unmount all old components
+        for (let index = 0; index < this.list.length; index++) {
+            const oldComponent = this.list[index]
+            const element = this.elementAt(index)
+
+            oldComponent.unmount(element)
+
+            if (index >= newList.length) {
+                this.listElement.removeChild(element)
+            }
         }
 
-        for (let i = index; i < this.list.length; i++) {
-            let liElement = this.elementAt(i)
-            this.listElement.appendChild(liElement)
+        // Mount all new components and unmount old
+        for (let index = 0; index < newList.length; index++) {
+            const newComponent = newList[index]
+            const element = this.elementAt(index)
 
-            const element = this.list[i]
-            element.mount(liElement)
+            if (this.list.length <= index) {
+                this.listElement.appendChild(element)
+            }
+
+            newComponent.mount(element)
         }
+
+        this.list = newList
     }
 
     insert(index: number, value: T) {
-        if (index == this.list.length) {
-            const liElement = this.elementAt(index)
-
-            this.list.push(value)
-
-            value.mount(liElement)
-            this.listElement.appendChild(liElement)
+        if (index == this.unfilteredList.length) {
+            this.unfilteredList.push(value)
         } else {
-            this.internalUnmountUntil(index)
-
-            this.list.splice(index, 0, value)
-
-            this.internalMountFrom(index)
+            this.unfilteredList.splice(index, 0, value)
         }
+
+        this.syncLists()
 
         this.onAnimElementInserted(index)
     }
     remove(index: number): T | null {
-        if (index == this.list.length - 1) {
-            const element = this.list.pop()
-            const liElement = this.liElements[index]
-
-            if (element && liElement) {
-                element.unmount(liElement)
-
-                this.listElement.removeChild(liElement)
-                return element
-            }
-        } else {
-            this.internalUnmountUntil(index)
-
-            const element = this.list.splice(index, 1)
-
-            this.internalMountFrom(index)
-
-            return element[0] ?? null
+        if (index >= this.unfilteredList.length) {
+            this.onAnimElementRemoved(index)
         }
 
-        this.onAnimElementRemoved(this.list.length + 1)
+        const value = this.unfilteredList.splice(index, 1)
 
-        return null
+        this.syncLists()
+
+        return value[0]
     }
 
     append(value: T) {
@@ -137,13 +136,13 @@ export class ListComponent<T extends Component> implements Component {
     }
 
     clear() {
-        this.internalUnmountUntil(0)
+        this.unfilteredList.splice(0, this.unfilteredList.length)
 
-        this.list.splice(0, this.list.length)
+        this.syncLists()
     }
 
     get(): readonly T[] {
-        return this.list
+        return this.unfilteredList
     }
 
     mount(parent: Element): void {
@@ -153,7 +152,7 @@ export class ListComponent<T extends Component> implements Component {
 
         // Mount all elements
         if (this.mounted == 1) {
-            this.internalMountFrom(0)
+            this.syncLists()
 
             if (this.remountIsInsertTransition) {
                 for (let i = 0; i < this.list.length; i++) {
@@ -169,13 +168,17 @@ export class ListComponent<T extends Component> implements Component {
 
         // Unmount all elements
         if (this.mounted == 0) {
-            this.internalUnmountUntil(0)
-
             if (this.remountIsInsertTransition) {
                 for (let i = 0; i < this.list.length; i++) {
                     this.onAnimElementRemoved(i)
                 }
             }
+
+            for (let index = this.list.length - 1; index >= 0; index--) {
+                const element = this.elementAt(index)
+                this.listElement.removeChild(element)
+            }
+            this.list = []
         }
     }
 }

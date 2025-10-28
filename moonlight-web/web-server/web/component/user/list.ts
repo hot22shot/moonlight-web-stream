@@ -29,6 +29,12 @@ export class UserList extends FetchListComponent<DetailedUser, User> {
         // TODO: add other listeners
     }
 
+    setFilter(filter: string) {
+        this.list.setFilter((user) =>
+            user.getCache()?.name.includes(filter) ?? false
+        )
+    }
+
     protected updateComponentData(component: User, data: DetailedUser): void {
         component.updateCache(data)
     }

@@ -124,7 +124,7 @@ class AdminApp implements Component {
     }
 
     private onUserSearchChange() {
-        // TODO
+        this.userList.setFilter(this.userSearch.value)
     }
 
     mount(parent: HTMLElement): void {
