@@ -1,4 +1,4 @@
-import { Api, apiGetUser, apiPutUser, getApi } from "./api.js";
+import { Api, apiGetUser, apiLogout, apiPutUser, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { setTouchContextMenuEnabled } from "./ios_right_click.js";
@@ -51,7 +51,10 @@ class AdminApp implements Component {
     private topLine = document.createElement("div")
 
     private moonlightTextElement = document.createElement("h1")
-    private adminTextElement = document.createElement("h1")
+
+    private topLineActions = document.createElement("div")
+    private logoutButton = document.createElement("button")
+    private userButton = document.createElement("button")
 
     // User Panel
     private userPanel = document.createElement("div")
@@ -63,11 +66,28 @@ class AdminApp implements Component {
         this.api = api
 
         // Top Line
+        this.topLine.classList.add("top-line")
+
         this.moonlightTextElement.innerHTML =
             'Moonlight Web <span style="color:red; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; -webkit-text-stroke: 2px #000">Admin</span>'
 
         this.topLine.appendChild(this.moonlightTextElement)
-        this.topLine.appendChild(this.adminTextElement)
+
+        this.topLine.appendChild(this.topLineActions)
+        this.topLineActions.classList.add("top-line-actions")
+
+        this.logoutButton.addEventListener("click", async () => {
+            await apiLogout(this.api)
+            window.location.reload()
+        })
+        this.logoutButton.classList.add("logout-button")
+        this.topLineActions.appendChild(this.logoutButton)
+
+        this.userButton.addEventListener("click", async () => {
+            window.location.href = buildUrl("/")
+        })
+        this.userButton.classList.add("user-button")
+        this.topLineActions.appendChild(this.userButton)
 
         this.root.appendChild(this.topLine)
 

@@ -8,7 +8,8 @@ export class UserList extends FetchListComponent<DetailedUser, User> {
 
     constructor(api: Api) {
         super({
-            listClasses: ["user-list"]
+            listClasses: ["user-list"],
+            elementLiClasses: ["user-element"]
         })
 
         this.api = api
