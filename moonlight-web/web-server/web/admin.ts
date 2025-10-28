@@ -47,6 +47,13 @@ class AdminApp implements Component {
 
     private root = document.createElement("div")
 
+    // Top Line
+    private topLine = document.createElement("div")
+
+    private moonlightTextElement = document.createElement("h1")
+    private adminTextElement = document.createElement("h1")
+
+    // User Panel
     private userPanel = document.createElement("div")
     private addUserButton = document.createElement("button")
     private userSearch = document.createElement("input")
@@ -55,7 +62,19 @@ class AdminApp implements Component {
     constructor(api: Api) {
         this.api = api
 
+        // Top Line
+        this.moonlightTextElement.innerHTML =
+            'Moonlight Web <span style="color:red; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; -webkit-text-stroke: 2px #000">Admin</span>'
+
+        this.topLine.appendChild(this.moonlightTextElement)
+        this.topLine.appendChild(this.adminTextElement)
+
+        this.root.appendChild(this.topLine)
+
         // Select User Panel
+        this.userPanel.classList.add("user-panel")
+        this.root.appendChild(this.userPanel)
+
         this.addUserButton.innerText = "Add User"
         this.addUserButton.addEventListener("click", async () => {
             const addUserModal = new AddUserModal()
@@ -78,7 +97,6 @@ class AdminApp implements Component {
         this.userList = new UserList(api)
         this.userList.mount(this.userPanel)
 
-        this.root.appendChild(this.userPanel)
     }
 
     async forceFetch() {

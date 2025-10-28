@@ -16,7 +16,7 @@ export class GameList extends FetchListComponent<App, Game> {
     constructor(api: Api, hostId: number, cache: App[] | null) {
         super({
             listClasses: ["app-list"],
-            elementDivClasses: ["animated-list-element", "app-element"]
+            elementLiClasses: ["animated-list-element", "app-element"]
         })
 
         this.api = api

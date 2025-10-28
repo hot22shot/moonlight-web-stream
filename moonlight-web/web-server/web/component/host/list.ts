@@ -12,7 +12,7 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
     constructor(api: Api) {
         super({
             listClasses: ["host-list"],
-            elementDivClasses: ["animated-list-element", "host-element"]
+            elementLiClasses: ["animated-list-element", "host-element"]
         })
 
         this.api = api

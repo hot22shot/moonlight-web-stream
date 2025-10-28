@@ -2,7 +2,7 @@ import { Component } from "./index.js"
 
 export type ListComponentInit = {
     listClasses?: string[],
-    elementDivClasses?: string[]
+    elementLiClasses?: string[]
     remountIsInsert?: boolean
 }
 
@@ -13,9 +13,9 @@ export class ListComponent<T extends Component> implements Component {
     private mounted: number = 0
     private remountIsInsertTransition: boolean
 
-    private listElement: HTMLLIElement = document.createElement("li")
-    private divElements: Array<HTMLDivElement> = []
-    private divClasses: string[]
+    private listElement = document.createElement("ul")
+    private liElements: Array<HTMLLIElement> = []
+    private liClasses: string[]
 
     constructor(list?: Array<T>, init?: ListComponentInit) {
         this.list = list ?? []
@@ -23,28 +23,29 @@ export class ListComponent<T extends Component> implements Component {
             this.internalMountFrom(0)
         }
 
+        this.listElement.classList.add("list-like")
         if (init?.listClasses) {
             this.listElement.classList.add(...init?.listClasses)
         }
-        this.divClasses = init?.elementDivClasses ?? []
+        this.liClasses = init?.elementLiClasses ?? []
 
         this.remountIsInsertTransition = init?.remountIsInsert ?? true
     }
 
-    private divAt(index: number): HTMLDivElement {
-        let div = this.divElements[index]
-        if (!div) {
-            div = document.createElement("div")
-            div.classList.add(...this.divClasses)
+    private elementAt(index: number): HTMLLIElement {
+        let li = this.liElements[index]
+        if (!li) {
+            li = document.createElement("li")
+            li.classList.add(...this.liClasses)
 
-            this.divElements[index] = div
+            this.liElements[index] = li
         }
 
-        return div
+        return li
     }
 
     private onAnimElementInserted(index: number) {
-        const element = this.divElements[index]
+        const element = this.liElements[index]
 
         // let the element render and then add "list-show" for transitions :)
         setTimeout(() => {
@@ -53,18 +54,18 @@ export class ListComponent<T extends Component> implements Component {
     }
     private onAnimElementRemoved(index: number) {
         let element
-        while ((element = this.divElements[index]).classList.contains("list-show")) {
+        while ((element = this.liElements[index]).classList.contains("list-show")) {
             element.classList.remove("list-show")
         }
     }
 
     private internalUnmountUntil(index: number) {
         for (let i = this.list.length - 1; i >= index; i--) {
-            const divElement = this.divAt(i)
-            this.listElement.removeChild(divElement)
+            const liElement = this.elementAt(i)
+            this.listElement.removeChild(liElement)
 
             const element = this.list[i]
-            element.unmount(divElement)
+            element.unmount(liElement)
         }
     }
     private internalMountFrom(index: number) {
@@ -73,22 +74,22 @@ export class ListComponent<T extends Component> implements Component {
         }
 
         for (let i = index; i < this.list.length; i++) {
-            let divElement = this.divAt(i)
-            this.listElement.appendChild(divElement)
+            let liElement = this.elementAt(i)
+            this.listElement.appendChild(liElement)
 
             const element = this.list[i]
-            element.mount(divElement)
+            element.mount(liElement)
         }
     }
 
     insert(index: number, value: T) {
         if (index == this.list.length) {
-            const divElement = this.divAt(index)
+            const liElement = this.elementAt(index)
 
             this.list.push(value)
 
-            value.mount(divElement)
-            this.listElement.appendChild(divElement)
+            value.mount(liElement)
+            this.listElement.appendChild(liElement)
         } else {
             this.internalUnmountUntil(index)
 
@@ -102,12 +103,12 @@ export class ListComponent<T extends Component> implements Component {
     remove(index: number): T | null {
         if (index == this.list.length - 1) {
             const element = this.list.pop()
-            const divElement = this.divElements[index]
+            const liElement = this.liElements[index]
 
-            if (element && divElement) {
-                element.unmount(divElement)
+            if (element && liElement) {
+                element.unmount(liElement)
 
-                this.listElement.removeChild(divElement)
+                this.listElement.removeChild(liElement)
                 return element
             }
         } else {

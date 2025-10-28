@@ -151,6 +151,12 @@ input[type=number] {
     -moz-appearance: textfield;
 }
 
+.list-like {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
 /** Modal */
 .modal-background {
     display: block;
@@ -595,4 +601,19 @@ input[type=number] {
 /* Prevent starting animation for elements */
 .prevent-start-transition {
     transition: none;
+}
+
+/* Admin */
+.user-panel {
+    display: flex;
+    flex-direction: column;
+    max-width: 225px;
+}
+
+.user-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
 }
