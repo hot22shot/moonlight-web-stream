@@ -172,7 +172,8 @@ pub fn generate_new_client() -> Result<ClientAuth, ErrorStack> {
     })
 }
 
-pub struct PairSuccess {
+pub struct PairSuccess<C: RequestClient> {
+    pub client: C,
     pub server_certificate: Pem,
 }
 
@@ -200,13 +201,14 @@ pub enum PairError<RequestError> {
 pub async fn host_pair<C: RequestClient>(
     client: &mut C,
     http_address: &str,
+    https_address: &str,
     client_info: ClientInfo<'_>,
     client_private_key_pem: &Pem,
     client_certificate_pem: &Pem,
     device_name: &str,
     server_version: ServerVersion,
     pin: PairPin,
-) -> Result<PairSuccess, PairError<C::Error>> {
+) -> Result<PairSuccess<C>, PairError<C::Error>> {
     let client_cert = X509::from_der(client_certificate_pem.contents())?;
     let client_private_key = PKey::private_key_from_der(client_private_key_pem.contents())?;
 
@@ -367,9 +369,16 @@ pub async fn host_pair<C: RequestClient>(
     }
 
     // Required for us to show as paired
+    let mut new_client = C::with_certificates(
+        client_private_key_pem,
+        client_certificate_pem,
+        &server_cert_pem,
+    )
+    .map_err(|err| PairError::Api(ApiError::RequestClient(err)))?;
+
     let server_response5 = host_pair5(
-        client,
-        http_address,
+        &mut new_client,
+        https_address,
         client_info,
         ClientPairRequest5 { device_name },
     )
@@ -382,6 +391,7 @@ pub async fn host_pair<C: RequestClient>(
     }
 
     Ok(PairSuccess {
+        client: new_client,
         server_certificate: server_cert_pem,
     })
 }
