@@ -113,6 +113,9 @@ class ViewerApp implements Component {
         this.addListeners(document)
         this.addListeners(document.getElementById("input") as HTMLDivElement)
 
+        document.addEventListener("pointerlockchange", this.onPointerLockChange.bind(this))
+        document.addEventListener("fullscreenchange", this.onFullscreenChange.bind(this))
+
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
         // Connect all gamepads
@@ -136,9 +139,6 @@ class ViewerApp implements Component {
         element.addEventListener("touchend", this.onTouchEnd.bind(this), { passive: false })
         element.addEventListener("touchcancel", this.onTouchCancel.bind(this), { passive: false })
         element.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
-
-        document.addEventListener("pointerlockchange", this.onPointerLockChange.bind(this))
-        document.addEventListener("fullscreenchange", this.onFullscreenChange.bind(this))
     }
 
     private async startStream(hostId: number, appId: number, settings: StreamSettings, browserSize: [number, number]) {
@@ -223,6 +223,8 @@ class ViewerApp implements Component {
 
         event.preventDefault()
         this.stream?.getInput().onKeyDown(event)
+
+        event.stopPropagation()
     }
 
     private isTogglingFullscreenWithKeybind: "waitForCtrl" | "makingFullscreen" | "none" = "none"
@@ -231,6 +233,7 @@ class ViewerApp implements Component {
 
         event.preventDefault()
         this.stream?.getInput().onKeyUp(event)
+        event.stopPropagation()
 
         if (this.toggleFullscreenWithKeybind && this.isTogglingFullscreenWithKeybind == "none" && event.ctrlKey && event.shiftKey && event.code == "KeyI") {
             this.isTogglingFullscreenWithKeybind = "waitForCtrl"
@@ -258,23 +261,33 @@ class ViewerApp implements Component {
 
         event.preventDefault()
         this.stream?.getInput().onMouseDown(event, this.getStreamRect());
+
+        event.stopPropagation()
     }
     onMouseButtonUp(event: MouseEvent) {
         this.onUserInteraction()
 
         event.preventDefault()
         this.stream?.getInput().onMouseUp(event)
+
+        event.stopPropagation()
     }
     onMouseMove(event: MouseEvent) {
         event.preventDefault()
         this.stream?.getInput().onMouseMove(event, this.getStreamRect())
+
+        event.stopPropagation()
     }
     onMouseWheel(event: WheelEvent) {
         event.preventDefault()
         this.stream?.getInput().onMouseWheel(event)
+
+        event.stopPropagation()
     }
     onContextMenu(event: MouseEvent) {
         event.preventDefault()
+
+        event.stopPropagation()
     }
 
     // Touch
@@ -283,18 +296,24 @@ class ViewerApp implements Component {
 
         event.preventDefault()
         this.stream?.getInput().onTouchStart(event, this.getStreamRect())
+
+        event.stopPropagation()
     }
     onTouchEnd(event: TouchEvent) {
         this.onUserInteraction()
 
         event.preventDefault()
         this.stream?.getInput().onTouchEnd(event, this.getStreamRect())
+
+        event.stopPropagation()
     }
     onTouchCancel(event: TouchEvent) {
         this.onUserInteraction()
 
         event?.preventDefault()
         this.stream?.getInput().onTouchCancel(event, this.getStreamRect())
+
+        event.stopPropagation()
     }
     onTouchUpdate() {
         this.stream?.getInput().onTouchUpdate(this.getStreamRect())
@@ -304,6 +323,8 @@ class ViewerApp implements Component {
     onTouchMove(event: TouchEvent) {
         event.preventDefault()
         this.stream?.getInput().onTouchMove(event, this.getStreamRect())
+
+        event.stopPropagation()
     }
 
     // Gamepad
@@ -402,7 +423,37 @@ class ViewerApp implements Component {
 
             setSidebarExtended(false)
 
-            await inputElement.requestPointerLock()
+            const onLockError = () => {
+                document.removeEventListener("pointerlockerror", onLockError)
+
+                // Fallback: try to request pointer lock without options
+                inputElement.requestPointerLock()
+            }
+
+            document.addEventListener("pointerlockerror", onLockError, { once: true })
+
+            try {
+                let promise = inputElement.requestPointerLock({
+                    unadjustedMovement: true
+                })
+
+                if (promise) {
+                    await promise
+                } else {
+                    inputElement.requestPointerLock()
+                }
+            } catch (error) {
+                // Some platforms do not support unadjusted movement. If you
+                // would like PointerLock anyway, request again.
+                if (error instanceof Error && error.name == "NotSupportedError") {
+                    inputElement.requestPointerLock()
+                } else {
+                    throw error
+                }
+            } finally {
+                document.removeEventListener("pointerlockerror", onLockError)
+            }
+
         } else if (errorIfNotFound) {
             await showMessage("Pointer Lock not supported")
         }
