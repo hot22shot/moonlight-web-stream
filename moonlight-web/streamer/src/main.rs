@@ -10,8 +10,9 @@ use common::{
 use log::{LevelFilter, debug, info, warn};
 use moonlight_common::{
     MoonlightError,
-    high::{HostError, PairInfo},
+    high::HostError,
     network::reqwest::ReqwestMoonlightHost,
+    pair::ClientAuth,
     stream::{
         MoonlightInstance, MoonlightStream,
         bindings::{ColorRange, HostFeatures},
@@ -161,15 +162,16 @@ async fn main() {
 
     // -- Create the host and pair it
     // TODO: hosts should use the old mutable way!
-    let host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
+    let mut host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
         .expect("failed to create host");
 
-    host.set_pair_info(PairInfo {
-        client_certificate,
-        client_private_key,
-        server_certificate,
-    })
-    .await
+    host.set_pairing_info(
+        &ClientAuth {
+            certificate: client_certificate,
+            private_key: client_private_key,
+        },
+        &server_certificate,
+    )
     .expect("failed to set pairing info");
 
     // -- Configure moonlight
