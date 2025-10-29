@@ -156,6 +156,11 @@ export class StreamInput {
 
     // -- Keyboard
     onKeyDown(event: KeyboardEvent) {
+        if ("repeat" in event && event.repeat) {
+            // Wolf doesn't like repeating keys
+            return
+        }
+
         this.sendKeyEvent(true, event)
     }
     onKeyUp(event: KeyboardEvent) {
