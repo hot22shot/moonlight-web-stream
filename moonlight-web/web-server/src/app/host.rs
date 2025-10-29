@@ -417,10 +417,13 @@ impl Host {
                 async |this,_https_capable, client, host, port, client_info| {
                     let auth = generate_new_client()?;
 
+                    let https_address = Self::build_hostport(host, info.https_port);
+
                     // TODO: device name
-                    let PairSuccess { server_certificate } = host_pair(
+                    let PairSuccess { server_certificate, mut client } = host_pair(
                         client,
                         &Self::build_hostport(host, port),
+                        &https_address,
                         client_info,
                         &auth.private_key,
                         &auth.certificate,
@@ -433,9 +436,6 @@ impl Host {
                     .unwrap();
 
                     // Store pair info
-
-                    let mut client = MoonlightClient::with_certificates(&auth.private_key,&auth.certificate, &server_certificate).map_err(ApiError::RequestClient)?;
-
                     let (name, mac) = match host_info(
                         &mut client,
                         true,
