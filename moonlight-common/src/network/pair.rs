@@ -1,3 +1,6 @@
+//! Moonlilght Pairing
+//! - https://games-on-whales.github.io/wolf/stable/protocols/http-pairing.html
+
 use roxmltree::Document;
 use uuid::fmt::Hyphenated;
 
@@ -213,9 +216,10 @@ pub struct ServerPairResponse5 {
     pub paired: PairStatus,
 }
 
+/// Note: This requires an https client
 pub async fn host_pair5<C: RequestClient>(
     client: &mut C,
-    http_hostport: &str,
+    https_hostport: &str,
     info: ClientInfo<'_>,
     request: ClientPairRequest5<'_>,
 ) -> Result<ServerPairResponse5, ApiError<C::Error>> {
@@ -229,7 +233,7 @@ pub async fn host_pair5<C: RequestClient>(
     query_params.push(query_param("updateState", "1"));
 
     let response = client
-        .send_http_request_text_response(http_hostport, "pair", &query_params)
+        .send_https_request_text_response(https_hostport, "pair", &query_params)
         .await
         .map_err(ApiError::RequestClient)?;
 

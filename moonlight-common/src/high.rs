@@ -327,6 +327,7 @@ where
     ) -> Result<(), HostError<C::Error>> {
         let http_address = self.http_address();
         let server_version = self.version().await?;
+        let https_address = self.https_address().await?;
 
         let client_info = ClientInfo {
             unique_id: &self.client_unique_id,
@@ -335,9 +336,13 @@ where
 
         let mut client = C::with_defaults_long_timeout().map_err(ApiError::RequestClient)?;
 
-        let PairSuccess { server_certificate } = host_pair(
+        let PairSuccess {
+            server_certificate,
+            client: new_client,
+        } = host_pair(
             &mut client,
             &http_address,
+            &https_address,
             client_info,
             &auth.private_key,
             &auth.certificate,
@@ -347,9 +352,7 @@ where
         )
         .await?;
 
-        self.client =
-            C::with_certificates(&auth.private_key, &auth.certificate, &server_certificate)
-                .map_err(|err| HostError::Api(ApiError::RequestClient(err)))?;
+        self.client = new_client;
 
         self.paired = Some(Paired {
             client_private_key: auth.private_key.clone(),
