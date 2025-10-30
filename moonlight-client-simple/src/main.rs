@@ -7,7 +7,7 @@ use moonlight_common::{
     pair::generate_new_client,
     stream::{
         MoonlightInstance,
-        bindings::{ActiveGamepads, ColorRange, Colorspace},
+        bindings::{ActiveGamepads, ColorRange, Colorspace, EncryptionFlags},
         debug::DebugHandler,
     },
 };
@@ -154,6 +154,7 @@ async fn main() {
             ColorRange::Full,
             4000,
             1024,
+            EncryptionFlags::all(),
             DebugHandler,
             video_decoder,
             audio_decoder,
