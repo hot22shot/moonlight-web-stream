@@ -47,6 +47,10 @@ export async function getApi(host_url?: string): Promise<Api> {
     return currentApi
 }
 
+const PATCH = "PATCH"
+const GET = "GET"
+const POST = "POST"
+
 export type Api = {
     host_url: string
     bearer: string | null,
@@ -126,7 +130,7 @@ export class FetchError extends Error {
 export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any>
 export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response>
 
-export async function fetchApi(api: Api, endpoint: string, method: string = "get", init?: { response?: "json" | "ignore" } & ApiFetchInit) {
+export async function fetchApi(api: Api, endpoint: string, method: string = GET, init?: { response?: "json" | "ignore" } & ApiFetchInit) {
     const [url, request] = buildRequest(api, endpoint, method, init)
 
     const timeoutAbort = new AbortController()
@@ -197,7 +201,7 @@ export async function apiLogout(api: Api): Promise<boolean> {
 export async function apiAuthenticate(api: Api): Promise<boolean> {
     let response
     try {
-        response = await fetchApi(api, "/authenticate", "get", { response: "ignore" })
+        response = await fetchApi(api, "/authenticate", GET, { response: "ignore" })
     } catch (e) {
         if (e instanceof FetchError) {
             const response = e.getResponse()
@@ -214,34 +218,34 @@ export async function apiAuthenticate(api: Api): Promise<boolean> {
 }
 
 export async function apiGetUser(api: Api, query: GetUserQuery): Promise<DetailedUser> {
-    const response = await fetchApi(api, "/user", "get", { query })
+    const response = await fetchApi(api, "/user", GET, { query })
 
     return response as DetailedUser
 }
 export async function apiGetUsers(api: Api): Promise<GetUsersResponse> {
-    const response = await fetchApi(api, "/users", "get")
+    const response = await fetchApi(api, "/users", GET)
 
     return response as GetUsersResponse
 }
 export async function apiPostUser(api: Api, data: PostUserRequest): Promise<DetailedUser> {
-    const response = await fetchApi(api, "/user", "post", { json: data })
+    const response = await fetchApi(api, "/user", POST, { json: data })
 
     return response as DetailedUser
 }
 export async function apiPatchUser(api: Api, data: PatchUserRequest): Promise<void> {
-    await fetchApi(api, "/user", "patch", {
+    await fetchApi(api, "/user", "PATCH", {
         json: data,
         response: "ignore"
     })
 }
 
 export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {
-    const response = await fetchApi(api, "/hosts", "get")
+    const response = await fetchApi(api, "/hosts", GET)
 
     return (response as GetHostsResponse).hosts
 }
 export async function apiGetHost(api: Api, query: GetHostQuery): Promise<DetailedHost> {
-    const response = await fetchApi(api, "/host", "get", { query })
+    const response = await fetchApi(api, "/host", GET, { query })
 
     return (response as GetHostResponse).host
 }
@@ -308,13 +312,13 @@ export async function apiWakeUp(api: Api, request: PostWakeUpRequest): Promise<v
 }
 
 export async function apiGetApps(api: Api, query: GetAppsQuery): Promise<Array<App>> {
-    const response = await fetchApi(api, "/apps", "get", { query }) as GetAppsResponse
+    const response = await fetchApi(api, "/apps", GET, { query }) as GetAppsResponse
 
     return response.apps
 }
 
 export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise<Blob> {
-    const response = await fetchApi(api, "/app/image", "get", {
+    const response = await fetchApi(api, "/app/image", GET, {
         query,
         response: "ignore"
     })
@@ -323,7 +327,7 @@ export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise
 }
 
 export async function apiHostCancel(api: Api, request: PostCancelRequest): Promise<PostCancelResponse> {
-    const response = await fetchApi(api, "/host/cancel", "POST", {
+    const response = await fetchApi(api, "/host/cancel", POST, {
         json: request
     })
 
