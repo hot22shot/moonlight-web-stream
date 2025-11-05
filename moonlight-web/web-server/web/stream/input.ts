@@ -71,6 +71,7 @@ export class StreamInput {
     private streamerSize: [number, number] = [0, 0]
 
     private keyboard: RTCDataChannel | null = null
+    private mouseReliable: RTCDataChannel | null = null
     private mouseClicks: RTCDataChannel | null = null
     private mouseAbsolute: RTCDataChannel | null = null
     private mouseRelative: RTCDataChannel | null = null
@@ -94,6 +95,7 @@ export class StreamInput {
     setPeer(peer: RTCPeerConnection) {
         if (this.peer) {
             this.keyboard?.close()
+            this.mouseReliable?.close()
             this.mouseClicks?.close()
             this.mouseAbsolute?.close()
             this.mouseRelative?.close()
@@ -107,6 +109,7 @@ export class StreamInput {
 
         this.keyboard = peer.createDataChannel("keyboard")
 
+        this.mouseReliable = peer.createDataChannel("mouse")
         this.mouseClicks = peer.createDataChannel("mouseClicks", {
             ordered: false
         })
@@ -205,9 +208,9 @@ export class StreamInput {
         }
 
         if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow") {
-            this.sendMouseButton(true, button)
+            this.sendMouseButton(true, button, false)
         } else if (this.config.mouseMode == "pointAndDrag") {
-            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, button)
+            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, true, button)
         }
     }
     onMouseUp(event: MouseEvent) {
@@ -216,13 +219,17 @@ export class StreamInput {
             return
         }
 
-        this.sendMouseButton(false, button)
+        if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow") {
+            this.sendMouseButton(false, button, false)
+        } else if (this.config.mouseMode == "pointAndDrag") {
+            this.sendMouseButton(false, button, true)
+        }
     }
     onMouseMove(event: MouseEvent, rect: DOMRect) {
         if (this.config.mouseMode == "relative") {
             this.sendMouseMoveClientCoordinates(event.movementX, event.movementY, rect)
         } else if (this.config.mouseMode == "follow") {
-            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect)
+            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, false)
         } else if (this.config.mouseMode == "pointAndDrag") {
             if (event.buttons) {
                 // some button pressed
@@ -253,7 +260,7 @@ export class StreamInput {
 
         this.sendMouseMove(scaledMovementX, scaledMovementY)
     }
-    sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number) {
+    sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number, reliable: boolean) {
         this.buffer.reset()
 
         this.buffer.putU8(1)
@@ -262,28 +269,36 @@ export class StreamInput {
         this.buffer.putI16(referenceWidth)
         this.buffer.putI16(referenceHeight)
 
-        trySendChannel(this.mouseAbsolute, this.buffer)
+        if (reliable) {
+            trySendChannel(this.mouseReliable, this.buffer)
+        } else {
+            trySendChannel(this.mouseAbsolute, this.buffer)
+        }
     }
-    sendMousePositionClientCoordinates(clientX: number, clientY: number, rect: DOMRect, mouseButton?: number) {
+    sendMousePositionClientCoordinates(clientX: number, clientY: number, rect: DOMRect, reliable: boolean, mouseButton?: number) {
         const position = this.calcNormalizedPosition(clientX, clientY, rect)
         if (position) {
             const [x, y] = position
-            this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0)
+            this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0, reliable)
 
             if (mouseButton != undefined) {
-                this.sendMouseButton(true, mouseButton)
+                this.sendMouseButton(true, mouseButton, reliable)
             }
         }
     }
     // Note: button = StreamMouseButton.
-    sendMouseButton(isDown: boolean, button: number) {
+    sendMouseButton(isDown: boolean, button: number, reliable: boolean) {
         this.buffer.reset()
 
         this.buffer.putU8(2)
         this.buffer.putBool(isDown)
         this.buffer.putU8(button)
 
-        trySendChannel(this.mouseClicks, this.buffer)
+        if (reliable) {
+            trySendChannel(this.mouseReliable, this.buffer)
+        } else {
+            trySendChannel(this.mouseClicks, this.buffer)
+        }
     }
     sendMouseWheelHighRes(deltaX: number, deltaY: number) {
         this.buffer.reset()
@@ -389,7 +404,7 @@ export class StreamInput {
                         middleY /= 2;
 
                         primaryTouch.mouseMoved = true
-                        this.sendMousePositionClientCoordinates(middleX, middleY, rect)
+                        this.sendMousePositionClientCoordinates(middleX, middleY, rect, true)
                     }
                 }
             } else if (this.touchTracker.size == 3) {
@@ -410,7 +425,7 @@ export class StreamInput {
 
             const time = this.calcTouchTime(touch)
             if (this.touchMouseAction == "default" && !touch.mouseMoved && time >= TOUCH_AS_CLICK_MIN_TIME_MS) {
-                this.sendMousePositionClientCoordinates(touch.originX, touch.originY, rect)
+                this.sendMousePositionClientCoordinates(touch.originX, touch.originY, rect, true)
 
                 touch.mouseMoved = true
             }
@@ -442,13 +457,13 @@ export class StreamInput {
                     const distance = this.calcTouchOriginDistance(touch, oldTouch)
                     if (this.config.touchMode == "pointAndDrag" && distance > TOUCH_AS_CLICK_MAX_DISTANCE) {
                         if (!oldTouch.mouseMoved) {
-                            this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect)
+                            this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, true)
                             oldTouch.mouseMoved = true
                         }
 
                         if (!oldTouch.mouseClicked) {
-                            this.sendMousePositionClientCoordinates(oldTouch.originX, oldTouch.originY, rect)
-                            this.sendMouseButton(true, StreamMouseButton.LEFT)
+                            this.sendMousePositionClientCoordinates(oldTouch.originX, oldTouch.originY, rect, true)
+                            this.sendMouseButton(true, StreamMouseButton.LEFT, true)
                             oldTouch.mouseClicked = true
                         }
                     }
@@ -504,19 +519,19 @@ export class StreamInput {
                         if (distance <= TOUCH_AS_CLICK_MAX_DISTANCE) {
                             if (time <= TOUCH_AS_CLICK_MAX_TIME_MS || oldTouch.mouseClicked) {
                                 if (this.config.touchMode == "pointAndDrag" && !oldTouch.mouseMoved) {
-                                    this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect)
+                                    this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, true)
                                 }
                                 if (!oldTouch.mouseClicked) {
-                                    this.sendMouseButton(true, StreamMouseButton.LEFT)
+                                    this.sendMouseButton(true, StreamMouseButton.LEFT, true)
                                 }
-                                this.sendMouseButton(false, StreamMouseButton.LEFT)
+                                this.sendMouseButton(false, StreamMouseButton.LEFT, true)
                             } else {
-                                this.sendMouseButton(true, StreamMouseButton.RIGHT)
-                                this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                                this.sendMouseButton(true, StreamMouseButton.RIGHT, true)
+                                this.sendMouseButton(false, StreamMouseButton.RIGHT, true)
                             }
                         } else if (this.config.touchMode == "pointAndDrag") {
-                            this.sendMouseButton(true, StreamMouseButton.LEFT)
-                            this.sendMouseButton(false, StreamMouseButton.LEFT)
+                            this.sendMouseButton(true, StreamMouseButton.LEFT, true)
+                            this.sendMouseButton(false, StreamMouseButton.LEFT, true)
                         }
                     }
                 }
