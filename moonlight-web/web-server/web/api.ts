@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -47,9 +47,10 @@ export async function getApi(host_url?: string): Promise<Api> {
     return currentApi
 }
 
-const PATCH = "PATCH"
 const GET = "GET"
 const POST = "POST"
+const PATCH = "PATCH"
+const DELETE = "DELETE"
 
 export type Api = {
     host_url: string
@@ -233,7 +234,13 @@ export async function apiPostUser(api: Api, data: PostUserRequest): Promise<Deta
     return response as DetailedUser
 }
 export async function apiPatchUser(api: Api, data: PatchUserRequest): Promise<void> {
-    await fetchApi(api, "/user", "PATCH", {
+    await fetchApi(api, "/user", PATCH, {
+        json: data,
+        response: "ignore"
+    })
+}
+export async function apiDeleteUser(api: Api, data: DeleteUserRequest): Promise<void> {
+    await fetchApi(api, "/user", DELETE, {
         json: data,
         response: "ignore"
     })

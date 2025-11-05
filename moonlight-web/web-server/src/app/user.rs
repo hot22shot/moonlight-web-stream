@@ -116,6 +116,13 @@ impl User {
 
         Ok(())
     }
+    pub async fn delete(self, _: &Admin) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        app.storage.remove_user(self.id).await?;
+
+        Ok(())
+    }
 
     pub async fn authenticate(mut self, auth: &UserAuth) -> Result<AuthenticatedUser, AppError> {
         match auth {
@@ -288,10 +295,6 @@ impl AuthenticatedUser {
         host.delete(self).await?;
 
         Ok(())
-    }
-
-    pub async fn delete(self) -> Result<(), AppError> {
-        todo!()
     }
 
     pub async fn into_admin(self) -> Result<Admin, AppError> {

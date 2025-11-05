@@ -252,6 +252,12 @@ pub struct PatchUserRequest {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub struct DeleteUserRequest {
+    pub id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub struct GetUsersResponse {
     pub users: Vec<DetailedUser>,
 }

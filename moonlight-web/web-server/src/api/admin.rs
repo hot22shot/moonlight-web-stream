@@ -1,8 +1,10 @@
 use actix_web::{
-    HttpResponse, get, patch, post,
+    HttpResponse, delete, get, patch, post,
     web::{Data, Json},
 };
-use common::api_bindings::{DetailedUser, GetUsersResponse, PatchUserRequest, PostUserRequest};
+use common::api_bindings::{
+    DeleteUserRequest, DetailedUser, GetUsersResponse, PatchUserRequest, PostUserRequest,
+};
 use futures::future::join_all;
 use log::{debug, info, warn};
 
@@ -84,6 +86,21 @@ pub async fn patch_user(
             }
         }
     }
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[delete("/user")]
+pub async fn delete_user(
+    app: Data<App>,
+    admin: Admin,
+    Json(request): Json<DeleteUserRequest>,
+) -> Result<HttpResponse, AppError> {
+    let user_id = UserId(request.id);
+
+    let user = app.user_by_id(user_id).await?;
+
+    user.delete(&admin).await?;
 
     Ok(HttpResponse::Ok().finish())
 }

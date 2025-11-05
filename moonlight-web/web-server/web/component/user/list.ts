@@ -30,18 +30,27 @@ export class UserList extends FetchListComponent<DetailedUser, User> {
         this.list.append(newUser)
 
         newUser.addClickedListener(this.onUserClicked.bind(this))
+        newUser.addDeletedListener(this.onUserDeleted.bind(this))
     }
     protected removeList(listIndex: number): void {
 
         const userComponent = this.list.remove(listIndex)
 
         userComponent?.removeClickedListener(this.onUserClicked.bind(this))
+        userComponent?.removeDeletedListener(this.onUserDeleted.bind(this))
     }
 
     setFilter(filter: string) {
         this.list.setFilter((user) =>
             user.getCache()?.name.includes(filter) ?? false
         )
+    }
+
+    removeUser(id: number) {
+        const componentIndex = this.list.get().findIndex(user => user.getUserId() == id)
+        if (componentIndex != -1) {
+            this.list.remove(componentIndex)
+        }
     }
 
     private onUserClicked(event: ComponentEvent<User>) {
@@ -53,6 +62,21 @@ export class UserList extends FetchListComponent<DetailedUser, User> {
     }
     removeUserClickedListener(listener: UserEventListener, options?: EventListenerOptions) {
         this.eventTarget.removeEventListener("ml-userclicked", listener as EventListenerOrEventListenerObject, options)
+    }
+
+    private onUserDeleted(event: ComponentEvent<User>) {
+        // Remove from our list
+        this.list.removeValue(event.component)
+
+        // Call other listeners
+        this.eventTarget.dispatchEvent(new ComponentEvent("ml-userdeleted", event.component))
+    }
+
+    addUserDeletedListener(listener: UserEventListener, options?: EventListenerOptions) {
+        this.eventTarget.addEventListener("ml-userdeleted", listener as EventListenerOrEventListenerObject, options)
+    }
+    removeUserDeletedListener(listener: UserEventListener, options?: EventListenerOptions) {
+        this.eventTarget.removeEventListener("ml-userdeleted", listener as EventListenerOrEventListenerObject, options)
     }
 
     protected updateComponentData(component: User, data: DetailedUser): void {

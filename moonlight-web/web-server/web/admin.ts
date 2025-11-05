@@ -7,8 +7,8 @@ import { AddUserModal } from "./component/user/add_modal.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { buildUrl } from "./config_.js";
 import { DetailedUserPage } from "./component/user/detailed_page.js";
-import { GetUserQuery } from "./api_bindings.js";
 import { User } from "./component/user/index.js";
+import { DetailedUser } from "./api_bindings.js";
 
 async function startApp() {
     setTouchContextMenuEnabled(true)
@@ -129,8 +129,8 @@ class AdminApp implements Component {
 
         this.userList = new UserList(api)
         this.userList.addUserClickedListener(this.onUserClicked.bind(this))
+        this.userList.addUserDeletedListener(this.onUserDeleted.bind(this))
         this.userList.mount(this.userPanel)
-
     }
 
     async forceFetch() {
@@ -147,11 +147,27 @@ class AdminApp implements Component {
             name: null
         })
 
+        this.setUserInfo(user)
+    }
+    private setUserInfo(user: DetailedUser | null) {
         if (this.userInfoPage) {
             this.userInfoPage.unmount(this.content)
+            this.userInfoPage.removeDeletedListener(this.onUserDeleted.bind(this))
         }
-        this.userInfoPage = new DetailedUserPage(this.api, user)
-        this.userInfoPage.mount(this.content)
+
+        this.userInfoPage = null
+        if (user) {
+            this.userInfoPage = new DetailedUserPage(this.api, user)
+            this.userInfoPage.addDeletedListener(this.onUserDeleted.bind(this))
+            this.userInfoPage.mount(this.content)
+        }
+    }
+
+    private onUserDeleted(event: ComponentEvent<User>) {
+        if (this.userInfoPage?.getUserId() == event.component.getUserId()) {
+            this.setUserInfo(null)
+        }
+        this.userList.removeUser(event.component.getUserId())
     }
 
     mount(parent: HTMLElement): void {

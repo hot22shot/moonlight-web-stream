@@ -9,7 +9,7 @@ use moonlight_common::PairPin;
 use std::io::Write as _;
 
 use crate::{
-    api::admin::{add_user, list_users, patch_user},
+    api::admin::{add_user, delete_user, list_users, patch_user},
     app::{
         App, AppError,
         host::{AppId, HostId},
@@ -264,8 +264,6 @@ async fn get_app_image(
 }
 
 pub fn api_service() -> impl HttpServiceFactory {
-    // TODO: take a look at: https://docs.rs/actix-web/latest/actix_web/middleware/struct.Logger.html
-
     web::scope("/api")
         .service(services![
             // -- Auth
@@ -292,6 +290,9 @@ pub fn api_service() -> impl HttpServiceFactory {
         ])
         .service(services![
             // -- Admin
-            add_user, patch_user, list_users
+            add_user,
+            patch_user,
+            delete_user,
+            list_users
         ])
 }

@@ -1,8 +1,15 @@
-import { Api, apiGetUser } from "../../api.js";
+import { Api, apiDeleteUser, apiGetUser } from "../../api.js";
 import { DetailedUser } from "../../api_bindings.js";
+import { setContextMenu } from "../context_menu.js";
 import { Component, ComponentEvent } from "../index.js";
 
 export type UserEventListener = (event: ComponentEvent<User>) => void
+
+export async function tryDeleteUser(api: Api, id: number) {
+    // TODO: some prompt
+
+    await apiDeleteUser(api, { id })
+}
 
 export class User implements Component {
 
@@ -18,6 +25,7 @@ export class User implements Component {
 
         this.div.appendChild(this.nameElement)
         this.div.addEventListener("click", this.onClick.bind(this))
+        this.div.addEventListener("contextmenu", this.onContextMenu.bind(this))
 
         this.user = user
         if ("name" in user) {
@@ -46,11 +54,35 @@ export class User implements Component {
         this.div.dispatchEvent(new ComponentEvent("ml-userclicked", this))
     }
 
+    private onContextMenu(event: MouseEvent) {
+        setContextMenu(event, {
+            elements: [
+                {
+                    name: "Delete",
+                    callback: this.onDelete.bind(this)
+                }
+            ]
+        })
+    }
+
     addClickedListener(listener: UserEventListener, options?: EventListenerOptions) {
         this.div.addEventListener("ml-userclicked", listener as any, options)
     }
     removeClickedListener(listener: UserEventListener) {
         this.div.removeEventListener("ml-userclicked", listener as any)
+    }
+
+    private onDelete() {
+        tryDeleteUser(this.api, this.user.id)
+
+        this.div.dispatchEvent(new ComponentEvent("ml-userdeleted", this))
+    }
+
+    addDeletedListener(listener: UserEventListener, options?: EventListenerOptions) {
+        this.div.addEventListener("ml-userdeleted", listener as any, options)
+    }
+    removeDeletedListener(listener: UserEventListener) {
+        this.div.removeEventListener("ml-userdeleted", listener as any)
     }
 
     getCache(): DetailedUser | null {
