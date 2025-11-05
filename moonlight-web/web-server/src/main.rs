@@ -6,8 +6,8 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader, stdin},
 };
 
-use actix_web::{App as ActixApp, HttpServer, web::Data};
-use log::{LevelFilter, info};
+use actix_web::{App as ActixApp, HttpServer, middleware::Logger, web::Data};
+use log::{Level, LevelFilter, info};
 use serde::{Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
@@ -70,6 +70,11 @@ async fn main2() -> Result<(), anyhow::Error> {
         move || {
             ActixApp::new()
                 .app_data(app.clone())
+                .wrap(
+                    Logger::new("%r took %D ms")
+                        .log_target("http_log")
+                        .log_level(Level::Debug),
+                )
                 .service(api_service())
                 .service(web_config_js_service())
                 .service(web_service())
