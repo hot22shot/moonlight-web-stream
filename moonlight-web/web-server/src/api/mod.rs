@@ -9,7 +9,7 @@ use moonlight_common::PairPin;
 use std::io::Write as _;
 
 use crate::{
-    api::admin::{add_user, list_users},
+    api::admin::{add_user, list_users, patch_user},
     app::{
         App, AppError,
         host::{AppId, HostId},
@@ -220,7 +220,7 @@ async fn wake_host(
 
     let host = user.host(host_id).await?;
 
-    host.wake().await?;
+    host.wake(&mut user).await?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -292,6 +292,6 @@ pub fn api_service() -> impl HttpServiceFactory {
         ])
         .service(services![
             // -- Admin
-            add_user, list_users,
+            add_user, patch_user, list_users
         ])
 }

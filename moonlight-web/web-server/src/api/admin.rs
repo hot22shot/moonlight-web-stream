@@ -1,18 +1,23 @@
 use actix_web::{
-    get, put,
+    HttpResponse, get, patch, post,
     web::{Data, Json},
 };
-use common::api_bindings::{DetailedUser, GetUsersResponse, PutUserRequest};
+use common::api_bindings::{DetailedUser, GetUsersResponse, PatchUserRequest, PostUserRequest};
 use futures::future::join_all;
-use log::warn;
+use log::{debug, info, warn};
 
-use crate::app::{App, AppError, password::StoragePassword, storage::StorageUserAdd, user::Admin};
+use crate::app::{
+    App, AppError,
+    password::StoragePassword,
+    storage::{StorageUserAdd, StorageUserModify},
+    user::{Admin, AuthenticatedUser, Role, UserId},
+};
 
-#[put("/user")]
+#[post("/user")]
 pub async fn add_user(
     app: Data<App>,
     admin: Admin,
-    Json(request): Json<PutUserRequest>,
+    Json(request): Json<PostUserRequest>,
 ) -> Result<Json<DetailedUser>, AppError> {
     let mut user = app
         .add_user(
@@ -28,6 +33,59 @@ pub async fn add_user(
     let detailed_user = user.detailed_user().await?;
 
     Ok(Json(detailed_user))
+}
+
+#[patch("/user")]
+pub async fn patch_user(
+    app: Data<App>,
+    user: AuthenticatedUser,
+    Json(request): Json<PatchUserRequest>,
+) -> Result<HttpResponse, AppError> {
+    let target_user_id = UserId(request.id);
+
+    match Admin::try_from(user).await? {
+        Ok(admin) => {
+            let mut target_user = app.user_by_id(target_user_id).await?;
+
+            let new_password = if let Some(new_password) = request.password {
+                Some(StoragePassword::new(&new_password)?)
+            } else {
+                None
+            };
+
+            target_user
+                .modify(
+                    &admin,
+                    StorageUserModify {
+                        password: new_password,
+                        role: request.role.map(Role::from),
+                    },
+                )
+                .await?;
+        }
+        Err(mut user) => {
+            if user.id() != target_user_id {
+                return Err(AppError::Forbidden);
+            }
+
+            // Only allow changing the password
+            if let PatchUserRequest {
+                id: _,
+                password: _,
+                role: Some(_),
+            } = request
+            {
+                return Err(AppError::Forbidden);
+            }
+
+            if let Some(new_password) = request.password {
+                user.set_password(StoragePassword::new(&new_password)?)
+                    .await?;
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[get("/users")]

@@ -5,7 +5,7 @@ use std::{
 
 use actix_web::web::Bytes;
 use common::api_bindings::{self, DetailedHost, HostState, PairStatus, UndetailedHost};
-use log::{error, info, warn};
+use log::{error, warn};
 use moonlight_common::{
     PairPin, ServerState,
     high::broadcast_magic_packet,
@@ -385,6 +385,8 @@ impl Host {
         &mut self,
         user: &mut AuthenticatedUser,
     ) -> Result<PairStatus, AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         match self.host_info(&app, user).await? {
@@ -398,6 +400,8 @@ impl Host {
         user: &mut AuthenticatedUser,
         pin: PairPin,
     ) -> Result<(), AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         let info = self
@@ -473,10 +477,14 @@ impl Host {
     }
 
     pub async fn unpair(&self, user: &mut AuthenticatedUser) -> Result<Host, AppError> {
+        self.can_use(user).await?;
+
         todo!()
     }
 
-    pub async fn wake(&self) -> Result<(), AppError> {
+    pub async fn wake(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
+        self.can_use(user).await?;
+
         let app = self.app.access()?;
 
         let storage = self.storage_host(&app).await?;

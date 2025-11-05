@@ -1,10 +1,13 @@
-import { User } from "./index.js";
+import { User, UserEventListener } from "./index.js";
 import { DetailedUser } from "../../api_bindings.js";
 import { FetchListComponent } from "../fetch_list.js";
 import { Api, apiGetUsers } from "../../api.js";
+import { ComponentEvent } from "../index.js";
 
 export class UserList extends FetchListComponent<DetailedUser, User> {
     private api: Api
+
+    private eventTarget = new EventTarget()
 
     constructor(api: Api) {
         super({
@@ -26,13 +29,30 @@ export class UserList extends FetchListComponent<DetailedUser, User> {
 
         this.list.append(newUser)
 
-        // TODO: add other listeners
+        newUser.addClickedListener(this.onUserClicked.bind(this))
+    }
+    protected removeList(listIndex: number): void {
+
+        const userComponent = this.list.remove(listIndex)
+
+        userComponent?.removeClickedListener(this.onUserClicked.bind(this))
     }
 
     setFilter(filter: string) {
         this.list.setFilter((user) =>
             user.getCache()?.name.includes(filter) ?? false
         )
+    }
+
+    private onUserClicked(event: ComponentEvent<User>) {
+        this.eventTarget.dispatchEvent(new ComponentEvent("ml-userclicked", event.component))
+    }
+
+    addUserClickedListener(listener: UserEventListener, options?: EventListenerOptions) {
+        this.eventTarget.addEventListener("ml-userclicked", listener as EventListenerOrEventListenerObject, options)
+    }
+    removeUserClickedListener(listener: UserEventListener, options?: EventListenerOptions) {
+        this.eventTarget.removeEventListener("ml-userclicked", listener as EventListenerOrEventListenerObject, options)
     }
 
     protected updateComponentData(component: User, data: DetailedUser): void {

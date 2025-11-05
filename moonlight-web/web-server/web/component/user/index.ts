@@ -1,6 +1,8 @@
 import { Api, apiGetUser } from "../../api.js";
 import { DetailedUser } from "../../api_bindings.js";
-import { Component } from "../index.js";
+import { Component, ComponentEvent } from "../index.js";
+
+export type UserEventListener = (event: ComponentEvent<User>) => void
 
 export class User implements Component {
 
@@ -15,6 +17,7 @@ export class User implements Component {
         this.api = api
 
         this.div.appendChild(this.nameElement)
+        this.div.addEventListener("click", this.onClick.bind(this))
 
         this.user = user
         if ("name" in user) {
@@ -33,9 +36,21 @@ export class User implements Component {
         this.updateCache(user)
     }
     updateCache(user: DetailedUser) {
+        // TODO: use undetailed user, when it exists?
         this.user = user
 
         this.nameElement.innerText = user.name
+    }
+
+    private onClick() {
+        this.div.dispatchEvent(new ComponentEvent("ml-userclicked", this))
+    }
+
+    addClickedListener(listener: UserEventListener, options?: EventListenerOptions) {
+        this.div.addEventListener("ml-userclicked", listener as any, options)
+    }
+    removeClickedListener(listener: UserEventListener) {
+        this.div.removeEventListener("ml-userclicked", listener as any)
     }
 
     getCache(): DetailedUser | null {

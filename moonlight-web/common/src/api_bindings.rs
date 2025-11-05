@@ -235,10 +235,19 @@ pub struct DetailedUser {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct PutUserRequest {
+pub struct PostUserRequest {
     pub name: String,
     pub password: String,
     pub role: UserRole,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PatchUserRequest {
+    /// The user id of the user to change
+    pub id: u32,
+    pub password: Option<String>,
+    pub role: Option<UserRole>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

@@ -89,7 +89,7 @@ impl FromRequest for Admin {
         Box::pin(async move {
             let user = future.await?;
 
-            Admin::try_from(user).await
+            user.into_admin().await
         })
     }
 }

@@ -1,8 +1,9 @@
-import { PutUserRequest, UserRole } from "../../api_bindings.js";
+import { PostUserRequest, UserRole } from "../../api_bindings.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { FormModal } from "../modal/form.js";
+import { createSelectRoleInput } from "./role_select.js";
 
-export class AddUserModal extends FormModal<PutUserRequest> {
+export class AddUserModal extends FormModal<PostUserRequest> {
 
     private header: HTMLElement = document.createElement("h2")
 
@@ -16,17 +17,11 @@ export class AddUserModal extends FormModal<PutUserRequest> {
         this.header.innerText = "User"
 
         // TODO: prevent empty name or password
-        this.name = new InputComponent("name", "text", "Name")
+        this.name = new InputComponent("userName", "text", "Name")
 
-        this.defaultPassword = new InputComponent("password", "text", "Default Password")
+        this.defaultPassword = new InputComponent("userPassword", "text", "Default Password")
 
-        this.role = new SelectComponent("role", [
-            { value: "User", name: "User" },
-            { value: "Admin", name: "Admin" },
-        ], {
-            displayName: "Role",
-            preSelectedOption: "User"
-        })
+        this.role = createSelectRoleInput("User")
     }
 
     mountForm(form: HTMLFormElement): void {
@@ -41,7 +36,7 @@ export class AddUserModal extends FormModal<PutUserRequest> {
         this.defaultPassword.reset()
         this.role.reset()
     }
-    submit(): PutUserRequest | null {
+    submit(): PostUserRequest | null {
         const name = this.name.getValue()
         const password = this.defaultPassword.getValue()
         const role = this.role.getValue() as UserRole

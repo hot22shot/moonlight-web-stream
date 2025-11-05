@@ -231,11 +231,30 @@ impl Storage for JsonStorage {
     }
     async fn modify_user(
         &self,
-        _user_id: UserId,
-        _user: StorageUserModify,
+        user_id: UserId,
+        modify: StorageUserModify,
     ) -> Result<(), AppError> {
+        let users = self.users.read().await;
+
+        let user_lock = users.get(&user_id.0).ok_or(AppError::UserNotFound)?;
+        let mut user = user_lock.write().await;
+
+        if let Some(password) = modify.password {
+            user.password = V2UserPassword {
+                salt: password.salt,
+                hash: password.hash,
+            };
+        }
+        if let Some(role) = modify.role {
+            user.role = role;
+        }
+
+        drop(user);
+        drop(users);
+
         self.force_write();
-        todo!()
+
+        Ok(())
     }
     async fn get_user(&self, user_id: UserId) -> Result<StorageUser, AppError> {
         let users = self.users.read().await;

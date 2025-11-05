@@ -15,7 +15,7 @@ use tokio::{
 use crate::{
     StreamSettings,
     api_bindings::{StreamClientMessage, StreamServerMessage},
-    config::{WebRtcConfig, WebRtcNat1To1IceCandidateType},
+    config::WebRtcConfig,
 };
 
 #[derive(Debug, Serialize, Deserialize)]

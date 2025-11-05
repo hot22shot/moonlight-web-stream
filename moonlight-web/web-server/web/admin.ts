@@ -1,11 +1,14 @@
-import { Api, apiGetUser, apiLogout, apiPutUser, getApi } from "./api.js";
-import { Component } from "./component/index.js";
+import { Api, apiGetUser, apiLogout, apiPostUser, getApi } from "./api.js";
+import { Component, ComponentEvent } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { setTouchContextMenuEnabled } from "./ios_right_click.js";
 import { UserList } from "./component/user/list.js";
 import { AddUserModal } from "./component/user/add_modal.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { buildUrl } from "./config_.js";
+import { DetailedUserPage } from "./component/user/detailed_page.js";
+import { GetUserQuery } from "./api_bindings.js";
+import { User } from "./component/user/index.js";
 
 async function startApp() {
     setTouchContextMenuEnabled(true)
@@ -56,11 +59,17 @@ class AdminApp implements Component {
     private logoutButton = document.createElement("button")
     private userButton = document.createElement("button")
 
+    // Content
+    private content = document.createElement("div")
+
     // User Panel
     private userPanel = document.createElement("div")
     private addUserButton = document.createElement("button")
     private userSearch = document.createElement("input")
     private userList: UserList
+
+    // User Info
+    private userInfoPage: DetailedUserPage | null = null
 
     constructor(api: Api) {
         this.api = api
@@ -91,9 +100,13 @@ class AdminApp implements Component {
 
         this.root.appendChild(this.topLine)
 
+        // Content div
+        this.content.classList.add("admin-panel-content")
+        this.root.appendChild(this.content)
+
         // Select User Panel
         this.userPanel.classList.add("user-panel")
-        this.root.appendChild(this.userPanel)
+        this.content.appendChild(this.userPanel)
 
         this.addUserButton.innerText = "Add User"
         this.addUserButton.addEventListener("click", async () => {
@@ -102,7 +115,7 @@ class AdminApp implements Component {
             const userRequest = await showModal(addUserModal)
 
             if (userRequest) {
-                const newUser = await apiPutUser(this.api, userRequest)
+                const newUser = await apiPostUser(this.api, userRequest)
 
                 this.userList.insertList(newUser.id, newUser)
             }
@@ -115,6 +128,7 @@ class AdminApp implements Component {
         this.userPanel.appendChild(this.userSearch)
 
         this.userList = new UserList(api)
+        this.userList.addUserClickedListener(this.onUserClicked.bind(this))
         this.userList.mount(this.userPanel)
 
     }
@@ -125,6 +139,19 @@ class AdminApp implements Component {
 
     private onUserSearchChange() {
         this.userList.setFilter(this.userSearch.value)
+    }
+
+    private async onUserClicked(event: ComponentEvent<User>) {
+        const user = await apiGetUser(this.api, {
+            user_id: event.component.getUserId(),
+            name: null
+        })
+
+        if (this.userInfoPage) {
+            this.userInfoPage.unmount(this.content)
+        }
+        this.userInfoPage = new DetailedUserPage(this.api, user)
+        this.userInfoPage.mount(this.content)
     }
 
     mount(parent: HTMLElement): void {

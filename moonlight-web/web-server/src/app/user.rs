@@ -12,6 +12,7 @@ use crate::app::{
     AppError, AppRef, MoonlightClient,
     auth::{SessionToken, UserAuth},
     host::{Host, HostId},
+    password::StoragePassword,
     storage::{
         StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
     },
@@ -106,6 +107,16 @@ impl User {
         })
     }
 
+    pub async fn modify(&mut self, _: &Admin, modify: StorageUserModify) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        self.cache_storage = None;
+
+        app.storage.modify_user(self.id, modify).await?;
+
+        Ok(())
+    }
+
     pub async fn authenticate(mut self, auth: &UserAuth) -> Result<AuthenticatedUser, AppError> {
         match auth {
             UserAuth::UserPassword { username, password } => {
@@ -162,23 +173,30 @@ impl AuthenticatedUser {
         self.detailed_user_no_auth().await
     }
 
+    pub async fn set_password(&mut self, password: StoragePassword) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        self.cache_storage = None;
+
+        app.storage
+            .modify_user(
+                self.id,
+                StorageUserModify {
+                    password: Some(password),
+                    ..Default::default()
+                },
+            )
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn new_session(&self) -> Result<SessionToken, AppError> {
         let app = self.app.access()?;
 
         let token = app.storage.create_session_token(self.id).await?;
 
         Ok(token)
-    }
-
-    // TODO: how to authenticate this?
-    pub async fn modify(&mut self, _: Admin, modify: StorageUserModify) -> Result<(), AppError> {
-        let app = self.app.access()?;
-
-        self.cache_storage = None;
-
-        app.storage.modify_user(self.id, modify).await?;
-
-        Ok(())
     }
 
     pub async fn host_unique_id(&mut self) -> Result<String, AppError> {
@@ -275,15 +293,25 @@ impl AuthenticatedUser {
     pub async fn delete(self) -> Result<(), AppError> {
         todo!()
     }
+
+    pub async fn into_admin(self) -> Result<Admin, AppError> {
+        match Admin::try_from(self).await {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(_)) => Err(AppError::Forbidden),
+            Err(err) => Err(err),
+        }
+    }
 }
 
 pub struct Admin(AuthenticatedUser);
 
 impl Admin {
-    pub async fn try_from(mut user: AuthenticatedUser) -> Result<Self, AppError> {
+    pub async fn try_from(
+        mut user: AuthenticatedUser,
+    ) -> Result<Result<Admin, AuthenticatedUser>, AppError> {
         match user.role().await? {
-            Role::Admin => Ok(Self(user)),
-            _ => Err(AppError::Forbidden),
+            Role::Admin => Ok(Ok(Self(user))),
+            _ => Ok(Err(user)),
         }
     }
 }

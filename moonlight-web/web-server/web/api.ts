@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse, PutUserRequest, UndetailedHost } from "./api_bindings.js";
+import { App, DeleteHostQuery, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -223,10 +223,16 @@ export async function apiGetUsers(api: Api): Promise<GetUsersResponse> {
 
     return response as GetUsersResponse
 }
-export async function apiPutUser(api: Api, data: PutUserRequest): Promise<DetailedUser> {
-    const response = await fetchApi(api, "/user", "put", { json: data })
+export async function apiPostUser(api: Api, data: PostUserRequest): Promise<DetailedUser> {
+    const response = await fetchApi(api, "/user", "post", { json: data })
 
     return response as DetailedUser
+}
+export async function apiPatchUser(api: Api, data: PatchUserRequest): Promise<void> {
+    await fetchApi(api, "/user", "patch", {
+        json: data,
+        response: "ignore"
+    })
 }
 
 export async function apiGetHosts(api: Api): Promise<Array<UndetailedHost>> {
@@ -240,11 +246,13 @@ export async function apiGetHost(api: Api, query: GetHostQuery): Promise<Detaile
     return (response as GetHostResponse).host
 }
 export async function apiPutHost(api: Api, data: PutHostRequest): Promise<DetailedHost> {
+    // TODO: make this post
     const response = await fetchApi(api, "/host", "put", { json: data })
 
     return (response as PutHostResponse).host
 }
 export async function apiDeleteHost(api: Api, query: DeleteHostQuery): Promise<boolean> {
+    // TODO: don't catch
     try {
         await fetchApi(api, "/host", "delete", { query, response: "ignore" })
     } catch (e) {
