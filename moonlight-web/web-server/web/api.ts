@@ -319,42 +319,12 @@ export async function apiDeleteHost(api: Api, query: DeleteHostQuery): Promise<b
     return true
 }
 
-export async function apiPostPair(api: Api, request: PostPairRequest): Promise<{ pin: string, result: Promise<DetailedHost> }> {
-    const response = await fetchApi(api, "/pair", "post", {
+export async function apiPostPair(api: Api, request: PostPairRequest): Promise<StreamedJsonResponse<PostPairResponse1, PostPairResponse2>> {
+    return await fetchApi(api, "/pair", "post", {
         json: request,
-        response: "ignore",
+        response: "jsonStreaming",
         noTimeout: true
     })
-    if (!response.body) {
-        throw "no response body in pair response"
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-
-    const read1 = await reader.read();
-    const response1 = JSON.parse(decoder.decode(read1.value)) as PostPairResponse1
-
-    if (typeof response1 == "string") {
-        throw `failed to pair: ${response1}`
-    }
-    if (read1.done) {
-        throw "failed to pair: InternalServerError"
-    }
-
-    return {
-        pin: response1.Pin,
-        result: (async () => {
-            const read2 = await reader.read();
-            const response2 = JSON.parse(decoder.decode(read2.value)) as PostPairResponse2
-
-            if (response2 == "PairError") {
-                throw "failed to pair"
-            } else {
-                return response2.Paired
-            }
-        })()
-    }
 }
 
 export async function apiWakeUp(api: Api, request: PostWakeUpRequest): Promise<void> {

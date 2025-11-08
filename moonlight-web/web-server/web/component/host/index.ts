@@ -192,17 +192,27 @@ export class Host implements Component {
             }
         }
 
-        const pinResponse = await apiPostPair(this.api, {
+        const responseStream = await apiPostPair(this.api, {
             host_id: this.getHostId()
         })
 
-        const messageAbort = new AbortController()
-        showMessage(`Please pair your host ${this.getCache()?.name} with this pin:\nPin: ${pinResponse.pin}`, { signal: messageAbort.signal })
+        if (typeof responseStream.response == "string") {
+            throw `failed to pair (stage 1): ${responseStream.response}`
+        }
 
-        const resultResponse = await pinResponse.result
+        const messageAbort = new AbortController()
+        showMessage(`Please pair your host ${this.getCache()?.name} with this pin:\nPin: ${responseStream.response.Pin}`, { signal: messageAbort.signal })
+
+        const resultResponse = await responseStream.next()
         messageAbort.abort()
 
-        this.updateCache(resultResponse)
+        if (!resultResponse) {
+            throw "missing stage 2 of pairing"
+        } else if (typeof resultResponse == "string") {
+            throw `failed to pair (stage 2): ${resultResponse}`
+        }
+
+        this.updateCache(resultResponse.Paired)
     }
 
     getHostId(): number {

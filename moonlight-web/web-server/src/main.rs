@@ -27,7 +27,8 @@ mod web;
 
 #[actix_web::main]
 async fn main() {
-    // TODO: log config
+    // TODO: log config: set level, file, anonymize ips when enabled in file
+    // TODO: https://www.reddit.com/r/csharp/comments/166xgcl/comment/jynybpe/
 
     #[cfg(debug_assertions)]
     let log_level = LevelFilter::Debug;

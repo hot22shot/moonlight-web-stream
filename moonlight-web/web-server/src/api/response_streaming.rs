@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -6,6 +7,7 @@ use std::{
 use actix_web::{HttpRequest, HttpResponse, Responder, body::BoxBody, web::Bytes};
 use futures::Stream;
 use serde::Serialize;
+use thiserror::Error;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 pub struct StreamedResponse<Initial, Other> {
@@ -98,10 +100,21 @@ impl<T> Clone for StreamedResponseSender<T> {
     }
 }
 
-impl<T> StreamedResponseSender<T> {
-    pub async fn send(&self, value: T) -> Result<(), ()> {
-        // TODO
-        self.sender.send(value).await.unwrap();
+#[derive(Debug, Error)]
+pub enum StreamedResponseError {
+    #[error("failed to send value whilst response streaming: {0}")]
+    Send(anyhow::Error),
+}
+
+impl<T> StreamedResponseSender<T>
+where
+    T: Debug + Send + Sync + 'static,
+{
+    pub async fn send(&self, value: T) -> Result<(), StreamedResponseError> {
+        self.sender
+            .send(value)
+            .await
+            .map_err(|err| StreamedResponseError::Send(err.into()))?;
 
         Ok(())
     }

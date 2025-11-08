@@ -1,12 +1,11 @@
 use actix_web::{
-    Error, HttpResponse, delete,
+    HttpResponse, delete,
     dev::HttpServiceFactory,
     get, post, put, services,
     web::{self, Bytes, Data, Json, Query},
 };
-use log::{error, info, warn};
+use log::{error, warn};
 use moonlight_common::PairPin;
-use std::io::Write as _;
 use tokio::spawn;
 
 use crate::{
@@ -22,7 +21,7 @@ use crate::{
 };
 use common::api_bindings::{
     self, DeleteHostQuery, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
-    GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, PairStatus, PostPairRequest,
+    GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, PostPairRequest,
     PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PutHostRequest, PutHostResponse,
     UndetailedHost,
 };
@@ -104,8 +103,9 @@ async fn list_hosts(
                 }
             };
 
-            // TODO: remove unwraps
-            stream_sender.send(undetailed).await.unwrap();
+            if let Err(err) = stream_sender.send(undetailed).await {
+                warn!("Failed to send back undetailed host data using response streaming: {err:?}");
+            }
         });
     }
 
@@ -166,83 +166,43 @@ async fn delete_host(
 async fn pair_host(
     mut user: AuthenticatedUser,
     Json(request): Json<PostPairRequest>,
-) -> Result<HttpResponse, AppError> {
+) -> Result<StreamedResponse<PostPairResponse1, PostPairResponse2>, AppError> {
     let host_id = HostId(request.host_id);
 
     let mut host = user.host(host_id).await?;
 
-    if matches!(host.is_paired(&mut user).await?, PairStatus::Paired) {
-        return Ok(HttpResponse::NotModified().finish());
-    }
+    let pin = PairPin::generate()?;
 
-    // TODO: move to response_streaming.rs
-    let stream = async_stream::stream! {
-        // Generate pin
-        let Ok(pin) = PairPin::generate() else {
-            warn!("[Api]: failed to generate pin!");
+    let (stream_response, stream_sender) =
+        StreamedResponse::new(PostPairResponse1::Pin(pin.to_string()));
 
-            return;
+    spawn(async move {
+        let result = host.pair(&mut user, pin).await;
+
+        let result = match result {
+            Ok(()) => host.detailed_host(&mut user).await,
+            Err(err) => Err(err),
         };
 
-        // Send pin response
-        let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
-            unreachable!()
-        };
-
-        let bytes = Bytes::from_owner(text);
-        yield Ok::<_, Error>(bytes);
-
-        // Initiate pairing
-        if let Err(err) = host
-            .pair(
-                &mut user,
-                pin,
-            )
-            .await
-        {
-            info!("[Api]: failed to pair host {host:?}: {err:?}");
-
-            let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
-                unreachable!()
-            };
-
-            let bytes = Bytes::from_owner(text);
-            yield Ok::<_, Error>(bytes);
-
-            return;
-        };
-
-        // Get detailed host after pairing succeeded
-        let detailed_host = match host.detailed_host(&mut user).await {
-            Err(err) => {
-                warn!("[Api] failed to get host info after pairing for host {host:?}: {err:?}");
-
-                let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
-                    unreachable!()
-                };
-
-                let bytes = Bytes::from_owner(text);
-                yield Ok::<_, Error>(bytes);
-
-                return
+        match result {
+            Ok(detailed_host) => {
+                if let Err(err) = stream_sender
+                    .send(PostPairResponse2::Paired(detailed_host))
+                    .await
+                {
+                    warn!("Failed to send pair success: {err:?}");
+                }
             }
-            Ok(value) => value,
-        };
+            Err(err) => {
+                warn!("Failed to pair host: {err}");
+                if let Err(err) = stream_sender.send(PostPairResponse2::PairError).await {
+                    warn!("Failed to send pair failure: {err:?}");
+                }
+            }
+        }
+    });
 
-        // Send detailed host back
-        let mut text = Vec::new();
-        let _ = writeln!(&mut text);
-        if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(detailed_host)).is_err() {
-            unreachable!()
-        };
-
-        let bytes = Bytes::from_owner(text);
-        yield Ok::<_, Error>(bytes);
-    };
-
-    Ok(HttpResponse::Ok()
-        .insert_header(("Content-Type", "application/x-ndjson"))
-        .streaming(stream))
+    Ok(stream_response)
 }
 
 #[post("/host/wake")]
