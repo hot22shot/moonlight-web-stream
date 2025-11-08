@@ -27,6 +27,7 @@ export type InputInit = {
     step?: string
     accept?: string
     inputMode?: string
+    formRequired?: boolean
 }
 
 export type InputChangeListener = (event: ComponentEvent<InputComponent>) => void
@@ -60,6 +61,9 @@ export class InputComponent extends ElementWithLabel {
         }
         if (init && init.inputMode != null) {
             this.input.inputMode = init.inputMode
+        }
+        if (init && init.formRequired != null) {
+            this.input.required = init.formRequired
         }
 
         if (type == "file") {

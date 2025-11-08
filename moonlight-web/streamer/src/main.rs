@@ -163,7 +163,6 @@ async fn main() {
         .await;
 
     // -- Create the host and pair it
-    // TODO: hosts should use the old mutable way!
     let mut host = MoonlightHost::new(host_address, host_http_port, host_unique_id)
         .expect("failed to create host");
 

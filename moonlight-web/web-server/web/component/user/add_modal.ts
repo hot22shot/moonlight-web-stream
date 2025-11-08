@@ -16,10 +16,13 @@ export class AddUserModal extends FormModal<PostUserRequest> {
 
         this.header.innerText = "User"
 
-        // TODO: prevent empty name or password
-        this.name = new InputComponent("userName", "text", "Name")
+        this.name = new InputComponent("userName", "text", "Name", {
+            formRequired: true
+        })
 
-        this.defaultPassword = new InputComponent("userPassword", "text", "Default Password")
+        this.defaultPassword = new InputComponent("userPassword", "text", "Default Password", {
+            formRequired: true
+        })
 
         this.role = createSelectRoleInput("User")
     }
