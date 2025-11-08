@@ -2,7 +2,7 @@ use std::pin::Pin;
 
 use actix_web::{
     Error, FromRequest, HttpRequest, HttpResponse,
-    cookie::{Cookie, SameSite},
+    cookie::{Cookie, Expiration, SameSite, time::OffsetDateTime},
     dev::Payload,
     get, post,
     web::{Data, Json},
@@ -106,9 +106,9 @@ async fn login(
         })
         .await?;
 
-    let session = user
-        .new_session(app.config().web_server.session_cookie_expiration)
-        .await?;
+    let session_expiration = app.config().web_server.session_cookie_expiration;
+
+    let session = user.new_session(session_expiration).await?;
     let mut session_bytes = [0; _];
     let session_str = session.encode(&mut session_bytes);
 
@@ -122,6 +122,9 @@ async fn login(
                 .same_site(SameSite::Strict)
                 .http_only(true) // not accessible via js
                 .secure(app.config().web_server.session_cookie_secure)
+                .expires(Expiration::DateTime(
+                    OffsetDateTime::now_utc() + session_expiration,
+                ))
                 .finish(),
         )
         .finish())
