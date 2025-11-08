@@ -119,8 +119,7 @@ async fn login(
                 .path(url_path_prefix)
                 .same_site(SameSite::Strict)
                 .http_only(true) // not accessible via js
-                // TODO: add a secure option in the config
-                // .secure(true)
+                .secure(app.config().web_server.session_cookie_secure)
                 .finish(),
         )
         .finish())

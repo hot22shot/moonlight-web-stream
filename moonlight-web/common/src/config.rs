@@ -100,25 +100,22 @@ impl Default for WebRtcConfig {
 }
 
 fn default_ice_servers() -> Vec<RtcIceServer> {
-    vec![
-        // Google
-        RtcIceServer {
-            urls: vec![
-                // Google
-                "stun:stun.l.google.com:19302".to_string(),
-                "stun:stun.l.google.com:5349".to_string(),
-                "stun:stun1.l.google.com:3478".to_string(),
-                "stun:stun1.l.google.com:5349".to_string(),
-                "stun:stun2.l.google.com:19302".to_string(),
-                "stun:stun2.l.google.com:5349".to_string(),
-                "stun:stun3.l.google.com:3478".to_string(),
-                "stun:stun3.l.google.com:5349".to_string(),
-                "stun:stun4.l.google.com:19302".to_string(),
-                "stun:stun4.l.google.com:5349".to_string(),
-            ],
-            ..Default::default()
-        },
-    ]
+    vec![RtcIceServer {
+        urls: vec![
+            // Google
+            "stun:stun.l.google.com:19302".to_string(),
+            "stun:stun.l.google.com:5349".to_string(),
+            "stun:stun1.l.google.com:3478".to_string(),
+            "stun:stun1.l.google.com:5349".to_string(),
+            "stun:stun2.l.google.com:19302".to_string(),
+            "stun:stun2.l.google.com:5349".to_string(),
+            "stun:stun3.l.google.com:3478".to_string(),
+            "stun:stun3.l.google.com:5349".to_string(),
+            "stun:stun4.l.google.com:19302".to_string(),
+            "stun:stun4.l.google.com:5349".to_string(),
+        ],
+        ..Default::default()
+    }]
 }
 fn default_network_types() -> Vec<WebRtcNetworkType> {
     vec![WebRtcNetworkType::Udp4, WebRtcNetworkType::Udp6]
@@ -133,6 +130,8 @@ pub struct WebServerConfig {
     pub certificate: Option<ConfigSsl>,
     #[serde(default)]
     pub url_path_prefix: String,
+    #[serde(default = "default_session_cookie_secure")]
+    pub session_cookie_secure: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,6 +146,7 @@ impl Default for WebServerConfig {
             bind_address: default_bind_address(),
             certificate: None,
             url_path_prefix: "".to_string(),
+            session_cookie_secure: default_session_cookie_secure(),
         }
     }
 }
@@ -155,7 +155,10 @@ fn default_bind_address() -> SocketAddr {
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
 }
 
-// TODO: should this be moonlight or sunshine / apollo config?
+fn default_session_cookie_secure() -> bool {
+    false
+}
+
 // -- Moonlight
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -30,6 +30,7 @@ pub struct Host {
     pub(super) app: AppRef,
     pub(super) id: HostId,
     pub(super) cache_storage: Option<StorageHost>,
+    // TODO: this cache might be invalid when there's access from multiple users on one host
     pub(super) cache_host_info: Option<HostInfo>,
 }
 
