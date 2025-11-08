@@ -106,7 +106,9 @@ async fn login(
         })
         .await?;
 
-    let session = user.new_session().await?;
+    let session = user
+        .new_session(app.config().web_server.session_cookie_expiration)
+        .await?;
     let mut session_bytes = [0; _];
     let session_str = session.encode(&mut session_bytes);
 

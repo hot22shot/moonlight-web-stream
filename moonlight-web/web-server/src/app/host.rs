@@ -480,7 +480,7 @@ impl Host {
                             (Some(info.host_name), Some(info.mac))
                         },
                         Err(err) => {
-                            error!("Failed to make https request to host {this:?} after pairing completed: {err}");
+                            warn!("Failed to make https request to host {this:?} after pairing completed: {err}");
                             (None, None)
                         },
                     };

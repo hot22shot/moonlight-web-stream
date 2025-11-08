@@ -1,4 +1,7 @@
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -33,13 +36,21 @@ impl Default for Config {
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum StorageConfig {
-    Json { path: String },
+    Json {
+        path: String,
+        session_expiration_check_interval: Duration,
+    },
 }
 
 fn default_data_storage() -> StorageConfig {
     StorageConfig::Json {
         path: "server/data.json".to_string(),
+        session_expiration_check_interval: default_session_expiration_check_interval(),
     }
+}
+
+fn default_session_expiration_check_interval() -> Duration {
+    Duration::from_mins(5)
 }
 
 // -- WebRTC Config
@@ -132,6 +143,8 @@ pub struct WebServerConfig {
     pub url_path_prefix: String,
     #[serde(default = "default_session_cookie_secure")]
     pub session_cookie_secure: bool,
+    #[serde(default = "default_session_cookie_expiration")]
+    pub session_cookie_expiration: Duration,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,6 +160,7 @@ impl Default for WebServerConfig {
             certificate: None,
             url_path_prefix: "".to_string(),
             session_cookie_secure: default_session_cookie_secure(),
+            session_cookie_expiration: default_session_cookie_expiration(),
         }
     }
 }
@@ -154,9 +168,13 @@ impl Default for WebServerConfig {
 fn default_bind_address() -> SocketAddr {
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
 }
-
 fn default_session_cookie_secure() -> bool {
     false
+}
+fn default_session_cookie_expiration() -> Duration {
+    const DAY_SECONDS: u64 = 24 * 60 * 60;
+
+    Duration::from_secs(DAY_SECONDS)
 }
 
 // -- Moonlight

@@ -1,4 +1,10 @@
-use std::{collections::HashMap, io::ErrorKind, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    io::ErrorKind,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -10,7 +16,10 @@ use tokio::{
     sync::{
         RwLock,
         mpsc::{self, Receiver, Sender, error::TrySendError},
+        oneshot,
     },
+    task::JoinHandle,
+    time::sleep,
 };
 
 use crate::app::{
@@ -35,26 +44,76 @@ mod versions;
 pub struct JsonStorage {
     file: PathBuf,
     store_sender: Sender<()>,
+    session_expiration_checker: JoinHandle<()>,
     users: RwLock<HashMap<u32, RwLock<V2User>>>,
     hosts: RwLock<HashMap<u32, RwLock<V2Host>>>,
-    sessions: RwLock<HashMap<SessionToken, u32>>,
+    sessions: RwLock<HashMap<SessionToken, Session>>,
+}
+
+impl Drop for JsonStorage {
+    fn drop(&mut self) {
+        self.session_expiration_checker.abort();
+    }
+}
+
+struct Session {
+    created_at: Instant,
+    expiration: Duration,
+    user_id: u32,
 }
 
 impl JsonStorage {
-    pub async fn load(file: PathBuf) -> Result<Arc<Self>, anyhow::Error> {
+    pub async fn load(
+        file: PathBuf,
+        session_expiration_check_interval: Duration,
+    ) -> Result<Arc<Self>, anyhow::Error> {
         let (store_sender, store_receiver) = mpsc::channel(1);
+
+        let (this_sender, this_receiver) = oneshot::channel::<Arc<Self>>();
+
+        let session_expiration_checker = spawn(async move {
+            let this = match this_receiver.await {
+                Ok(value) => value,
+                Err(err) => {
+                    error!(
+                        "Failed to initialize session expiration checker: {err:?}. All sessions will last forever!"
+                    );
+                    return;
+                }
+            };
+
+            loop {
+                sleep(session_expiration_check_interval).await;
+
+                let mut sessions = this.sessions.write().await;
+
+                let now = Instant::now();
+                sessions.retain(|_, session| {
+                    let current_session_length = now - session.created_at;
+
+                    current_session_length < session.expiration
+                });
+            }
+        });
 
         let this = Self {
             file,
             store_sender,
+            session_expiration_checker,
             hosts: Default::default(),
             users: Default::default(),
             sessions: Default::default(),
         };
+        let this = Arc::new(this);
+
+        if this_sender.send(this.clone()).is_err() {
+            error!(
+                "Failed to send values to session expiration checker. All sessions will last forever!"
+            );
+        }
 
         this.load_internal().await?;
 
-        let this = Arc::new(this);
         spawn({
             let this = this.clone();
 
@@ -313,13 +372,24 @@ impl Storage for JsonStorage {
         Ok(Either::Right(out))
     }
 
-    async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError> {
+    async fn create_session_token(
+        &self,
+        user_id: UserId,
+        expiration: Duration,
+    ) -> Result<SessionToken, AppError> {
         let token = SessionToken::new()?;
 
         // TODO: statistically impossible, but session duplicates?
         let mut sessions = self.sessions.write().await;
 
-        sessions.insert(token, user_id.0);
+        sessions.insert(
+            token,
+            Session {
+                created_at: Instant::now(),
+                expiration,
+                user_id: user_id.0,
+            },
+        );
 
         Ok(token)
     }
@@ -333,7 +403,7 @@ impl Storage for JsonStorage {
     async fn remove_all_user_session_tokens(&self, user_id: UserId) -> Result<(), AppError> {
         let mut sessions = self.sessions.write().await;
 
-        sessions.retain(|_, cmp_user_id| UserId(*cmp_user_id) != user_id);
+        sessions.retain(|_, session| UserId(session.user_id) != user_id);
 
         Ok(())
     }
@@ -345,7 +415,7 @@ impl Storage for JsonStorage {
 
         sessions
             .get(&session)
-            .map(|user_id| (UserId(*user_id), None))
+            .map(|session| (UserId(session.user_id), None))
             .ok_or(AppError::SessionTokenNotFound)
     }
 

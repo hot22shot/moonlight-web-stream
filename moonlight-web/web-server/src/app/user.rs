@@ -1,6 +1,7 @@
 use std::{
     fmt::{Debug, Formatter},
     ops::{Deref, DerefMut},
+    time::Duration,
 };
 
 use common::api_bindings::{self, DetailedUser};
@@ -201,10 +202,13 @@ impl AuthenticatedUser {
         Ok(())
     }
 
-    pub async fn new_session(&self) -> Result<SessionToken, AppError> {
+    pub async fn new_session(&self, expiration: Duration) -> Result<SessionToken, AppError> {
         let app = self.app.access()?;
 
-        let token = app.storage.create_session_token(self.id).await?;
+        let token = app
+            .storage
+            .create_session_token(self.id, expiration)
+            .await?;
 
         Ok(token)
     }

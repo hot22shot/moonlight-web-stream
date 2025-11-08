@@ -4,7 +4,7 @@ use actix_web::{
     get, post, put, services,
     web::{self, Bytes, Data, Json, Query},
 };
-use log::{error, warn};
+use log::warn;
 use moonlight_common::PairPin;
 use tokio::spawn;
 
@@ -97,7 +97,7 @@ async fn list_hosts(
             let undetailed = match host.undetailed_host(&mut user).await {
                 Ok(value) => value,
                 Err(err) => {
-                    error!("Failed to get undetailed host of {host:?}: {err:?}");
+                    warn!("Failed to get undetailed host of {host:?}: {err:?}");
                     // TODO: what to do now?
                     return;
                 }

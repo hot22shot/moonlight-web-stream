@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use common::config::StorageConfig;
@@ -20,8 +20,11 @@ pub async fn create_storage(
     config: StorageConfig,
 ) -> Result<Arc<dyn Storage + Send + Sync>, anyhow::Error> {
     match config {
-        StorageConfig::Json { path } => {
-            let storage = JsonStorage::load(path.into()).await?;
+        StorageConfig::Json {
+            path,
+            session_expiration_check_interval,
+        } => {
+            let storage = JsonStorage::load(path.into(), session_expiration_check_interval).await?;
 
             Ok(storage)
         }
@@ -112,8 +115,11 @@ pub trait Storage {
     /// The returned tuple can contain a Vec<UserId> or Vec<StorageUser> if the Storage thinks it's more efficient to query all data directly
     async fn list_users(&self) -> Result<Either<Vec<UserId>, Vec<StorageUser>>, AppError>;
 
-    // TODO: maybe expiration date?
-    async fn create_session_token(&self, user_id: UserId) -> Result<SessionToken, AppError>;
+    async fn create_session_token(
+        &self,
+        user_id: UserId,
+        expires_after: Duration,
+    ) -> Result<SessionToken, AppError>;
     async fn remove_session_token(&self, session: SessionToken) -> Result<(), AppError>;
     async fn remove_all_user_session_tokens(&self, user_id: UserId) -> Result<(), AppError>;
     /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data directly
