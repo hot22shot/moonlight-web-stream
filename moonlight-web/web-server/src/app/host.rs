@@ -138,8 +138,6 @@ impl Host {
         // app, https_capable, client, host, port, client_info
         f: impl AsyncFnOnce(&mut Self, bool, &mut MoonlightClient, &str, u16, ClientInfo) -> R,
     ) -> Result<R, AppError> {
-        // TODO: make this mut and store client as cache
-
         let user_unique_id = user.host_unique_id().await?;
         let host_data = self.storage_host(app).await?;
 
@@ -444,7 +442,6 @@ impl Host {
 
                     let https_address = Self::build_hostport(host, info.https_port);
 
-                    // TODO: device name
                     let PairSuccess { server_certificate, mut client } = host_pair(
                         client,
                         &Self::build_hostport(host, port),
@@ -511,8 +508,7 @@ impl Host {
         let storage = self.storage_host(&app).await?;
 
         if let Some(mac) = storage.cache.mac {
-            // TODO: error
-            broadcast_magic_packet(mac).await.unwrap();
+            broadcast_magic_packet(mac).await?;
             Ok(())
         } else {
             Err(AppError::HostNotFound)

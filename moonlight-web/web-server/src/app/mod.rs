@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    io,
     ops::Deref,
     sync::{Arc, Weak},
 };
@@ -59,11 +60,13 @@ pub enum AppError {
     #[error("the authorization header is not a bearer")]
     BadRequest,
     // --
-    #[error("openssl error occured")]
+    #[error("openssl error occured: {0}")]
     OpenSSL(#[from] ErrorStack),
-    #[error("hex error occured")]
+    #[error("hex error occured: {0}")]
     Hex(#[from] FromHexError),
-    #[error("moonlight api error")]
+    #[error("io error: {0}")]
+    Io(#[from] io::Error),
+    #[error("moonlight api error: {0}")]
     MoonlightApi(#[from] ApiError<<MoonlightClient as RequestClient>::Error>),
 }
 
@@ -90,6 +93,7 @@ impl ResponseError for AppError {
             Self::BearerMalformed => StatusCode::BAD_REQUEST,
             Self::BadRequest => StatusCode::BAD_REQUEST,
             Self::MoonlightApi(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
