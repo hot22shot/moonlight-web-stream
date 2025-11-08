@@ -23,9 +23,6 @@ pub async fn create_storage(
         StorageConfig::Json { path } => {
             let storage = JsonStorage::load(path.into()).await?;
 
-            // TODO: remove force write, this is just testing
-            storage.force_write();
-
             Ok(storage)
         }
     }

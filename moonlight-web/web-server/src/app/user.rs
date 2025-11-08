@@ -284,7 +284,6 @@ impl AuthenticatedUser {
             .await?;
 
         Ok(Host {
-            // TODO: use storage_host
             app: self.app.clone(),
             id: host.id,
             cache_storage: Some(host),

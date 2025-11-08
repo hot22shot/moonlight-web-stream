@@ -192,8 +192,6 @@ impl App {
     pub async fn user_by_id(&self, user_id: UserId) -> Result<User, AppError> {
         let user = self.inner.storage.get_user(user_id).await?;
 
-        // TODO: use optional user field
-
         Ok(User {
             app: self.new_ref(),
             id: user_id,
@@ -202,8 +200,6 @@ impl App {
     }
     pub async fn user_by_name(&self, name: &str) -> Result<User, AppError> {
         let (user_id, user) = self.inner.storage.get_user_by_name(name).await?;
-
-        // TODO: use optional user field
 
         Ok(User {
             app: self.new_ref(),
@@ -220,8 +216,6 @@ impl App {
             .storage
             .get_user_by_session_token(session)
             .await?;
-
-        // TODO: use optional user field
 
         Ok(AuthenticatedUser {
             inner: User {

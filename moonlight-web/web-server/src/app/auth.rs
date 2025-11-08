@@ -35,7 +35,6 @@ impl SessionToken {
         str::from_utf8(bytes).expect("hex encode produces invalid utf-8")
     }
 
-    // TODO: custom error or just leave it like this?
     pub fn decode(str: &str) -> Result<Self, FromHexError> {
         let mut arr = [0u8; SESSION_TOKEN_SIZE];
         hex::decode_to_slice(str.as_bytes(), &mut arr)?;
