@@ -9,6 +9,26 @@ const API_TIMEOUT = 12000
 
 let currentApi: Api | null = null
 
+// -- Any errors related to auth will reload page -> show the auth modal
+function handleError(event: ErrorEvent) {
+    onError(event.error)
+}
+function handleRejection(event: PromiseRejectionEvent) {
+    onError(event.reason)
+}
+function onError(error: any) {
+    if (error instanceof FetchError) {
+        const response = error.getResponse()
+        // 401 = Unauthorized
+        if (response?.status == 401) {
+            window.location.reload()
+        }
+    }
+}
+
+window.addEventListener("error", handleError)
+window.addEventListener("unhandledrejection", handleRejection)
+
 export async function getApi(host_url?: string): Promise<Api> {
     if (currentApi) {
         return currentApi

@@ -39,6 +39,7 @@ export function showErrorPopup(message: string, fatal: boolean = false, errorObj
     }, ERROR_REMOVAL_TIME_MS)
 }
 
+// TODO: wtf am i doing here? why fatal = that?
 function handleError(event: ErrorEvent) {
     const fatal = event instanceof FetchError
 

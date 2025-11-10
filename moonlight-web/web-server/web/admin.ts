@@ -124,6 +124,8 @@ class AdminApp implements Component {
                     if (e instanceof FetchError && e.getResponse()?.status == 409) {
                         // Name already exists
                         await showMessage(`A user with the name "${userRequest.name}" already exists!`)
+                    } else {
+                        throw e
                     }
                 }
             }
