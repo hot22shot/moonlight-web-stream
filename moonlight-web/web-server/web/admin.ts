@@ -1,4 +1,4 @@
-import { Api, apiGetUser, apiLogout, apiPostUser, getApi } from "./api.js";
+import { Api, apiGetUser, apiLogout, apiPostUser, FetchError, getApi } from "./api.js";
 import { Component, ComponentEvent } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { setTouchContextMenuEnabled } from "./ios_right_click.js";
@@ -115,9 +115,17 @@ class AdminApp implements Component {
             const userRequest = await showModal(addUserModal)
 
             if (userRequest) {
-                const newUser = await apiPostUser(this.api, userRequest)
+                try {
+                    const newUser = await apiPostUser(this.api, userRequest)
 
-                this.userList.insertList(newUser.id, newUser)
+                    this.userList.insertList(newUser.id, newUser)
+                } catch (e) {
+                    // 409 = Conflict
+                    if (e instanceof FetchError && e.getResponse()?.status == 409) {
+                        // Name already exists
+                        await showMessage(`A user with the name "${userRequest.name}" already exists!`)
+                    }
+                }
             }
         })
         this.userPanel.appendChild(this.addUserButton)

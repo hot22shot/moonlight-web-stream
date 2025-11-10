@@ -258,7 +258,15 @@ impl Storage for JsonStorage {
             },
         };
 
-        // TODO: check for duplicate names
+        {
+            match self.get_user_by_name(&user.name).await {
+                Err(AppError::UserNotFound) => {
+                    // Fallthrough
+                }
+                Ok(_) => return Err(AppError::UserAlreadyExists),
+                Err(err) => return Err(err),
+            }
+        }
 
         let mut users = self.users.write().await;
 

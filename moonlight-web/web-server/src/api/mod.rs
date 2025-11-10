@@ -33,6 +33,8 @@ pub mod stream;
 
 pub mod response_streaming;
 
+// TODO: change some responses to 201
+
 #[get("/user")]
 async fn get_user(
     app: Data<App>,

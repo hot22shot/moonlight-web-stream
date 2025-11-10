@@ -34,6 +34,8 @@ pub enum AppError {
     AppDestroyed,
     #[error("the user was not found")]
     UserNotFound,
+    #[error("the user already exists")]
+    UserAlreadyExists,
     #[error("the host was not found")]
     HostNotFound,
     #[error("the host was already paired")]
@@ -83,6 +85,7 @@ impl ResponseError for AppError {
             Self::HostPaired => StatusCode::NOT_MODIFIED,
             Self::HostOffline => StatusCode::GATEWAY_TIMEOUT,
             Self::UserNotFound => StatusCode::NOT_FOUND,
+            Self::UserAlreadyExists => StatusCode::CONFLICT,
             Self::CredentialsWrong => StatusCode::UNAUTHORIZED,
             Self::SessionTokenNotFound => StatusCode::UNAUTHORIZED,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
