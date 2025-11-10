@@ -65,6 +65,8 @@ pub struct WebRtcConfig {
     pub nat_1to1: Option<WebRtcNat1To1Mapping>,
     #[serde(default = "default_network_types")]
     pub network_types: Vec<WebRtcNetworkType>,
+    #[serde(default = "default_include_loopback_candidates")]
+    pub include_loopback_candidates: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -106,6 +108,7 @@ impl Default for WebRtcConfig {
             port_range: None,
             nat_1to1: None,
             network_types: default_network_types(),
+            include_loopback_candidates: default_include_loopback_candidates(),
         }
     }
 }
@@ -130,6 +133,9 @@ fn default_ice_servers() -> Vec<RtcIceServer> {
 }
 fn default_network_types() -> Vec<WebRtcNetworkType> {
     vec![WebRtcNetworkType::Udp4, WebRtcNetworkType::Udp6]
+}
+fn default_include_loopback_candidates() -> bool {
+    true
 }
 
 // -- Web Server Config

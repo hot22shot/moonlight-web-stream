@@ -217,8 +217,7 @@ async fn main() {
             .collect(),
     );
 
-    // TODO: make this configurable
-    api_settings.set_include_loopback_candidate(true);
+    api_settings.set_include_loopback_candidate(config.webrtc.include_loopback_candidates);
 
     // -- Register media codecs
     let mut api_media = MediaEngine::default();

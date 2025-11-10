@@ -563,6 +563,7 @@ impl Host {
             .ok_or(AppError::HostOffline)?;
 
         // TODO: how to reload app images?
+        // TODO: app images are not getting cached?
         let cache_key = (user.id(), self.id, app_id);
         {
             let app_images = app.app_image_cache.read().await;
