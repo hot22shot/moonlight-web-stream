@@ -68,7 +68,7 @@ export class Stream {
         this.streamerSize = getStreamerSize(settings, viewerScreenSize)
 
         // Configure web socket
-        const wsApiHost = api.host_url.replace("https", "wss").replace("http", "ws")
+        const wsApiHost = api.host_url.replace(/^http(s)?:/, "ws$1:")
 
         this.ws = new WebSocket(`${wsApiHost}/host/stream`)
         this.ws.addEventListener("error", this.onError.bind(this))
