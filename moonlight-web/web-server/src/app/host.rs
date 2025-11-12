@@ -552,6 +552,7 @@ impl Host {
         &mut self,
         user: &mut AuthenticatedUser,
         app_id: AppId,
+        force_refresh: bool,
     ) -> Result<Bytes, AppError> {
         self.can_use(user).await?;
 
@@ -562,13 +563,13 @@ impl Host {
             .await?
             .ok_or(AppError::HostOffline)?;
 
-        // TODO: how to reload app images?
-        // TODO: app images are not getting cached?
         let cache_key = (user.id(), self.id, app_id);
-        {
-            let app_images = app.app_image_cache.read().await;
-            if let Some(app_image) = app_images.get(&cache_key) {
-                return Ok(app_image.clone());
+        if !force_refresh {
+            {
+                let app_images = app.app_image_cache.read().await;
+                if let Some(app_image) = app_images.get(&cache_key) {
+                    return Ok(app_image.clone());
+                }
             }
         }
 

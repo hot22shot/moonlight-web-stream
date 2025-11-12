@@ -262,7 +262,7 @@ class MainApp implements Component {
 
         await Promise.all([
             this.hostList.forceFetch(),
-            this.gameList?.forceFetch(true)
+            this.gameList?.forceFetch()
         ])
 
         if (this.currentDisplay == "games"

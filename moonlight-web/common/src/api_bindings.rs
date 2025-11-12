@@ -120,8 +120,6 @@ pub struct GetHostsResponse {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetHostQuery {
     pub host_id: u32,
-    #[serde(default)]
-    pub force_refresh: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -180,8 +178,6 @@ pub struct PostWakeUpRequest {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetAppsQuery {
     pub host_id: u32,
-    #[serde(default)]
-    pub force_refresh: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

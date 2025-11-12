@@ -18,7 +18,7 @@ export class UserList extends FetchListComponent<DetailedUser, User> {
         this.api = api
     }
 
-    async forceFetch(forceServerRefresh?: boolean): Promise<void> {
+    async forceFetch(): Promise<void> {
         const response = await apiGetUsers(this.api)
 
         this.updateCache(response.users)

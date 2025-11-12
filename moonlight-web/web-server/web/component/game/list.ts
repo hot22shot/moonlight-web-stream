@@ -37,10 +37,9 @@ export class GameList extends FetchListComponent<App, Game> {
         this.forceFetch()
     }
 
-    async forceFetch(forceServerRefresh?: boolean) {
+    async forceFetch() {
         const apps = await apiGetApps(this.api, {
             host_id: this.hostId,
-            force_refresh: forceServerRefresh || false
         })
 
         this.updateCache(apps)

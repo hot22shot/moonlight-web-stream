@@ -48,14 +48,13 @@ export class Host implements Component {
         if (host != null) {
             this.updateCache(host)
         } else {
-            this.forceFetch(false)
+            this.forceFetch()
         }
     }
 
-    async forceFetch(forceServerRefresh?: boolean) {
+    async forceFetch() {
         const newCache = await apiGetHost(this.api, {
             host_id: this.hostId,
-            force_refresh: forceServerRefresh || false
         })
 
         this.updateCache(newCache)
@@ -97,7 +96,7 @@ export class Host implements Component {
 
         elements.push({
             name: "Reload",
-            callback: async () => this.forceFetch(true)
+            callback: async () => this.forceFetch()
         })
 
         if (this.cache?.server_state != null && this.cache?.paired == "NotPaired") {
@@ -122,7 +121,6 @@ export class Host implements Component {
         if (!host || !isDetailedHost(host)) {
             host = await apiGetHost(this.api, {
                 host_id: this.hostId,
-                force_refresh: false
             })
         }
         if (!host || !isDetailedHost(host)) {

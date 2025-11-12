@@ -144,7 +144,7 @@ class AdminApp implements Component {
     }
 
     async forceFetch() {
-        await this.userList.forceFetch(true)
+        await this.userList.forceFetch()
     }
 
     private onUserSearchChange() {

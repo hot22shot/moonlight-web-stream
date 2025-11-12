@@ -250,7 +250,9 @@ async fn get_app_image(
 
     let mut host = user.host(host_id).await?;
 
-    let image = host.app_image(&mut user, app_id).await?;
+    let image = host
+        .app_image(&mut user, app_id, query.force_refresh)
+        .await?;
 
     Ok(image)
 }
