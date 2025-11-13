@@ -70,8 +70,7 @@ impl<'de> Deserialize<'de> for SessionToken {
             where
                 E: de::Error,
             {
-                // TODO: error
-                SessionToken::decode(v).map_err(|_| todo!())
+                SessionToken::decode(v).map_err(|_| E::custom("failed to decode hex"))
             }
         }
 

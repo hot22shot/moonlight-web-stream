@@ -5,7 +5,7 @@ use std::{
 
 use actix_web::web::Bytes;
 use common::api_bindings::{self, DetailedHost, HostState, PairStatus, UndetailedHost};
-use log::{error, warn};
+use log::warn;
 use moonlight_common::{
     PairPin, ServerState,
     high::broadcast_magic_packet,
@@ -31,8 +31,7 @@ pub struct Host {
     pub(super) app: AppRef,
     pub(super) id: HostId,
     pub(super) cache_storage: Option<StorageHost>,
-    // TODO: this cache might be invalid when there's access from multiple users on one host
-    pub(super) cache_host_info: Option<HostInfo>,
+    pub(super) cache_host_info: Option<(UserId, HostInfo)>,
 }
 
 impl Debug for Host {
@@ -232,6 +231,14 @@ impl Host {
         app: &AppInner,
         user: &mut AuthenticatedUser,
     ) -> Result<Option<HostInfo>, AppError> {
+        let user_id = user.id();
+
+        if let Some((cache_user_id, cache)) = self.cache_host_info.as_ref()
+            && *cache_user_id == user_id
+        {
+            return Ok(Some(cache.clone()));
+        }
+
         self.use_client(
             app,
             user,
@@ -272,7 +279,7 @@ impl Host {
                     }
                 }
 
-                this.cache_host_info = Some(info.clone());
+                this.cache_host_info = Some((user_id, info.clone()));
 
                 Ok(Some(info))
             },
@@ -421,6 +428,7 @@ impl Host {
     ) -> Result<(), AppError> {
         self.can_use(user).await?;
 
+        let user_id = user.id();
         let app = self.app.access()?;
 
         let info = self
@@ -467,7 +475,7 @@ impl Host {
                     .await
                     {
                         Ok(info) => {
-                            this.cache_host_info = Some(info.clone());
+                            this.cache_host_info = Some((user_id, info.clone()));
 
                             (Some(info.host_name), Some(info.mac))
                         },
