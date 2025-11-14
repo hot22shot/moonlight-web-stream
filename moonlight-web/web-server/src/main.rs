@@ -30,6 +30,8 @@ async fn main() {
     // TODO: log config: set level, file, anonymize ips when enabled in file
     // TODO: https://www.reddit.com/r/csharp/comments/166xgcl/comment/jynybpe/
 
+    // TODO: human json: strip comments
+
     #[cfg(debug_assertions)]
     let log_level = LevelFilter::Debug;
     #[cfg(not(debug_assertions))]

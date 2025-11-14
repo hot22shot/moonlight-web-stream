@@ -44,7 +44,6 @@ export class User implements Component {
         this.updateCache(user)
     }
     updateCache(user: DetailedUser) {
-        // TODO: use undetailed user, when it exists?
         this.user = user
 
         this.nameElement.innerText = user.name

@@ -151,6 +151,7 @@ pub struct WebServerConfig {
     pub session_cookie_secure: bool,
     #[serde(default = "default_session_cookie_expiration")]
     pub session_cookie_expiration: Duration,
+    pub default_user_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,6 +168,7 @@ impl Default for WebServerConfig {
             url_path_prefix: "".to_string(),
             session_cookie_secure: default_session_cookie_secure(),
             session_cookie_expiration: default_session_cookie_expiration(),
+            default_user_id: None,
         }
     }
 }

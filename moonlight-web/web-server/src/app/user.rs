@@ -81,6 +81,12 @@ impl User {
         Ok(user)
     }
 
+    pub async fn is_default_user(&self) -> Result<bool, AppError> {
+        let app = self.app.access()?;
+
+        Ok(app.config.web_server.default_user_id.map(UserId) == Some(self.id))
+    }
+
     pub async fn name(&mut self) -> Result<String, AppError> {
         let storage = self.storage_user().await?;
 
@@ -102,7 +108,8 @@ impl User {
 
         Ok(DetailedUser {
             id: self.id.0,
-            name: self.name().await?,
+            is_default_user: self.is_default_user().await?,
+            name: storage.name,
             role: storage.role.into(),
             client_unique_id: storage.client_unique_id,
         })
@@ -127,6 +134,9 @@ impl User {
 
     pub async fn authenticate(mut self, auth: &UserAuth) -> Result<AuthenticatedUser, AppError> {
         match auth {
+            UserAuth::None if self.is_default_user().await? => {
+                Ok(AuthenticatedUser { inner: self })
+            }
             UserAuth::UserPassword { username, password } => {
                 let storage = self.storage_user().await?;
 

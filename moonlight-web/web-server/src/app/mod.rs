@@ -5,9 +5,10 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use actix_web::{HttpResponse, ResponseError, http::StatusCode, web::Bytes};
+use actix_web::{HttpResponse, ResponseError, cookie::Cookie, http::StatusCode, web::Bytes};
 use common::config::Config;
 use hex::FromHexError;
+use log::{error, warn};
 use moonlight_common::{
     network::{
         ApiError, backend::hyper_openssl::HyperOpenSSLClient, request_client::RequestClient,
@@ -18,11 +19,14 @@ use openssl::error::ErrorStack;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use crate::app::{
-    auth::{SessionToken, UserAuth},
-    host::{AppId, HostId},
-    storage::{Either, Storage, StorageUserAdd, create_storage},
-    user::{Admin, AuthenticatedUser, User, UserId},
+use crate::{
+    api::auth::COOKIE_SESSION_TOKEN_NAME,
+    app::{
+        auth::{SessionToken, UserAuth},
+        host::{AppId, HostId},
+        storage::{Either, Storage, StorageUserAdd, create_storage},
+        user::{Admin, AuthenticatedUser, User, UserId},
+    },
 };
 
 pub mod auth;
@@ -83,7 +87,22 @@ pub enum AppError {
 
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
-        HttpResponse::new(self.status_code())
+        match self {
+            Self::SessionTokenNotFound => {
+                let mut response = HttpResponse::TemporaryRedirect().finish();
+
+                if let Err(err) =
+                    response.add_removal_cookie(&Cookie::named(COOKIE_SESSION_TOKEN_NAME))
+                {
+                    warn!(
+                        "failed to set removal cookie for session cookie({COOKIE_SESSION_TOKEN_NAME}): {err:?}"
+                    );
+                }
+
+                response
+            }
+            _ => HttpResponse::new(self.status_code()),
+        }
     }
 
     fn status_code(&self) -> StatusCode {
@@ -190,8 +209,21 @@ impl App {
     pub async fn user_by_auth(&self, auth: UserAuth) -> Result<AuthenticatedUser, AppError> {
         match auth {
             UserAuth::None => {
-                // TODO: allow a default user to exist
-                Err(AppError::Unauthorized)
+                let user_id = self.config().web_server.default_user_id.map(UserId);
+                if let Some(user_id) = user_id {
+                    let user = match self.user_by_id(user_id).await {
+                        Ok(user) => user,
+                        Err(AppError::UserNotFound) => {
+                            error!("the default user {user_id:?} was not found!");
+                            return Err(AppError::UserNotFound);
+                        }
+                        Err(err) => return Err(err),
+                    };
+
+                    user.authenticate(&UserAuth::None).await
+                } else {
+                    Err(AppError::Forbidden)
+                }
             }
             UserAuth::UserPassword { ref username, .. } => {
                 let user = self.user_by_name(username).await?;

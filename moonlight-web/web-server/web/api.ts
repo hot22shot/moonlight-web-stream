@@ -7,8 +7,6 @@ import { buildUrl, isUserPasswordAuthenticationEnabled } from "./config_.js";
 // IMPORTANT: this should be a bit bigger than the moonlight-common reqwest backend timeout if some hosts are offline!
 const API_TIMEOUT = 12000
 
-let currentApi: Api | null = null
-
 // -- Any errors related to auth will reload page -> show the auth modal
 function handleError(event: ErrorEvent) {
     onError(event.error)
@@ -29,42 +27,47 @@ function onError(error: any) {
 window.addEventListener("error", handleError)
 window.addEventListener("unhandledrejection", handleRejection)
 
-export async function getApi(host_url?: string): Promise<Api> {
-    if (currentApi) {
-        return currentApi
-    }
-
-    if (!host_url) {
-        host_url = buildUrl("/api")
-    }
+export async function getApi(): Promise<Api> {
+    const host_url = buildUrl("/api")
 
     let api = { host_url, bearer: null }
 
-    const authenticated = await apiAuthenticate(api)
+    if (await apiAuthenticate(api)) {
+        return api
+    }
 
-    if (isUserPasswordAuthenticationEnabled() && !authenticated) {
-        while (true) {
-            const prompt = new ApiUserPasswordPrompt()
-            const userAuth = await showModal(prompt)
-
-            if (userAuth == null) {
-                continue;
-            }
-
-            if (await apiLogin(api, userAuth)) {
-                if (!await apiAuthenticate(api)) {
-                    showErrorPopup("Login was successful but authentication doesn't work!")
-                }
-                break
-            }
-
-            await showMessage("Credentials are not Valid")
+    let newApi: Api
+    while (true) {
+        const api = await tryLogin()
+        if (api) {
+            newApi = api
+            break
         }
     }
 
-    currentApi = { host_url, bearer: null }
+    return newApi
+}
+export async function tryLogin(): Promise<Api | null> {
+    const host_url = buildUrl("/api")
 
-    return currentApi
+    let api = { host_url, bearer: null }
+
+    const prompt = new ApiUserPasswordPrompt()
+    const userAuth = await showModal(prompt)
+
+    if (userAuth == null) {
+        await showMessage("Credentials are not Valid")
+        return null
+    }
+
+    if (await apiLogin(api, userAuth)) {
+        if (!await apiAuthenticate(api)) {
+            showErrorPopup("Login was successful but authentication doesn't work!")
+        }
+        return api
+    } else {
+        return null
+    }
 }
 
 const GET = "GET"

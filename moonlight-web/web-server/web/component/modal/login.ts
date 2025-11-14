@@ -19,9 +19,13 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
 
         this.text.innerText = "Login"
 
-        this.name = new InputComponent("ml-api-name", "text", "Username")
+        this.name = new InputComponent("ml-api-name", "text", "Username", {
+            formRequired: true
+        })
 
-        this.password = new InputComponent("ml-api-password", "password", "Password")
+        this.password = new InputComponent("ml-api-password", "password", "Password", {
+            formRequired: true
+        })
         this.passwordFile = new InputComponent("ml-api-password-file", "file", "Password as File", { accept: ".txt" })
     }
 

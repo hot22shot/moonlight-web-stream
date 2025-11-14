@@ -13,7 +13,6 @@ export abstract class FetchListComponent<Data, T extends Component> implements F
     protected abstract getComponentDataId(component: T): number
     protected abstract getDataId(data: Data): number
 
-    // TODO: remove force refresh
     abstract forceFetch(forceServerRefresh?: boolean): Promise<void>
 
     updateCache(cache: Array<Data>) {

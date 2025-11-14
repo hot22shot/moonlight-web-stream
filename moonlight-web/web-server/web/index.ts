@@ -1,4 +1,4 @@
-import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser } from "./api.js";
+import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -55,6 +55,8 @@ class MainApp implements Component {
 
     private topLineActions = document.createElement("div")
     private logoutButton = document.createElement("button")
+    // This is for the default user
+    private loginButton = document.createElement("button")
     private adminButton = document.createElement("button")
 
     // Actions
@@ -89,7 +91,14 @@ class MainApp implements Component {
             window.location.reload()
         })
         this.logoutButton.classList.add("logout-button")
-        this.topLineActions.appendChild(this.logoutButton)
+
+        this.loginButton.addEventListener("click", async () => {
+            const success = await tryLogin()
+            if (success) {
+                window.location.reload()
+            }
+        })
+        this.loginButton.classList.add("login-button")
 
         this.adminButton.addEventListener("click", async () => {
             window.location.href = buildUrl("/admin.html")
@@ -284,12 +293,24 @@ class MainApp implements Component {
             user_id: null,
         })
 
-        const hasAdminButton = this.topLineActions.contains(this.adminButton)
-        if ((this.user.role == "Admin") && !hasAdminButton) {
-            this.topLineActions.appendChild(this.adminButton)
+        if (this.topLineActions.contains(this.logoutButton)) {
+            this.topLineActions.removeChild(this.logoutButton)
         }
-        if (this.user.role != "Admin" && hasAdminButton) {
+        if (this.topLineActions.contains(this.loginButton)) {
+            this.topLineActions.removeChild(this.loginButton)
+        }
+        if (this.topLineActions.contains(this.adminButton)) {
             this.topLineActions.removeChild(this.adminButton)
+        }
+
+        if (this.user.is_default_user) {
+            this.topLineActions.appendChild(this.loginButton)
+        } else {
+            this.topLineActions.appendChild(this.logoutButton)
+        }
+
+        if (this.user.role == "Admin") {
+            this.topLineActions.appendChild(this.adminButton)
         }
     }
     private async refreshGameListActiveGame() {

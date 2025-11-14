@@ -223,6 +223,7 @@ pub struct GetUserQuery {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct DetailedUser {
     pub id: u32,
+    pub is_default_user: bool,
     pub name: String,
     pub role: UserRole,
     pub client_unique_id: String,
