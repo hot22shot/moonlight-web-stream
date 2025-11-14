@@ -1,4 +1,8 @@
-use std::{io, str::Utf8Error, time::Duration};
+use std::{
+    io::{self, ErrorKind},
+    str::Utf8Error,
+    time::Duration,
+};
 
 use bytes::{Bytes, BytesMut};
 use http_body_util::{BodyExt, Empty};
@@ -44,7 +48,11 @@ pub enum HyperOpenSSLError {
 
 impl RequestError for HyperOpenSSLError {
     fn is_connect(&self) -> bool {
-        matches!(self, Self::Timeout)
+        match self {
+            Self::Timeout => true,
+            Self::Io(err) if err.kind() == ErrorKind::ConnectionRefused => true,
+            _ => false,
+        }
     }
     fn is_encryption(&self) -> bool {
         matches!(self, Self::NoCertificates)
@@ -173,6 +181,8 @@ impl RequestClient for HyperOpenSSLClient {
 
         conn.await??;
 
+        debug!(target: "client_hyper_openssl", "Received http response \"{response_str}\"");
+
         Ok(response_str)
     }
 
@@ -240,6 +250,8 @@ impl RequestClient for HyperOpenSSLClient {
 
         conn.await??;
 
+        debug!(target: "client_hyper_openssl", "Received https response \"{response_str}\"");
+
         Ok(response_str)
     }
     async fn send_https_request_data_response(
@@ -305,6 +317,8 @@ impl RequestClient for HyperOpenSSLClient {
         }
 
         conn.await??;
+
+        debug!(target: "client_hyper_openssl", "Received https response in bytes");
 
         Ok(response_bytes.freeze())
     }
