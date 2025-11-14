@@ -16,7 +16,7 @@ use thiserror::Error;
 use tokio::{net::TcpStream, spawn, task::JoinError, time::timeout};
 use url::Url;
 
-use crate::network::request_client::{QueryParamsRef, RequestClient};
+use crate::network::request_client::{QueryParamsRef, RequestClient, RequestError};
 
 #[derive(Debug, Error)]
 pub enum HyperOpenSSLError {
@@ -40,6 +40,15 @@ pub enum HyperOpenSSLError {
     NoCertificates,
     #[error("timeout")]
     Timeout,
+}
+
+impl RequestError for HyperOpenSSLError {
+    fn is_connect(&self) -> bool {
+        matches!(self, Self::Timeout)
+    }
+    fn is_encryption(&self) -> bool {
+        matches!(self, Self::NoCertificates)
+    }
 }
 
 fn build_url(

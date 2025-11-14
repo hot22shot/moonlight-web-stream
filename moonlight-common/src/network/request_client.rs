@@ -66,8 +66,15 @@ impl<'a> Deref for DynamicQueryParams<'a> {
     }
 }
 
+pub trait RequestError {
+    /// The machine cannot be reached: timeout, connection refused
+    fn is_connect(&self) -> bool;
+    /// The sunshine encryption is invalid (e.g. the host removed our client -> we're unpaired)
+    fn is_encryption(&self) -> bool;
+}
+
 pub trait RequestClient: Sized {
-    type Error;
+    type Error: RequestError;
 
     type Text: AsRef<str>;
     type Bytes: AsRef<[u8]>;

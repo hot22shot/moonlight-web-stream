@@ -9,7 +9,7 @@ use url::{ParseError, Url};
 
 use crate::network::{
     ApiError,
-    request_client::{QueryParamsRef, RequestClient},
+    request_client::{QueryParamsRef, RequestClient, RequestError},
 };
 
 pub type ReqwestClient = reqwest::Client;
@@ -24,6 +24,21 @@ pub enum ReqwestError {
     UrlParse(#[from] ParseError),
 }
 pub type ReqwestApiError = ApiError<ReqwestError>;
+
+impl RequestError for ReqwestError {
+    fn is_connect(&self) -> bool {
+        match self {
+            ReqwestError::Reqwest(err) if err.is_connect() || err.is_timeout() => true,
+            _ => false,
+        }
+    }
+    fn is_encryption(&self) -> bool {
+        match self {
+            ReqwestError::Reqwest(err) => err.is_decode(),
+            _ => false,
+        }
+    }
+}
 
 fn default_builder() -> ClientBuilder {
     ClientBuilder::new()

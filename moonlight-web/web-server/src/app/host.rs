@@ -10,9 +10,9 @@ use moonlight_common::{
     PairPin, ServerState,
     high::broadcast_magic_packet,
     network::{
-        self, ApiError, ClientAppBoxArtRequest, ClientInfo, HostInfo,
-        backend::hyper_openssl::HyperOpenSSLError, host_app_box_art, host_app_list, host_cancel,
-        host_info, request_client::RequestClient,
+        self, ApiError, ClientAppBoxArtRequest, ClientInfo, HostInfo, host_app_box_art,
+        host_app_list, host_cancel, host_info,
+        request_client::{RequestClient, RequestError},
     },
     pair::{PairSuccess, generate_new_client, host_pair},
 };
@@ -221,7 +221,7 @@ impl Host {
     ) -> Result<Option<T>, AppError> {
         match result {
             Ok(value) => Ok(Some(value)),
-            Err(ApiError::RequestClient(HyperOpenSSLError::Timeout)) => Ok(None),
+            Err(ApiError::RequestClient(err)) if err.is_connect() => Ok(None),
             Err(err) => Err(AppError::MoonlightApi(err)),
         }
     }
@@ -270,8 +270,12 @@ impl Host {
                             info = new_info;
                         }
                         Err(ApiError::InvalidXmlStatusCode { message: Some(message) })
-                            if message.contains("Certificate")=>
+                            if message.contains("Certificate") =>
                         {
+                            // The host likely removed our paired certificate
+                            warn!("Host {this:?} has an error related to certificates. This likely happened because the device was removed from sunshine.");
+                        }
+                        Err(ApiError::RequestClient(err)) if err.is_encryption()  => {
                             // The host likely removed our paired certificate
                             warn!("Host {this:?} has an error related to certificates. This likely happened because the device was removed from sunshine.");
                         }
