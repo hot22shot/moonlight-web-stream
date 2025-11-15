@@ -143,27 +143,27 @@ pub struct DebugHandler;
 
 impl ConnectionListener for DebugHandler {
     fn stage_starting(&mut self, stage: Stage) {
-        info!("[Moonlight]: Stage Starting: {stage:?}");
+        info!(target: "moonlight", "Stage Starting: {stage:?}");
     }
     fn stage_complete(&mut self, stage: Stage) {
-        info!("[Moonlight]: Stage Complete: {stage:?}");
+        info!(target: "moonlight", "Stage Complete: {stage:?}");
     }
     fn stage_failed(&mut self, stage: Stage, error_code: i32) {
-        info!("[Moonlight]: Stage Failed: {stage:?}, Error: {error_code}");
+        info!(target: "moonlight", "Stage Failed: {stage:?}, Error: {error_code}");
     }
 
     fn connection_started(&mut self) {
-        info!("[Moonlight]: Connection Started");
+        info!(target: "moonlight", "Connection Started");
     }
     fn connection_status_update(&mut self, status: ConnectionStatus) {
-        info!("[Moonlight]: Connection Status Update: {status:?}");
+        info!(target: "moonlight", "Connection Status Update: {status:?}");
     }
     fn connection_terminated(&mut self, error_code: i32) {
-        info!("[Moonlight]: Connection Terminated: {error_code}");
+        info!(target: "moonlight","Connection Terminated: {error_code}");
     }
 
     fn log_message(&mut self, message: &str) {
-        info!("[Moonlight]: {}", message.trim());
+        info!(target: "moonlight", "{}", message.trim());
     }
 
     fn set_hdr_mode(&mut self, hdr_enabled: bool) {

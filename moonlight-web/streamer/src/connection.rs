@@ -95,7 +95,7 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn log_message(&mut self, message: &str) {
-        info!("[Moonlight Stream]: {}", message.trim());
+        info!(target: "moonlight", "{}", message.trim());
     }
 
     fn connection_status_update(&mut self, status: ConnectionStatus) {
