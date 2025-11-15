@@ -12,7 +12,7 @@ moonlight-common = { workspace = true, features = [
 ] }
 common = { path = "../common" }
 
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 webrtc = { workspace = true }
 bytes = { workspace = true }
 
