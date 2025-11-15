@@ -5,13 +5,12 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
 };
 
 use bytes::{Bytes, BytesMut};
 use log::{debug, error, info, warn};
 use moonlight_common::stream::{
-    bindings::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
+    bindings::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
     video::VideoDecoder,
 };
 use webrtc::{
@@ -93,7 +92,6 @@ pub struct TrackSampleVideoDecoder {
     video_codec: Option<VideoCodec>,
     samples: Vec<BytesMut>,
     needs_idr: Arc<AtomicBool>,
-    old_presentation_time: Duration,
 }
 
 impl TrackSampleVideoDecoder {
@@ -109,7 +107,6 @@ impl TrackSampleVideoDecoder {
             video_codec: None,
             samples: Vec::new(),
             needs_idr: Default::default(),
-            old_presentation_time: Duration::ZERO,
         }
     }
 
@@ -118,6 +115,8 @@ impl TrackSampleVideoDecoder {
         sender: &mut TrackLocalSender<SequencedTrackLocalStaticRTP>,
         payloader: &mut impl Payloader,
         timestamp: u32,
+        important: bool,
+        needs_idr: &AtomicBool,
     ) {
         let mut peekable = samples.drain(..).peekable();
         while let Some(sample) = peekable.next() {
@@ -137,7 +136,10 @@ impl TrackSampleVideoDecoder {
             };
 
             for packet in packets {
-                sender.blocking_send_sample(packet);
+                if let Ok(false) = sender.send_sample(packet, important) {
+                    // We've dropped a frame (likely due to buffering)
+                    needs_idr.store(true, Ordering::Release);
+                }
             }
         }
     }
@@ -244,6 +246,8 @@ impl VideoDecoder for TrackSampleVideoDecoder {
             full_frame.extend_from_slice(buffer.data);
         }
 
+        let important = matches!(unit.frame_type, FrameType::Idr);
+
         match &mut self.video_codec {
             // -- H264
             Some(VideoCodec::H264 {
@@ -261,7 +265,14 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     self.samples.push(data);
                 }
 
-                Self::send_single_frame(&mut self.samples, &mut self.sender, payloader, timestamp);
+                Self::send_single_frame(
+                    &mut self.samples,
+                    &mut self.sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &self.needs_idr,
+                );
             }
             // -- H265
             Some(VideoCodec::H265 {
@@ -279,7 +290,14 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     self.samples.push(data);
                 }
 
-                Self::send_single_frame(&mut self.samples, &mut self.sender, payloader, timestamp);
+                Self::send_single_frame(
+                    &mut self.samples,
+                    &mut self.sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &self.needs_idr,
+                );
             }
             // -- AV1
             Some(VideoCodec::Av1 { annex_b, payloader }) => {
@@ -292,15 +310,20 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                     self.samples.push(data);
                 }
 
-                Self::send_single_frame(&mut self.samples, &mut self.sender, payloader, timestamp);
+                Self::send_single_frame(
+                    &mut self.samples,
+                    &mut self.sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &self.needs_idr,
+                );
             }
             None => {
                 // this shouldn't happen
                 unreachable!()
             }
         }
-
-        self.old_presentation_time = unit.presentation_time;
 
         if self
             .needs_idr

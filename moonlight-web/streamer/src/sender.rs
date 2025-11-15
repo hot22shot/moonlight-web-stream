@@ -3,7 +3,7 @@ use std::sync::Arc;
 use log::warn;
 use tokio::sync::{
     Mutex,
-    mpsc::{Receiver, Sender, channel},
+    mpsc::{Receiver, Sender, channel, error::TrySendError},
 };
 use webrtc::{
     media::Sample,
@@ -81,10 +81,23 @@ where
         Ok(())
     }
 
-    pub fn blocking_send_sample(&self, sample: Track::Sample) {
+    /// Returns if the frame will be delivered
+    pub fn send_sample(&self, sample: Track::Sample, important: bool) -> Result<bool, ()> {
         if let Some(sender) = self.sender.as_ref() {
-            let _ = sender.blocking_send(sample);
+            if important {
+                let _ = sender.blocking_send(sample);
+
+                return Ok(true);
+            } else {
+                return match sender.try_send(sample) {
+                    Ok(()) => Ok(true),
+                    Err(TrySendError::Full(_)) => Ok(false),
+                    Err(TrySendError::Closed(_)) => Err(()),
+                };
+            }
         }
+
+        Err(())
     }
 }
 

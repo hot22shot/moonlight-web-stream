@@ -23,13 +23,15 @@ export type StreamSettings = {
     toggleFullscreenWithKeybind: boolean
 }
 
+// TODO: make video sample queue size and audio queue size automatically adjust by default
+
 export function defaultStreamSettings(): StreamSettings {
     return {
         sidebarEdge: "left",
         bitrate: 10000,
         packetSize: 2048,
         fps: 60,
-        videoSampleQueueSize: 6,
+        videoSampleQueueSize: 20,
         videoSize: "1080p",
         videoSizeCustom: {
             width: 1920,
