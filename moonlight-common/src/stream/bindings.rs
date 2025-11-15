@@ -353,8 +353,9 @@ pub struct VideoDataBuffer<'a> {
 }
 
 #[repr(i32)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum DecodeResult {
+    #[default]
     Ok = DR_OK as i32,
     NeedIdr = DR_NEED_IDR,
 }

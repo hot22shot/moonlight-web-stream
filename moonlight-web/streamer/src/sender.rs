@@ -26,6 +26,8 @@ use webrtc::{
 
 use crate::StreamConnection;
 
+// TODO: maybe move to a pulling decoder, moonlight common c supports that
+
 pub struct TrackLocalSender<Track>
 where
     Track: TrackLike,

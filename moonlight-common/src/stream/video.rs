@@ -1,24 +1,42 @@
-use std::{ffi::c_void, os::raw::c_int, slice, sync::Mutex, time::Duration};
+use std::{
+    ffi::c_void,
+    ops::Deref,
+    os::raw::c_int,
+    ptr::null_mut,
+    slice,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, Sender, channel},
+    },
+    time::Duration,
+};
 
-use moonlight_common_sys::limelight::{_DECODER_RENDERER_CALLBACKS, PDECODE_UNIT};
+use moonlight_common_sys::limelight::{
+    _DECODER_RENDERER_CALLBACKS, LiCompleteVideoFrame, LiPollNextVideoFrame,
+    LiWaitForNextVideoFrame, PDECODE_UNIT, VIDEO_FRAME_HANDLE,
+};
 use num::FromPrimitive;
+use thiserror::Error;
 
 use crate::stream::bindings::{
     BufferType, Capabilities, Colorspace, DecodeResult, FrameType, SupportedVideoFormats,
     VideoDataBuffer, VideoDecodeUnit, VideoFormat,
 };
 
+#[derive(Debug, Clone, Copy)]
+pub struct VideoSetup {
+    pub format: VideoFormat,
+    pub width: u32,
+    pub height: u32,
+    pub redraw_rate: u32,
+    pub flags: i32,
+}
+
 pub trait VideoDecoder {
     /// This callback is invoked to provide details about the video stream and allow configuration of the decoder.
     /// Returns 0 on success, non-zero on failure.
-    fn setup(
-        &mut self,
-        format: VideoFormat,
-        width: u32,
-        height: u32,
-        redraw_rate: u32,
-        flags: i32,
-    ) -> i32;
+    fn setup(&mut self, setup: VideoSetup) -> i32;
 
     /// This callback notifies the decoder that the stream is starting. No frames can be submitted before this callback returns.
     fn start(&mut self);
@@ -71,13 +89,15 @@ unsafe extern "C" fn setup(
     drFlags: c_int,
 ) -> c_int {
     global_decoder(|decoder| {
-        decoder.setup(
-            VideoFormat::from_i32(videoFormat).expect("invalid video format"),
-            width as u32,
-            height as u32,
-            redrawRate as u32,
-            drFlags,
-        )
+        let setup = VideoSetup {
+            format: VideoFormat::from_i32(videoFormat).expect("invalid video format"),
+            width: width as u32,
+            height: height as u32,
+            redraw_rate: redrawRate as u32,
+            flags: drFlags,
+        };
+
+        decoder.setup(setup)
     })
 }
 unsafe extern "C" fn start() {
@@ -89,25 +109,37 @@ unsafe extern "C" fn start() {
 static BUFFER: Mutex<Vec<VideoDataBuffer<'static>>> = Mutex::new(Vec::new());
 
 unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> c_int {
-    let raw = unsafe { *decode_unit };
-
     // # Safety
     // This buffer is always cleared after (or before use when poisened)
-    // -> The data will only be able to be here this call
+    // -> The data will only be able to be here this call, so 'static is just to get around compiler
     let mut buffers = BUFFER.lock().unwrap_or_else(|buf| {
         let mut buf = buf.into_inner();
         buf.clear();
         buf
     });
 
+    let unit = unsafe { convert_decode_unit(decode_unit, &mut buffers) };
+
+    let result = global_decoder(|decoder| decoder.submit_decode_unit(unit) as i32);
+
+    buffers.clear();
+
+    result
+}
+/// Converts the cpp decode unit into the rust one
+unsafe fn convert_decode_unit<'a>(
+    decode_unit: PDECODE_UNIT,
+    buffers: &'a mut Vec<VideoDataBuffer>,
+) -> VideoDecodeUnit<'a> {
+    buffers.clear();
+
+    let raw = unsafe { *decode_unit };
+
     let mut next_element_ptr = raw.bufferList;
     while !next_element_ptr.is_null() {
         unsafe {
             let element_raw = *next_element_ptr;
 
-            // # Safety
-            // The element currently has 'static but thats okay
-            // -> Look at the buffer safety
             let new_element = VideoDataBuffer {
                 ty: BufferType::from_i32(element_raw.bufferType).expect("valid buffer type"),
                 data: slice::from_raw_parts(
@@ -121,7 +153,7 @@ unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> c_int {
         }
     }
 
-    let unit = VideoDecodeUnit {
+    VideoDecodeUnit {
         frame_number: raw.frameNumber,
         frame_type: FrameType::from_i32(raw.frameType).expect("valid FrameType"),
         frame_processing_latency: if raw.frameHostProcessingLatency == 0 {
@@ -136,14 +168,8 @@ unsafe extern "C" fn submit_decode_unit(decode_unit: PDECODE_UNIT) -> c_int {
         presentation_time: Duration::from_millis(raw.presentationTimeMs as u64),
         color_space: Colorspace::from_u8(raw.colorspace).expect("valid Colorspace"),
         hdr_active: raw.hdrActive,
-        buffers: &buffers,
-    };
-
-    let result = global_decoder(|decoder| decoder.submit_decode_unit(unit) as i32);
-
-    buffers.clear();
-
-    result
+        buffers,
+    }
 }
 
 unsafe extern "C" fn stop() {
@@ -166,5 +192,217 @@ pub(crate) unsafe fn raw_callbacks() -> _DECODER_RENDERER_CALLBACKS {
         cleanup: Some(cleanup),
         submitDecodeUnit: Some(submit_decode_unit),
         capabilities: capabilities.bits() as i32,
+    }
+}
+
+pub struct PullVideoDecoder {
+    setup_sender: Sender<VideoSetup>,
+    setup_success_receiver: Receiver<i32>,
+    active: Arc<AtomicBool>,
+    supported_formats: SupportedVideoFormats,
+}
+
+pub const ML_PULL_RENDERER_ERROR: i32 = -100001;
+
+impl VideoDecoder for PullVideoDecoder {
+    fn setup(&mut self, setup: VideoSetup) -> i32 {
+        if self.setup_sender.send(setup).is_err() {
+            return ML_PULL_RENDERER_ERROR;
+        }
+
+        match self.setup_success_receiver.recv() {
+            Ok(value) => value,
+            Err(_) => ML_PULL_RENDERER_ERROR,
+        }
+    }
+
+    fn start(&mut self) {
+        self.active.store(true, Ordering::Release);
+    }
+
+    fn stop(&mut self) {
+        self.active.store(false, Ordering::Release);
+    }
+
+    fn submit_decode_unit(&mut self, _unit: VideoDecodeUnit<'_>) -> DecodeResult {
+        unreachable!()
+    }
+
+    fn supported_formats(&self) -> SupportedVideoFormats {
+        self.supported_formats
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::PULL_RENDERER
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum VideoPullResult {
+    #[error("no video decode unit present")]
+    ValueNotPresent,
+    #[error("this video renderer is not active")]
+    NotActive,
+    #[error("cannot finish the video renderer setup")]
+    CannotFinishSetup,
+}
+
+pub struct PullVideoManager {
+    setup_receiver: Receiver<VideoSetup>,
+    setup: Option<VideoSetup>,
+    setup_success_sender: Sender<i32>,
+    active: Arc<AtomicBool>,
+    buffers: Vec<VideoDataBuffer<'static>>,
+}
+
+impl PullVideoManager {
+    pub fn new(supported_formats: SupportedVideoFormats) -> (PullVideoDecoder, PullVideoManager) {
+        let active = Arc::new(AtomicBool::new(false));
+
+        let (setup_sender, setup_receiver) = channel();
+        let (setup_success_sender, setup_success_receiver) = channel();
+
+        (
+            PullVideoDecoder {
+                active: active.clone(),
+                setup_sender,
+                setup_success_receiver,
+                supported_formats,
+            },
+            PullVideoManager {
+                active,
+                setup_receiver,
+                setup: None,
+                setup_success_sender,
+                buffers: Vec::new(),
+            },
+        )
+    }
+
+    fn check_active(&self) -> Result<(), VideoPullResult> {
+        if self.active.load(Ordering::Acquire) {
+            Ok(())
+        } else {
+            Err(VideoPullResult::NotActive)
+        }
+    }
+
+    pub fn poll_setup(
+        &mut self,
+        send_success: impl FnOnce(VideoSetup) -> i32,
+    ) -> Result<VideoSetup, VideoPullResult> {
+        if let Ok(setup) = self.setup_receiver.try_recv() {
+            self.setup = Some(setup);
+
+            if self.setup_success_sender.send(send_success(setup)).is_err() {
+                return Err(VideoPullResult::CannotFinishSetup);
+            }
+        }
+
+        if let Some(setup) = self.setup.as_ref() {
+            return Ok(*setup);
+        }
+
+        Err(VideoPullResult::ValueNotPresent)
+    }
+    pub fn wait_for_setup(
+        &mut self,
+        send_success: impl FnOnce(VideoSetup) -> i32,
+    ) -> Result<VideoSetup, VideoPullResult> {
+        if let Some(setup) = self.setup.as_ref() {
+            return Ok(*setup);
+        }
+
+        if let Ok(setup) = self.setup_receiver.recv() {
+            self.setup = Some(setup);
+
+            if self.setup_success_sender.send(send_success(setup)).is_err() {
+                return Err(VideoPullResult::CannotFinishSetup);
+            }
+
+            return Ok(setup);
+        }
+
+        Err(VideoPullResult::NotActive)
+    }
+
+    pub fn poll_next_video_frame<'a>(
+        &'a mut self,
+    ) -> Result<PullVideoDecodeUnit<'a>, VideoPullResult> {
+        self.check_active()?;
+
+        unsafe {
+            let mut frame_handle: VIDEO_FRAME_HANDLE = null_mut();
+            let mut decode_unit: PDECODE_UNIT = null_mut();
+
+            if !LiPollNextVideoFrame(&mut frame_handle, &mut decode_unit) {
+                return Err(VideoPullResult::ValueNotPresent);
+            }
+
+            Ok(self.handle_next_video_frame(frame_handle, decode_unit))
+        }
+    }
+    pub fn wait_for_next_video_frame<'a>(
+        &'a mut self,
+    ) -> Result<PullVideoDecodeUnit<'a>, VideoPullResult> {
+        self.check_active()?;
+
+        unsafe {
+            let mut frame_handle: VIDEO_FRAME_HANDLE = null_mut();
+            let mut decode_unit: PDECODE_UNIT = null_mut();
+
+            if !LiWaitForNextVideoFrame(&mut frame_handle, &mut decode_unit) {
+                return Err(VideoPullResult::ValueNotPresent);
+            }
+
+            Ok(self.handle_next_video_frame(frame_handle, decode_unit))
+        }
+    }
+
+    /// # Safety
+    /// - The PullVideoDecodeUnit will call LiCompleteVideoFrame after it's complete
+    /// - No calls to NextVideoFrame are allowed until it is dropped because of &'a mut reference completing the cycle of a video frame
+    unsafe fn handle_next_video_frame<'a>(
+        &'a mut self,
+        frame_handle: VIDEO_FRAME_HANDLE,
+        decode_unit: PDECODE_UNIT,
+    ) -> PullVideoDecodeUnit<'a> {
+        unsafe {
+            let decode_unit = convert_decode_unit(decode_unit, &mut self.buffers);
+
+            PullVideoDecodeUnit {
+                frame_handle,
+                result: DecodeResult::default(),
+                decode_unit,
+            }
+        }
+    }
+}
+
+pub struct PullVideoDecodeUnit<'a> {
+    frame_handle: VIDEO_FRAME_HANDLE,
+    decode_unit: VideoDecodeUnit<'a>,
+    result: DecodeResult,
+}
+
+impl<'a> PullVideoDecodeUnit<'a> {
+    pub fn set_result(&mut self, result: DecodeResult) {
+        self.result = result;
+    }
+}
+
+impl<'a> Deref for PullVideoDecodeUnit<'a> {
+    type Target = VideoDecodeUnit<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.decode_unit
+    }
+}
+
+impl<'a> Drop for PullVideoDecodeUnit<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            LiCompleteVideoFrame(self.frame_handle, self.result as i32);
+        }
     }
 }

@@ -4,24 +4,17 @@ use crate::stream::{
     audio::AudioDecoder,
     bindings::{
         AudioConfig, Capabilities, ConnectionStatus, DecodeResult, OpusMultistreamConfig, Stage,
-        SupportedVideoFormats, VideoDecodeUnit, VideoFormat,
+        SupportedVideoFormats, VideoDecodeUnit,
     },
     connection::ConnectionListener,
-    video::VideoDecoder,
+    video::{VideoDecoder, VideoSetup},
 };
 
 pub struct NullHandler;
 
 impl VideoDecoder for NullHandler {
-    fn setup(
-        &mut self,
-        format: VideoFormat,
-        width: u32,
-        height: u32,
-        redraw_rate: u32,
-        flags: i32,
-    ) -> i32 {
-        let _ = (format, width, height, redraw_rate, flags);
+    fn setup(&mut self, setup: VideoSetup) -> i32 {
+        let _ = setup;
 
         0
     }

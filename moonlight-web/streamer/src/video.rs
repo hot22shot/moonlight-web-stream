@@ -11,7 +11,7 @@ use bytes::{Bytes, BytesMut};
 use log::{debug, error, info, warn};
 use moonlight_common::stream::{
     bindings::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
-    video::VideoDecoder,
+    video::{VideoDecoder, VideoSetup},
 };
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
@@ -148,11 +148,13 @@ impl TrackSampleVideoDecoder {
 impl VideoDecoder for TrackSampleVideoDecoder {
     fn setup(
         &mut self,
-        format: VideoFormat,
-        width: u32,
-        height: u32,
-        redraw_rate: u32,
-        _flags: i32,
+        VideoSetup {
+            format,
+            width,
+            height,
+            redraw_rate,
+            flags,
+        }: VideoSetup,
     ) -> i32 {
         info!("[Stream] Stream setup: {width}x{height}x{redraw_rate} and {format:?}");
 
