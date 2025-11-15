@@ -222,7 +222,7 @@ impl App {
 
                     user.authenticate(&UserAuth::None).await
                 } else {
-                    Err(AppError::Forbidden)
+                    Err(AppError::Unauthorized)
                 }
             }
             UserAuth::UserPassword { ref username, .. } => {
