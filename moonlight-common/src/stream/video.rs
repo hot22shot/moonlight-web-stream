@@ -12,6 +12,7 @@ use std::{
     time::Duration,
 };
 
+use log::debug;
 use moonlight_common_sys::limelight::{
     _DECODER_RENDERER_CALLBACKS, LiCompleteVideoFrame, LiPollNextVideoFrame,
     LiWaitForNextVideoFrame, PDECODE_UNIT, VIDEO_FRAME_HANDLE,
@@ -190,7 +191,11 @@ pub(crate) unsafe fn raw_callbacks() -> _DECODER_RENDERER_CALLBACKS {
         start: Some(start),
         stop: Some(stop),
         cleanup: Some(cleanup),
-        submitDecodeUnit: Some(submit_decode_unit),
+        submitDecodeUnit: if capabilities.contains(Capabilities::PULL_RENDERER) {
+            None
+        } else {
+            Some(submit_decode_unit)
+        },
         capabilities: capabilities.bits() as i32,
     }
 }
@@ -287,15 +292,25 @@ impl PullVideoManager {
         }
     }
 
+    /// Note: the send_success will only be executed one time after the setup is called
     pub fn poll_setup(
         &mut self,
         send_success: impl FnOnce(VideoSetup) -> i32,
     ) -> Result<VideoSetup, VideoPullResult> {
-        if let Ok(setup) = self.setup_receiver.try_recv() {
-            self.setup = Some(setup);
+        match self.setup_receiver.try_recv() {
+            Ok(setup) => {
+                self.setup = Some(setup);
 
-            if self.setup_success_sender.send(send_success(setup)).is_err() {
-                return Err(VideoPullResult::CannotFinishSetup);
+                if let Err(err) = self.setup_success_sender.send(send_success(setup)) {
+                    debug!("failed to send video setup success: {err}");
+                    return Err(VideoPullResult::CannotFinishSetup);
+                }
+
+                // Fallthrough
+            }
+            Err(err) => {
+                debug!("failed to receive video setup: {err}");
+                return Err(VideoPullResult::NotActive);
             }
         }
 
@@ -305,6 +320,7 @@ impl PullVideoManager {
 
         Err(VideoPullResult::ValueNotPresent)
     }
+    /// Note: the send_success will only be executed one time after the setup is called
     pub fn wait_for_setup(
         &mut self,
         send_success: impl FnOnce(VideoSetup) -> i32,
@@ -313,17 +329,22 @@ impl PullVideoManager {
             return Ok(*setup);
         }
 
-        if let Ok(setup) = self.setup_receiver.recv() {
-            self.setup = Some(setup);
+        match self.setup_receiver.recv() {
+            Ok(setup) => {
+                self.setup = Some(setup);
 
-            if self.setup_success_sender.send(send_success(setup)).is_err() {
-                return Err(VideoPullResult::CannotFinishSetup);
+                if let Err(err) = self.setup_success_sender.send(send_success(setup)) {
+                    debug!("failed to send video setup success: {err}");
+                    return Err(VideoPullResult::CannotFinishSetup);
+                }
+
+                Ok(setup)
             }
-
-            return Ok(setup);
+            Err(err) => {
+                debug!("failed to receive video setup: {err}");
+                Err(VideoPullResult::NotActive)
+            }
         }
-
-        Err(VideoPullResult::NotActive)
     }
 
     pub fn poll_next_video_frame<'a>(

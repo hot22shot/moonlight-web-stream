@@ -59,7 +59,7 @@ use crate::{
         into_webrtc_network_type,
     },
     input::StreamInput,
-    video::{TrackSampleVideoDecoder, register_video_codecs},
+    video::{register_video_codecs, spawn_video_thread},
 };
 
 pub type RequestClient = HyperOpenSSLClient;
@@ -633,7 +633,7 @@ impl StreamConnection {
 
         let gamepads = self.input.active_gamepads.read().await;
 
-        let video_decoder = TrackSampleVideoDecoder::new(
+        let video_decoder = spawn_video_thread(
             self.clone(),
             self.settings.video_supported_formats,
             self.settings.video_sample_queue_size as usize,
