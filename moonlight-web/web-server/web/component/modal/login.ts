@@ -1,3 +1,4 @@
+import { ComponentEvent } from "../index.js"
 import { InputComponent } from "../input.js"
 import { FormModal } from "./form.js"
 
@@ -26,7 +27,29 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
         this.password = new InputComponent("ml-api-password", "password", "Password", {
             formRequired: true
         })
+
         this.passwordFile = new InputComponent("ml-api-password-file", "file", "Password as File", { accept: ".txt" })
+        this.passwordFile.addChangeListener(this.setFilePassword.bind(this))
+    }
+
+    private async setFilePassword(event: ComponentEvent<InputComponent>) {
+        const files = event.component.getFiles()
+        if (!files) {
+            return
+        }
+
+        const file = files[0]
+        if (!file) {
+            return
+        }
+        const text = await file.text()
+
+        // Remove carriage return and new line
+        const password = text
+            .replace(/\r/g, "")
+            .replace(/\n/g, "")
+
+        this.password.setValue(password)
     }
 
     reset(): void {
@@ -50,29 +73,6 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
         abort.addEventListener("abort", abortController.abort.bind(abortController))
 
         return new Promise((resolve, reject) => {
-            this.passwordFile.addChangeListener(() => {
-                const files = this.passwordFile.getFiles()
-                if (files && files.length >= 1) {
-                    const file = files[0]
-
-                    file.text().then((passwordContents) => {
-                        abortController.abort()
-
-                        // Remove carriage return and new line
-                        const password = passwordContents
-                            .replace(/\r/g, "")
-                            .replace(/\n/g, "")
-
-                        const name = this.name.getValue()
-
-                        resolve({
-                            name,
-                            password
-                        })
-                    })
-                }
-            }, { signal: abortController.signal })
-
             super.onFinish(abortController.signal).then((data) => {
                 abortController.abort()
                 resolve(data)

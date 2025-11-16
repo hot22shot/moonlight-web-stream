@@ -153,6 +153,12 @@ export class InputComponent extends ElementWithLabel {
         }
     }
 
+    setValue(value: string) {
+        this.input.value = value
+        if (this.numberSlider) {
+            this.numberSlider.value = value
+        }
+    }
     getValue(): string {
         return this.input.value
     }
