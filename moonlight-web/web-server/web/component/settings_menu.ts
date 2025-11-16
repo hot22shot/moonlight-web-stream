@@ -136,6 +136,11 @@ export class StreamSettingsComponent implements Component {
             defaultValue: defaultSettings.bitrate.toString(),
             value: settings?.bitrate?.toString(),
             step: "100",
+            numberSlider: {
+                // TODO: values?
+                range_min: 1000,
+                range_max: 10000,
+            }
         })
         this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
         this.bitrate.mount(this.divElement)

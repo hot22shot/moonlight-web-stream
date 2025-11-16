@@ -53,6 +53,10 @@ button:hover {
     box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
+.button-fit-content {
+    height: fit-content;
+}
+
 /** Checkbox */
 input[type="checkbox"] {
     /* remove native box */
@@ -92,6 +96,23 @@ input[type="checkbox"]:checked::after {
     opacity: 1;
 }
 
+/** Slider */
+input[type="range"] {
+    accent-color: rgba(63, 81, 181, 1.0);
+
+    width: 200px;
+    height: 32px;
+    margin: 8px;
+
+    overflow: hidden;
+
+    cursor: grab;
+}
+
+input[type="range"]:active {
+    cursor: grabbing;
+}
+
 /** Text Field likes  */
 .textlike,
 textarea,
@@ -129,6 +150,10 @@ select:disabled,
 input[type=text]:disabled,
 input[type=password]:disabled,
 input[type=number]:disabled {
+    color: gray;
+}
+
+input[type=range]:disabled {
     color: gray;
 }
 
@@ -440,6 +465,7 @@ input[type=number] {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
+    align-items: center;
 }
 
 /** Settings */
@@ -659,8 +685,6 @@ input[type=number] {
     display: flex;
     flex-direction: row;
 }
-
-.user-info {}
 
 .user-info-delete {
     background-color: red;
