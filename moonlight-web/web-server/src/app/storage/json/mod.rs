@@ -9,7 +9,7 @@ use std::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures::future::join_all;
-use log::error;
+use log::{debug, error};
 use openssl::rand::rand_bytes;
 use tokio::{
     fs, spawn,
@@ -84,6 +84,7 @@ impl JsonStorage {
 
             loop {
                 sleep(session_expiration_check_interval).await;
+                debug!("Clearing all expired sessions!");
 
                 let mut sessions = this.sessions.write().await;
 
