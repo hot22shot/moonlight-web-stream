@@ -18,6 +18,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - [Configuring https](#configuring-https)
   - [Proxying via Apache 2](#proxying-via-apache-2)
 - [Config](#config)
+- [Migrating to v2](#migrating-to-v2)
 - [Building](#building)
 
 ## Images
@@ -345,6 +346,15 @@ Will always append the prefix to all requests made by the website.
     }
 }
 ```
+
+## Migrating to v2
+1. Some config options have changed so backup your old config by renaming it to something like `old_config.json`.
+
+2. Start the web server which will generate the new config.
+
+3. Move your configurations to the new config
+
+After that just follow the [setup](#setup). All hosts will be moved to the first user.
 
 ## Building
 Make sure you've cloned this repo with all it's submodules
