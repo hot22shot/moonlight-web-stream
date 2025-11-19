@@ -8,6 +8,7 @@ import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, Str
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { getStandardVideoFormats, getSupportedVideoFormats } from "./stream/video.js";
+import { CanvasRenderer } from "./stream/canvas.js";
 import { StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
@@ -69,8 +70,12 @@ class ViewerApp implements Component {
 
     private div = document.createElement("div")
     private videoElement = document.createElement("video")
+    private canvasElement = document.createElement("canvas")
 
     private stream: Stream | null = null
+
+    private canvasRenderer: CanvasRenderer | null = null
+    private settings: StreamSettings
 
     private streamerSize: [number, number]
 
@@ -98,6 +103,8 @@ class ViewerApp implements Component {
 
         this.streamerSize = getStreamerSize(settings, [browserWidth, browserHeight])
 
+        this.settings = settings
+
         // Configure video element
         this.videoElement.classList.add("video-stream")
         this.videoElement.preload = "none"
@@ -106,6 +113,14 @@ class ViewerApp implements Component {
         this.videoElement.disablePictureInPicture = true
         this.videoElement.playsInline = true
         this.videoElement.muted = true
+
+        // Configure canvas element
+        if(this.settings.canvasRenderer) {
+            this.canvasElement.classList.add("video-stream")
+            this.div.appendChild(this.canvasElement)
+            this.canvasRenderer = new CanvasRenderer(this.canvasElement)
+            this.videoElement.autoplay = false
+        }
 
         this.div.appendChild(this.videoElement)
 
@@ -162,7 +177,9 @@ class ViewerApp implements Component {
         showModal(connectionInfo)
 
         // Set video
-        this.videoElement.srcObject = this.stream.getMediaStream()
+        if(!this.settings?.canvasRenderer) {
+            this.videoElement.srcObject = this.stream.getMediaStream()
+        }
 
         // Start animation frame loop
         this.onTouchUpdate()
@@ -180,6 +197,13 @@ class ViewerApp implements Component {
             document.title = `Stream: ${app.title}`
         } else if (data.type == "connectionComplete") {
             this.sidebar.onCapabilitiesChange(data.capabilities)
+        } else if (data.type == "videoTrack") {
+            if (this.canvasRenderer) {
+                this.canvasRenderer.setVideoTrack(data.track)
+                if(this.stream) {
+                    this.videoElement.srcObject = this.stream.getMediaStream()
+                }
+            }
         }
     }
 
@@ -193,7 +217,16 @@ class ViewerApp implements Component {
     onUserInteraction() {
         this.focusInput()
 
-        this.videoElement.muted = false
+        if (this.videoElement) {
+            this.videoElement.muted = false
+            if(this.videoElement.paused) {
+                this.videoElement.play().then(() => {
+                    // Playing
+                }).catch(error => {
+                    console.error(`Failed to play videoElement: ${error.message || error}`);
+                })
+            }
+        }
     }
     private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
         console.info(event.detail)
@@ -494,46 +527,77 @@ class ViewerApp implements Component {
     }
 
     getStreamRect(): DOMRect {
-        // The bounding rect of the videoElement can be bigger than the actual video
+        // The bounding rect of the videoElement or canvasElement can be bigger than the actual video
         // -> We need to correct for this when sending positions, else positions are wrong
 
         const videoSize = this.stream?.getStreamerSize() ?? this.streamerSize
         const videoAspect = videoSize[0] / videoSize[1]
 
-        const boundingRect = this.videoElement.getBoundingClientRect()
-        const boundingRectAspect = boundingRect.width / boundingRect.height
+        if(!this.settings?.canvasRenderer) {
+            const boundingRect = this.videoElement.getBoundingClientRect()
+            const boundingRectAspect = boundingRect.width / boundingRect.height
 
-        let x = boundingRect.x
-        let y = boundingRect.y
-        let videoMultiplier
-        if (boundingRectAspect > videoAspect) {
-            // How much is the video scaled up
-            videoMultiplier = boundingRect.height / videoSize[1]
+            let x = boundingRect.x
+            let y = boundingRect.y
+            let videoMultiplier
+            if (boundingRectAspect > videoAspect) {
+                // How much is the video scaled up
+                videoMultiplier = boundingRect.height / videoSize[1]
 
-            // Note: Both in boundingRect / page scale
-            const boundingRectHalfWidth = boundingRect.width / 2
-            const videoHalfWidth = videoSize[0] * videoMultiplier / 2
+                // Note: Both in boundingRect / page scale
+                const boundingRectHalfWidth = boundingRect.width / 2
+                const videoHalfWidth = videoSize[0] * videoMultiplier / 2
 
-            x += boundingRectHalfWidth - videoHalfWidth
-        } else {
-            // Same as above but inverted
-            videoMultiplier = boundingRect.width / videoSize[0]
+                x += boundingRectHalfWidth - videoHalfWidth
+            } else {
+                // Same as above but inverted
+                videoMultiplier = boundingRect.width / videoSize[0]
 
-            const boundingRectHalfHeight = boundingRect.height / 2
-            const videoHalfHeight = videoSize[1] * videoMultiplier / 2
+                const boundingRectHalfHeight = boundingRect.height / 2
+                const videoHalfHeight = videoSize[1] * videoMultiplier / 2
 
-            y += boundingRectHalfHeight - videoHalfHeight
+                y += boundingRectHalfHeight - videoHalfHeight
+            }
+
+            return new DOMRect(
+                x,
+                y,
+                videoSize[0] * videoMultiplier,
+                videoSize[1] * videoMultiplier
+            )
         }
+        else {
+            const clientRect = this.canvasElement.getBoundingClientRect()
+            
+            const canvasCssWidth = this.canvasElement.clientWidth
+            const canvasCssHeight = this.canvasElement.clientHeight
 
-        return new DOMRect(
-            x,
-            y,
-            videoSize[0] * videoMultiplier,
-            videoSize[1] * videoMultiplier
-        )
+            const boundingRectAspect = canvasCssWidth / canvasCssHeight
+            let x = clientRect.x
+            let y = clientRect.y
+            let width = canvasCssWidth
+            let height = canvasCssHeight
+            let videoMultiplier
+
+            if (boundingRectAspect > videoAspect) {
+                // Canvas is wider than video aspect, video will be pillarboxed
+                videoMultiplier = canvasCssHeight / videoSize[1]
+                const videoRenderedWidth = videoSize[0] * videoMultiplier
+                x += (canvasCssWidth - videoRenderedWidth) / 2 // Center horizontally
+                width = videoRenderedWidth
+            }
+            else {
+                // Canvas is taller than video aspect, video will be letterboxed
+                videoMultiplier = canvasCssWidth / videoSize[0]
+                const videoRenderedHeight = videoSize[1] * videoMultiplier
+                y += (canvasCssHeight - videoRenderedHeight) / 2 // Center vertically
+                height = videoRenderedHeight
+            }
+            return new DOMRect(x, y, width, height)
+        }
     }
     getElement(): HTMLElement {
-        return this.videoElement
+        return !this.settings?.canvasRenderer ? this.videoElement : this.canvasElement
     }
     getStream(): Stream | null {
         return this.stream
