@@ -50,7 +50,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 
 ## Setup
 
-1. Add a new user by typing in your name and password. The first user will be the admin.
+1. Add a new user by typing in your name and password. The first user to login will be created and will be the admin.
 
 2. Add a new pc (<img src="moonlight-web/web-server/web/resources/ic_add_to_queue_white_48px.svg" alt="icon" style="height:1em; vertical-align:middle;">) with the address as `localhost` and leave the port empty (if you've got the default port)
 
@@ -354,7 +354,7 @@ Will always append the prefix to all requests made by the website.
 
 3. Move your configurations to the new config
 
-After that just follow the [setup](#setup). All hosts will be moved to the first user.
+4. The first user to login will be created and will be an admin. All previously stored hosts will be moved to this user.
 
 ## Building
 Make sure you've cloned this repo with all it's submodules
