@@ -190,12 +190,14 @@ export class StreamInput {
 
         const modifiers = convertToModifiers(event)
 
-        console.log(
-            isDown ? "DOWN" : "UP",
-            event.code,
-            convertToKey(event),
-            convertToModifiers(event).toString(16)
-        )
+        if ("debug" in console) {
+            console.debug(
+                isDown ? "DOWN" : "UP",
+                event.code,
+                convertToKey(event),
+                convertToModifiers(event).toString(16)
+            )
+        }
         this.sendKey(isDown, key, modifiers)
     }
 
