@@ -24,8 +24,6 @@ export type StreamSettings = {
     toggleFullscreenWithKeybind: boolean
 }
 
-// TODO: make video sample queue size and audio queue size automatically adjust by default
-
 export function defaultStreamSettings(): StreamSettings {
     return {
         sidebarEdge: "left",

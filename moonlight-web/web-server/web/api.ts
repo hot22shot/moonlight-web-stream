@@ -131,15 +131,15 @@ export class FetchError extends Error {
     private response?: Response
 
     constructor(type: "timeout", endpoint: string, method: string)
-    constructor(type: "failed", endpoint: string, method: string, response: Response)
+    constructor(type: "failed", endpoint: string, method: string, response: Response, reason?: string)
     constructor(type: "unknown", endpoint: string, method: string, error: Error)
 
-    constructor(type: "timeout" | "failed" | "unknown", endpoint: string, method: string, responseOrError?: Response | any) {
+    constructor(type: "timeout" | "failed" | "unknown", endpoint: string, method: string, responseOrError?: Response | any, reason?: string) {
         if (type == "timeout") {
             super(`failed to fetch ${method} at ${endpoint} because of timeout`)
         } else if (type == "failed") {
             const response = responseOrError as Response
-            super(`failed to fetch ${method} at ${endpoint} with code ${response?.status}`)
+            super(`failed to fetch ${method} at ${endpoint} with code ${response?.status} ${reason ? `because of ${reason}` : ""}`)
 
             this.response = response
         } else if (type == "unknown") {
@@ -224,8 +224,7 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
         return json
     } else if (init?.response == "jsonStreaming") {
         if (!response.body) {
-            // TODO: error
-            throw "TODO"
+            throw new FetchError("failed", endpoint, method, response)
         }
 
         // @ts-ignore
