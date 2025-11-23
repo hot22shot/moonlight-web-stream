@@ -375,7 +375,6 @@ pub enum StreamServerMessage {
     ConnectionTerminated {
         error_code: i32,
     },
-    PeerDisconnect,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -398,7 +397,6 @@ impl From<moonlight_common::stream::bindings::ConnectionStatus> for ConnectionSt
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerGeneralMessage {
-    ConnectionTerminated,
     ConnectionStatusUpdate { status: ConnectionStatus },
 }
 

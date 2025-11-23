@@ -6,14 +6,14 @@ import { createSupportedVideoFormatsBits, VideoCodecSupport } from "./video.js"
 
 export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
-    { type: "error", message: string } |
+    { type: "serverMessage", message: string } |
     { type: "stageStarting" | "stageComplete", stage: string } |
     { type: "stageFailed", stage: string, errorCode: number } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "connectionStatus", status: ConnectionStatus } |
     { type: "connectionTerminated", errorCode: number } |
     { type: "addDebugLine", line: string } |
-    { type: "videoTrack", track: MediaStreamTrack}
+    { type: "videoTrack", track: MediaStreamTrack }
 >
 export type InfoEventListener = (event: InfoEvent) => void
 
@@ -171,7 +171,7 @@ export class Stream {
     private async onMessage(message: StreamServerMessage | StreamServerGeneralMessage) {
         if (typeof message == "string") {
             const event: InfoEvent = new CustomEvent("stream-info", {
-                detail: { type: "error", message }
+                detail: { type: "serverMessage", message }
             })
 
             this.eventTarget.dispatchEvent(event)
@@ -361,7 +361,7 @@ export class Stream {
             this.debugLog(`playoutDelayHint not supported in receiver: ${event.receiver.track.label}`)
         }
 
-        if(!this.settings?.canvasRenderer) {
+        if (!this.settings?.canvasRenderer) {
             const stream = event.streams[0]
             if (stream) {
                 stream.getTracks().forEach(track => {
@@ -414,7 +414,7 @@ export class Stream {
         if (this.peer.connectionState == "failed" || this.peer.connectionState == "disconnected" || this.peer.connectionState == "closed") {
             const customEvent: InfoEvent = new CustomEvent("stream-info", {
                 detail: {
-                    type: "error",
+                    type: "serverMessage",
                     message: `Connection state is ${this.peer.connectionState}`
                 }
             })

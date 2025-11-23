@@ -1,8 +1,14 @@
-use std::{panic, process::exit, sync::Arc};
+use std::{
+    panic,
+    process::exit,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use common::{
     StreamSettings,
-    api_bindings::StreamServerGeneralMessage,
     config::PortRange,
     ipc::{IpcReceiver, IpcSender, ServerIpcMessage, StreamerIpcMessage, create_process_ipc},
     serialize_json,
@@ -296,6 +302,7 @@ struct StreamConnection {
     pub video_size: Mutex<(u32, u32)>,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
+    pub is_terminating: AtomicBool,
     pub terminate: Notify,
 }
 
@@ -341,6 +348,7 @@ impl StreamConnection {
             video_size: Mutex::new((0, 0)),
             input,
             stream: Default::default(),
+            is_terminating: AtomicBool::new(false),
             terminate: Notify::new(),
         });
 
@@ -425,12 +433,7 @@ impl StreamConnection {
         }
     }
     async fn on_peer_connection_state_change(&self, state: RTCPeerConnectionState) {
-        if matches!(
-            state,
-            RTCPeerConnectionState::Failed
-                | RTCPeerConnectionState::Disconnected
-                | RTCPeerConnectionState::Closed
-        ) {
+        if matches!(state, RTCPeerConnectionState::Closed) {
             self.stop().await;
         }
     }
@@ -732,24 +735,15 @@ impl StreamConnection {
     }
 
     async fn stop(&self) {
+        if self
+            .is_terminating
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            return;
+        }
+
         debug!("[Stream]: Stopping...");
-
-        let mut ipc_sender = self.ipc_sender.clone();
-        spawn(async move {
-            ipc_sender
-                .send(StreamerIpcMessage::WebSocket(
-                    StreamServerMessage::PeerDisconnect,
-                ))
-                .await;
-        });
-
-        let general_channel = self.general_channel.clone();
-        spawn(async move {
-            if let Some(message) = serialize_json(&StreamServerGeneralMessage::ConnectionTerminated)
-            {
-                let _ = general_channel.send_text(message).await;
-            }
-        });
 
         let stream = {
             let mut stream = self.stream.write().await;
@@ -762,6 +756,10 @@ impl StreamConnection {
         {
             warn!("[Stream]: failed to stop stream: {err}");
         };
+
+        if let Err(err) = self.peer.close().await {
+            warn!("failed to close peer: {err}");
+        }
 
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;

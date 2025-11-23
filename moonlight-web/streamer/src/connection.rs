@@ -75,6 +75,7 @@ impl ConnectionListener for StreamConnectionListener {
     }
 
     fn connection_terminated(&mut self, error_code: i32) {
+        let stream = self.stream.clone();
         let mut ipc_sender = self.stream.ipc_sender.clone();
 
         self.stream.runtime.spawn(async move {
@@ -83,14 +84,8 @@ impl ConnectionListener for StreamConnectionListener {
                     StreamServerMessage::ConnectionTerminated { error_code },
                 ))
                 .await;
-        });
 
-        let stream = self.stream.clone();
-        self.stream.runtime.spawn(async move {
-            if let Some(message) = serialize_json(&StreamServerGeneralMessage::ConnectionTerminated)
-            {
-                let _ = stream.general_channel.send_text(message).await;
-            }
+            stream.stop().await;
         });
     }
 

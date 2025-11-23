@@ -681,16 +681,12 @@ class ConnectionInfoModal implements Modal<void> {
             this.eventTarget.dispatchEvent(new Event("ml-connected"))
         } else if (data.type == "addDebugLine") {
             this.debugLog(data.line)
-        }
-        // Reopen the modal cause we might already be closed at this point
-        else if (data.type == "connectionTerminated") {
-            const text = `Server: Connection Terminated with code ${data.errorCode}`
+        } else if (data.type == "serverMessage") {
+            const text = `Server: ${data.message}`
             this.text.innerText = text
             this.debugLog(text)
-
-            showModal(this)
-        } else if (data.type == "error") {
-            const text = `Server: Error: ${data.message}`
+        } else if (data.type == "connectionTerminated") {
+            const text = `Server: Connection Terminated with code ${data.errorCode}`
             this.text.innerText = text
             this.debugLog(text)
 
