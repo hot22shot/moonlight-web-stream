@@ -5,6 +5,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 use common::{
@@ -31,6 +32,7 @@ use tokio::{
     spawn,
     sync::{Mutex, Notify, RwLock},
     task::spawn_blocking,
+    time::sleep,
 };
 use webrtc::{
     api::{
@@ -69,6 +71,8 @@ use crate::{
 };
 
 pub type RequestClient = ReqwestClient;
+
+pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
 mod audio;
 mod buffer;
@@ -302,6 +306,7 @@ struct StreamConnection {
     pub video_size: Mutex<(u32, u32)>,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
+    pub timeout_terminate_request: Mutex<Option<Instant>>,
     pub is_terminating: AtomicBool,
     pub terminate: Notify,
 }
@@ -348,6 +353,7 @@ impl StreamConnection {
             video_size: Mutex::new((0, 0)),
             input,
             stream: Default::default(),
+            timeout_terminate_request: Default::default(),
             is_terminating: AtomicBool::new(false),
             terminate: Notify::new(),
         });
@@ -432,9 +438,16 @@ impl StreamConnection {
             }
         }
     }
-    async fn on_peer_connection_state_change(&self, state: RTCPeerConnectionState) {
+    async fn on_peer_connection_state_change(self: Arc<Self>, state: RTCPeerConnectionState) {
         if matches!(state, RTCPeerConnectionState::Closed) {
             self.stop().await;
+        } else if matches!(
+            state,
+            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Disconnected
+        ) {
+            self.request_terminate().await;
+        } else {
+            self.clear_terminate_request().await;
         }
     }
 
@@ -732,6 +745,33 @@ impl StreamConnection {
         stream_guard.replace(stream);
 
         Ok(())
+    }
+
+    async fn request_terminate(self: &Arc<Self>) {
+        let this = self.clone();
+
+        let mut terminate_request = self.timeout_terminate_request.lock().await;
+        *terminate_request = Some(Instant::now());
+        drop(terminate_request);
+
+        spawn(async move {
+            sleep(TIMEOUT_DURATION + Duration::from_millis(200)).await;
+
+            let now = Instant::now();
+
+            let terminate_request = this.timeout_terminate_request.lock().await;
+            if let Some(terminate_request) = *terminate_request
+                && (now - terminate_request) > TIMEOUT_DURATION
+            {
+                info!("Stopping because of timeout");
+                this.stop().await;
+            }
+        });
+    }
+    async fn clear_terminate_request(&self) {
+        let mut request = self.timeout_terminate_request.lock().await;
+
+        *request = None;
     }
 
     async fn stop(&self) {

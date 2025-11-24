@@ -410,17 +410,6 @@ export class Stream {
             return
         }
         this.debugLog(`Changing Peer State to ${this.peer.connectionState}`)
-
-        if (this.peer.connectionState == "failed" || this.peer.connectionState == "disconnected" || this.peer.connectionState == "closed") {
-            const customEvent: InfoEvent = new CustomEvent("stream-info", {
-                detail: {
-                    type: "serverMessage",
-                    message: `Connection state is ${this.peer.connectionState}`
-                }
-            })
-
-            this.eventTarget.dispatchEvent(customEvent)
-        }
     }
     private onIceConnectionStateChange() {
         if (!this.peer) {
@@ -459,7 +448,7 @@ export class Stream {
         }
     }
     private onWsClose() {
-        this.debugLog(`Web Socket Closed`, true)
+        this.debugLog(`Web Socket Closed`)
     }
 
     private sendWsMessage(message: StreamClientMessage) {
@@ -484,7 +473,7 @@ export class Stream {
     private onError(event: Event) {
         this.debugLog(`Web Socket or WebRtcPeer Error`)
 
-        console.error("Stream Error", event)
+        console.error(`Web Socket or WebRtcPeer Error`, event)
     }
 
     // -- Class Api

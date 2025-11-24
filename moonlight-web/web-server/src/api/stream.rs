@@ -1,4 +1,4 @@
-use std::{process::Stdio, time::Duration};
+use std::process::Stdio;
 
 use actix_web::{
     Error, HttpRequest, HttpResponse, get, post, rt as actix_rt,
@@ -15,7 +15,7 @@ use common::{
 };
 use log::{debug, error, info, warn};
 use moonlight_common::stream::bindings::SupportedVideoFormats;
-use tokio::{process::Command, spawn, time::sleep};
+use tokio::{process::Command, spawn};
 
 use crate::app::{
     App, AppError,
@@ -249,7 +249,14 @@ pub async fn start_host(
             info!("[Ipc]: ipc receiver is closed");
 
             // close the websocket when the streamer crashed / disconnected / whatever
-            let _ = session.close(None).await;
+            if let Err(err) = session.close(None).await {
+                warn!("failed to close streamer web socket: {err}");
+            }
+
+            // kill the streamer
+            if let Err(err) = child.kill().await {
+                warn!("failed to kill streamer child: {err}");
+            }
         });
 
         // Send init into ipc
@@ -278,22 +285,6 @@ pub async fn start_host(
             };
 
             ipc_sender.send(ServerIpcMessage::WebSocket(message)).await;
-        }
-
-        // -- After the websocket disconnects we kill the stream:
-        ipc_sender.send(ServerIpcMessage::Stop).await;
-        drop(ipc_sender);
-
-        sleep(Duration::from_secs(4)).await;
-
-        info!("[Stream]: killing streamer");
-        match child.kill().await {
-            Ok(_) => {
-                info!("[Stream]: killed streamer");
-            }
-            Err(err) => {
-                warn!("[Stream]: failed to kill child: {err:?}");
-            }
         }
     });
 
