@@ -93,17 +93,18 @@ export function isDetailedHost(host: UndetailedHost | DetailedHost): host is Det
 }
 
 function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetchInit): [string, RequestInit] {
-    // Remove all null values from query, these cause problems in rust
-    if (init?.query != null) {
-        for (const key in init?.query) {
-            if (init.query[key] === null) {
-                delete init.query[key]
-            }
+    const queryObj = init?.query || {};
+    const queryParts = [];
+    for (const key in queryObj) {
+        // Remove all null values from query, these cause problems in rust
+        if (queryObj[key] != null) {
+            queryParts.push(
+                encodeURIComponent(key) + "=" + encodeURIComponent(queryObj[key])
+            );
         }
     }
+    const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    const query = new URLSearchParams(init?.query)
-    const queryString = query.size > 0 ? `?${query.toString()}` : "";
     const url = `${api.host_url}${endpoint}${queryString}`
 
     const headers: any = {
