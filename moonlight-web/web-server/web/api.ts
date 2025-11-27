@@ -78,7 +78,6 @@ const DELETE = "DELETE"
 export type Api = {
     host_url: string
     bearer: string | null,
-    // TODO: undetailed user?
     user: DetailedUser | null,
 }
 

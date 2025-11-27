@@ -69,20 +69,6 @@ async fn main() {
     if let Err(err) = start(config).await {
         error!("{err:?}");
     }
-
-    exit().await.expect("exit failed")
-}
-
-async fn exit() -> Result<(), anyhow::Error> {
-    // TODO: remove this?
-    info!("Press Enter to close this window");
-
-    let mut line = String::new();
-    let mut reader = BufReader::new(stdin());
-
-    reader.read_line(&mut line).await?;
-
-    Ok(())
 }
 
 async fn start(config: Config) -> Result<(), anyhow::Error> {
