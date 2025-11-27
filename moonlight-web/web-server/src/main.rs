@@ -9,7 +9,7 @@ use tokio::{
 use actix_web::{
     App as ActixApp, HttpServer,
     middleware::{self, Logger},
-    web::Data,
+    web::{Data, scope},
 };
 use log::{Level, error, info};
 use serde::{Serialize, de::DeserializeOwned};
@@ -86,34 +86,37 @@ async fn exit() -> Result<(), anyhow::Error> {
 }
 
 async fn start(config: Config) -> Result<(), anyhow::Error> {
-    let app = App::new(config).await?;
+    let app = App::new(config.clone()).await?;
     let app = Data::new(app);
 
     let bind_address = app.config().web_server.bind_address;
     let server = HttpServer::new({
+        let url_path_prefix = config.web_server.url_path_prefix.clone();
         let app = app.clone();
 
         move || {
-            ActixApp::new()
-                .app_data(app.clone())
-                .wrap(
-                    Logger::new("%r took %D ms")
-                        .log_target("http_server")
-                        .log_level(Level::Debug),
-                )
-                .wrap(
-                    // TODO: maybe only re cache when required?
-                    middleware::DefaultHeaders::new()
-                        .add((
-                            "Cache-Control",
-                            "no-store, no-cache, must-revalidate, private",
-                        ))
-                        .add(("Pragma", "no-cache"))
-                        .add(("Expires", "0")),
-                )
-                .service(api_service())
-                .service(web_config_js_service())
-                .service(web_service())
+            ActixApp::new().service(
+                scope(&url_path_prefix)
+                    .app_data(app.clone())
+                    .wrap(
+                        Logger::new("%r took %D ms")
+                            .log_target("http_server")
+                            .log_level(Level::Debug),
+                    )
+                    .wrap(
+                        // TODO: maybe only re cache when required?
+                        middleware::DefaultHeaders::new()
+                            .add((
+                                "Cache-Control",
+                                "no-store, no-cache, must-revalidate, private",
+                            ))
+                            .add(("Pragma", "no-cache"))
+                            .add(("Expires", "0")),
+                    )
+                    .service(api_service())
+                    .service(web_config_js_service())
+                    .service(web_service()),
+            )
         }
     });
 

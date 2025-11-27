@@ -189,12 +189,12 @@ ProxyPreserveHost on
         
 # Important: This WebSocket will help negotiate the WebRTC Peers
 <Location ${MOONLIGHT_SUBPATH}/api/host/stream>
-        ProxyPass ws://${MOONLIGHT_STREAMER}/api/host/stream
-        ProxyPassReverse ws://${MOONLIGHT_STREAMER}/api/host/stream
+        ProxyPass ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
+        ProxyPassReverse ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
 </Location>
 
-ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/
-ProxyPassReverse ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/
+ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/
+ProxyPassReverse ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/
 ```
 
 3. Enable the created config file
