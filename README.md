@@ -157,7 +157,7 @@ python ./moonlight-web/web-server/generate_certificate.py
 3. Modify the [config](#config) to enable https using the certificates
 ```json
 {
-    "webrtc": {
+    "web_server": {
         "certificate": {
             "private_key_pem": "./server/key.pem",
             "certificate_pem": "./server/cert.pem"
