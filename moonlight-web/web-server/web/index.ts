@@ -1,5 +1,5 @@
 import "./polyfill/index.js"
-import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin } from "./api.js";
+import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -365,11 +365,17 @@ class MainApp implements Component {
         }
 
         const host = this.hostList.getHost(hostId)
-        if (host == null) {
-            return
+
+        let currentGame = null
+        if (host != null) {
+            currentGame = await host.getCurrentGame()
+        } else {
+            const host = await apiGetHost(this.api, { host_id: hostId })
+            if (host.current_game != 0) {
+                currentGame = host.current_game
+            }
         }
 
-        const currentGame = await host.getCurrentGame()
         if (currentGame != null) {
             gameList?.setActiveGame(currentGame)
         } else {
