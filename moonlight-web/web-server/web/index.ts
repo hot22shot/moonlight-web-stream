@@ -51,8 +51,10 @@ startApp()
 type DisplayStates = "hosts" | "games" | "settings"
 
 type AppState = { display: DisplayStates, hostId?: number }
-function pushAppState(state: AppState) {
-    history.pushState(state, "")
+function setAppState(state: AppState, pushHistory: boolean) {
+    if (pushHistory) {
+        history.pushState(state, "")
+    }
 
     if (sessionStorage) {
         sessionStorage.setItem("mlState", JSON.stringify(state))
@@ -282,9 +284,7 @@ class MainApp implements Component {
 
             this.hostList.mount(this.divElement)
 
-            if (pushIntoHistory) {
-                pushAppState({ display: "hosts" })
-            }
+            setAppState({ display: "hosts" }, pushIntoHistory)
         } else if (display == "games" && extraInfo?.hostId != null) {
             this.actionElement.appendChild(this.backButton)
             this.actionElement.appendChild(this.settingsButton)
@@ -298,17 +298,13 @@ class MainApp implements Component {
 
             this.refreshGameListActiveGame()
 
-            if (pushIntoHistory) {
-                pushAppState({ display: "games", hostId: this.gameList?.getHostId() })
-            }
+            setAppState({ display: "games", hostId: this.gameList?.getHostId() }, pushIntoHistory)
         } else if (display == "settings") {
             this.actionElement.appendChild(this.backButton)
 
             this.settings.mount(this.divElement)
 
-            if (pushIntoHistory) {
-                pushAppState({ display: "settings" })
-            }
+            setAppState({ display: "settings" }, pushIntoHistory)
         }
 
         this.currentDisplay = display
