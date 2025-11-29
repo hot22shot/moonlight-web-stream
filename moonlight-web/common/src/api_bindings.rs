@@ -429,6 +429,9 @@ pub enum StreamerStatsUpdate {
     },
     Video {
         host_processing_latency: Option<StatsHostProcessingLatency>,
+        min_streamer_processing_time_ms: f64,
+        max_streamer_processing_time_ms: f64,
+        avg_streamer_processing_time_ms: f64,
     },
 }
 

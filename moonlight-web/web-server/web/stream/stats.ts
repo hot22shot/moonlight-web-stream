@@ -13,6 +13,9 @@ export type StreamStatsData = {
     minHostProcessingLatencyMs: number | null
     maxHostProcessingLatencyMs: number | null
     avgHostProcessingLatencyMs: number | null
+    minStreamerProcessingTimeMs: number | null
+    maxStreamerProcessingTimeMs: number | null
+    avgStreamerProcessingTimeMs: number | null
     webrtcJitterBufferDelayMs: number | null
     webrtcTotalAssemblyTime: number | null
     webrtcTotalDecodeTime: number | null
@@ -35,6 +38,7 @@ export function streamStatsToText(statsData: StreamStatsData): string {
 video information: ${statsData.videoCodec}${statsData.decoderImplementation ? ` (${statsData.decoderImplementation})` : ""}, ${statsData.videoWidth}x${statsData.videoHeight}, ${statsData.videoFps} fps
 streamer round trip time: ${num(statsData.streamerRttMs, "ms")} (variance: ${num(statsData.streamerRttVarianceMs, "ms")})
 host processing latency min/max/avg: ${num(statsData.minHostProcessingLatencyMs, "ms")} / ${num(statsData.maxHostProcessingLatencyMs, "ms")} / ${num(statsData.avgHostProcessingLatencyMs, "ms")}
+streamer processing latency min/max/avg: ${num(statsData.minStreamerProcessingTimeMs, "ms")} / ${num(statsData.maxStreamerProcessingTimeMs, "ms")} / ${num(statsData.avgStreamerProcessingTimeMs, "ms")}
 webrtc fps: ${num(statsData.webrtcFps)}
 webrtc jitter buffer delay: ${num(statsData.webrtcJitterBufferDelayMs, "ms")}
 webrtc total decode time: ${num(statsData.webrtcTotalDecodeTime, "ms")}
@@ -66,6 +70,9 @@ export class StreamStats {
         minHostProcessingLatencyMs: null,
         maxHostProcessingLatencyMs: null,
         avgHostProcessingLatencyMs: null,
+        minStreamerProcessingTimeMs: null,
+        maxStreamerProcessingTimeMs: null,
+        avgStreamerProcessingTimeMs: null,
         webrtcJitterBufferDelayMs: null,
         webrtcTotalAssemblyTime: null,
         webrtcTotalDecodeTime: null,
@@ -139,6 +146,10 @@ export class StreamStats {
                 this.statsData.maxHostProcessingLatencyMs = null
                 this.statsData.avgHostProcessingLatencyMs = null
             }
+
+            this.statsData.minStreamerProcessingTimeMs = msg.Video.min_streamer_processing_time_ms
+            this.statsData.maxStreamerProcessingTimeMs = msg.Video.max_streamer_processing_time_ms
+            this.statsData.avgStreamerProcessingTimeMs = msg.Video.avg_streamer_processing_time_ms
         }
     }
 
