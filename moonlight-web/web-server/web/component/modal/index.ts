@@ -30,10 +30,7 @@ export async function showModal<Output>(modal: Modal<Output>): Promise<Output | 
     }
 
     if (modalAbort != null) {
-        showErrorPopup("cannot mount 2 modals at the same time")
-
         modalAbort.abort()
-        return null
     }
 
     if (previousModal) {
