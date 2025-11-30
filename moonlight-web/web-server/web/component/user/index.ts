@@ -6,8 +6,6 @@ import { Component, ComponentEvent } from "../index.js";
 export type UserEventListener = (event: ComponentEvent<User>) => void
 
 export async function tryDeleteUser(api: Api, id: number) {
-    // TODO: some prompt
-
     await apiDeleteUser(api, { id })
 }
 

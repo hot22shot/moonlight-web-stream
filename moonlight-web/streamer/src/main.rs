@@ -19,7 +19,7 @@ use log::{LevelFilter, debug, info, warn};
 use moonlight_common::{
     MoonlightError,
     high::{HostError, MoonlightHost},
-    network::backend::reqwest::ReqwestClient,
+    network::backend::curl::CurlClient,
     pair::ClientAuth,
     stream::{
         MoonlightInstance, MoonlightStream,
@@ -72,7 +72,7 @@ use crate::{
     video::{register_video_codecs, spawn_video_thread},
 };
 
-pub type RequestClient = ReqwestClient;
+pub type RequestClient = CurlClient;
 
 pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 

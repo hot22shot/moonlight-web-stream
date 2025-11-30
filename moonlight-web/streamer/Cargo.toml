@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 moonlight-common = { workspace = true, features = [
     "high",
-    "backend_reqwest",
+    "backend_curl",
     "stream",
 ] }
 common = { path = "../common" }

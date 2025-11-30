@@ -630,6 +630,7 @@ impl Host {
                 },
             )
             .await??;
+        let app_image = Bytes::from_owner(app_image);
 
         {
             let mut app_images = app.app_image_cache.write().await;

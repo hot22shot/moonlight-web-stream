@@ -10,9 +10,7 @@ use common::config::Config;
 use hex::FromHexError;
 use log::{error, warn};
 use moonlight_common::{
-    network::{
-        ApiError, backend::hyper_openssl::HyperOpenSSLClient, request_client::RequestClient,
-    },
+    network::{ApiError, backend::curl::CurlClient, request_client::RequestClient},
     pair::PairError,
 };
 use openssl::error::ErrorStack;
@@ -140,7 +138,7 @@ struct AppInner {
     app_image_cache: RwLock<HashMap<(UserId, HostId, AppId), Bytes>>,
 }
 
-pub type MoonlightClient = HyperOpenSSLClient;
+pub type MoonlightClient = CurlClient;
 
 pub struct App {
     inner: Arc<AppInner>,

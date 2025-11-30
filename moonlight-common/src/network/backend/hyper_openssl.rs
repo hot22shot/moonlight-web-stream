@@ -20,7 +20,10 @@ use thiserror::Error;
 use tokio::{net::TcpStream, spawn, task::JoinError, time::timeout};
 use url::Url;
 
-use crate::network::request_client::{QueryParamsRef, RequestClient, RequestError};
+use crate::network::{
+    backend::{DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT},
+    request_client::{QueryParamsRef, RequestClient, RequestError},
+};
 
 #[derive(Debug, Error)]
 pub enum HyperOpenSSLError {
@@ -87,13 +90,13 @@ impl RequestClient for HyperOpenSSLClient {
     fn with_defaults() -> Result<Self, Self::Error> {
         Ok(Self {
             ssl_ctx: None,
-            timeout: Duration::from_secs(10),
+            timeout: DEFAULT_TIMEOUT,
         })
     }
     fn with_defaults_long_timeout() -> Result<Self, Self::Error> {
         Ok(Self {
             ssl_ctx: None,
-            timeout: Duration::from_secs(90),
+            timeout: DEFAULT_LONG_TIMEOUT,
         })
     }
     fn with_certificates(
@@ -122,7 +125,7 @@ impl RequestClient for HyperOpenSSLClient {
 
         Ok(Self {
             ssl_ctx: Some(ssl.build()),
-            timeout: Duration::from_secs(10),
+            timeout: DEFAULT_TIMEOUT,
         })
     }
 
