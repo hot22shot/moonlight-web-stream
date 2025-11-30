@@ -56,7 +56,6 @@ export async function tryLogin(): Promise<Api | null> {
     const userAuth = await showModal(prompt)
 
     if (userAuth == null) {
-        await showMessage("Credentials are not Valid")
         return null
     }
 
@@ -66,6 +65,7 @@ export async function tryLogin(): Promise<Api | null> {
         }
         return api
     } else {
+        await showMessage("Credentials are not Valid")
         return null
     }
 }

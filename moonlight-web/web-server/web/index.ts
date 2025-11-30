@@ -4,7 +4,7 @@ import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { showModal } from "./component/modal/index.js";
+import { showMessage, showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
