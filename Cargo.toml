@@ -15,7 +15,9 @@ version = "0.2.0"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
-moonlight-common = { path = "./moonlight-common", default-features = false }
+moonlight-common = { path = "./moonlight-common", features = [
+    "backend_reqwest",
+], default-features = false }
 moonlight-common-sys = { path = "./moonlight-common-sys", features = [
     "generate-bindings",
 ] }
@@ -45,8 +47,9 @@ hyper-openssl = { version = "0.10.2", default-features = false }
 hyper-util = { version = "0.1.17", default-features = false }
 http-body-util = { version = "0.1.3", default-features = false }
 # Curl Backend
-curl = { version = "0.4.49", default-features = false }
-rustls = { version = "0.23.0", default-features = false }
+curl = { version = "0.4.49", features = [
+    "static-ssl",
+], default-features = false }
 # other
 uuid = { version = "1.17.0" }
 hex = { version = "0.4.3" }
@@ -64,7 +67,8 @@ actix-ws = "0.3.0"
 
 # OpenSSL / Crypto
 openssl = "0.10.73"
-openssl-sys = "0.9.109"
+openssl-src = "300.5.4+3.5.4"
+openssl-sys = "0.9.111"
 pem = "3.0.5"
 
 # Serialization
@@ -83,6 +87,11 @@ num-traits = "0.2"
 # Sys
 bindgen = { version = "0.72.0" }
 cmake = { version = "0.1.54" }
+
+# TODO
+# Patch the curl crate to include the windows openssl crypto backend by default
+[patch.crates-io]
+curl = { git = "https://github.com/MrCreativ3001/curl-rust.git" }
 
 [workspace.lints.clippy]
 too_many_arguments = "allow"

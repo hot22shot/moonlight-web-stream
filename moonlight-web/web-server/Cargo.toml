@@ -5,7 +5,7 @@ edition = "2024"
 license = { workspace = true }
 
 [dependencies]
-moonlight-common = { workspace = true, features = ["high", "backend_curl"] }
+moonlight-common = { workspace = true, features = ["high"] }
 common = { path = "../common" }
 
 tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }

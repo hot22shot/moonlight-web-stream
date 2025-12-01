@@ -36,11 +36,7 @@ hyper-util = { workspace = true, features = ["tokio"], optional = true }
 http-body-util = { workspace = true, optional = true }
 
 # Network Curl backend
-# TODO: use rustls openssl
-curl = { workspace = true, features = ["ssl", "rustls"], optional = true }
-rustls = { workspace = true, features = [
-
-], default-features = false, optional = true }
+curl = { workspace = true, features = ["ssl"], optional = true }
 
 # High
 tokio = { workspace = true, features = [
@@ -94,8 +90,7 @@ backend_hyper_openssl = [
     "dep:log",
 ]
 # Curl Network Backend
-# -> Using rustls so we don't get ssl errors on windows, see: https://github.com/alexcrichton/curl-rust/issues/536
-backend_curl = ["dep:curl", "dep:rustls"]
+backend_curl = ["dep:curl"]
 
 serde = ["dep:serde"]
 

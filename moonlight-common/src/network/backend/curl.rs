@@ -1,7 +1,11 @@
-use std::{mem::swap, time::Duration};
+use std::{
+    mem::swap,
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
 
-use curl::easy::{Easy2, Handler, WriteError};
-use log::debug;
+use curl::easy::{Easy2, Handler, InfoType, SslOpt, WriteError};
+use log::{LevelFilter, debug};
 use pem::Pem;
 use thiserror::Error;
 use tokio::task::{JoinError, spawn_blocking};
@@ -44,14 +48,37 @@ struct Certificates {
     server_certificate: Vec<u8>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct CurlHandler {
+    debug_number: usize,
     response: Vec<u8>,
+}
+impl CurlHandler {
+    fn new() -> Self {
+        static DEBUG_NUMBER: AtomicUsize = AtomicUsize::new(0);
+
+        Self {
+            debug_number: DEBUG_NUMBER.fetch_add(1, Ordering::Acquire),
+            response: Default::default(),
+        }
+    }
 }
 impl Handler for CurlHandler {
     fn write(&mut self, data: &[u8]) -> Result<usize, WriteError> {
         self.response.extend_from_slice(data);
         Ok(data.len())
+    }
+
+    fn debug(&mut self, kind: InfoType, data: &[u8]) {
+        let prefix = match kind {
+            InfoType::Text => "*",
+            InfoType::HeaderIn => "<",
+            InfoType::HeaderOut => ">",
+            InfoType::DataIn | InfoType::SslDataIn => "{",
+            InfoType::DataOut | InfoType::SslDataOut => "}",
+            _ => "-",
+        };
+        debug!(target: "curl_client", "{} {prefix} {}", self.debug_number, String::from_utf8_lossy(data).trim());
     }
 }
 
@@ -83,10 +110,9 @@ async fn make_curl_request(
     query_params: &QueryParamsRef<'_>,
     timeout: Duration,
 ) -> Result<Vec<u8>, CurlError> {
-    let mut curl = Easy2::new(CurlHandler::default());
+    let mut curl = Easy2::new(CurlHandler::new());
 
-    #[cfg(debug_assertions)]
-    curl.verbose(true)?;
+    curl.verbose(log::max_level() >= LevelFilter::Debug)?;
 
     let url = build_url(certificates.is_some(), hostport, path, query_params)?;
     debug!(target: "client_curl", "Sending {} request to \"{url}\"", if certificates.is_some() {"https"} else {"http"});
@@ -95,17 +121,19 @@ async fn make_curl_request(
     curl.timeout(timeout)?;
 
     if let Some(certificates) = certificates {
+        curl.ssl_cert_type("DER")?;
         curl.ssl_cert_blob(&certificates.client_certificate)?;
-        curl.ssl_cert_type("DER")?;
 
+        curl.ssl_key_type("DER")?;
         curl.ssl_key_blob(&certificates.client_private_key)?;
-        curl.ssl_cert_type("DER")?;
 
-        curl.ssl_cainfo_blob(&certificates.server_certificate)?;
+        // curl.ssl_cainfo_blob(&certificates.server_certificate)?;
 
         // TODO: make this secure
         curl.ssl_verify_peer(false)?;
         curl.ssl_verify_host(false)?;
+
+        curl.ssl_options(SslOpt::new().no_revoke(true))?;
     }
 
     let (result, mut curl) = spawn_blocking(move || {
@@ -147,9 +175,9 @@ impl RequestClient for CurlClient {
     ) -> Result<Self, Self::Error> {
         Ok(CurlClient {
             certificates: Some(Certificates {
-                client_private_key: client_private_key.contents().to_owned(),
-                client_certificate: client_certificate.contents().to_owned(),
-                server_certificate: server_certificate.contents().to_owned(),
+                client_private_key: client_private_key.contents().to_vec(),
+                client_certificate: client_certificate.contents().to_vec(),
+                server_certificate: server_certificate.contents().to_vec(),
             }),
             timeout: DEFAULT_TIMEOUT,
         })
