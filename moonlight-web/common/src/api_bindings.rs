@@ -340,6 +340,8 @@ pub enum StreamClientMessage {
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceServer {
+    #[serde(skip)]
+    pub is_default: bool,
     pub urls: Vec<String>,
     #[serde(default)]
     pub username: String,

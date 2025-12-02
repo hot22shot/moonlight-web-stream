@@ -1,4 +1,3 @@
-use clap::Parser;
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{io::ErrorKind, path::PathBuf, str::FromStr};
@@ -29,7 +28,7 @@ mod human_json;
 
 #[actix_web::main]
 async fn main() {
-    let cli = Cli::parse();
+    let cli = Cli::load();
 
     // Load Config
     let config_path = PathBuf::from_str(&cli.config_path).expect("invalid config file path");

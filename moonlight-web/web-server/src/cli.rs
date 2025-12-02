@@ -1,11 +1,50 @@
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    env,
+    net::{IpAddr, SocketAddr},
+};
 
 use clap::{Args, Parser, Subcommand};
-use common::config::{
-    Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
-    WebRtcNat1To1Mapping, WebRtcNetworkType,
+use common::{
+    api_bindings::RtcIceServer,
+    config::{
+        Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
+        WebRtcNat1To1Mapping, WebRtcNetworkType,
+    },
 };
 use log::LevelFilter;
+
+impl Cli {
+    pub fn load() -> Self {
+        let mut cli = Cli::parse();
+        cli.load_ice_servers();
+        cli
+    }
+
+    fn load_ice_servers(&mut self) {
+        let ice_server_count: usize = env::var("WEBRTC_ICE_SERVER_COUNT")
+            .as_deref()
+            .unwrap_or("50")
+            .parse()
+            .expect("invalid ice server count");
+
+        for i in 0..ice_server_count {
+            let Ok(url) = env::var(format!("WEBRTC_ICE_SERVER_{i}_URL")) else {
+                continue;
+            };
+
+            let username = env::var(format!("WEBRTC_ICE_SERVER_{i}_USERNAME")).unwrap_or_default();
+            let credential =
+                env::var(format!("WEBRTC_ICE_SERVER_{i}_CREDENTIAL")).unwrap_or_default();
+
+            self.options.webrtc_ice_servers.push(RtcIceServer {
+                is_default: false,
+                urls: vec![url],
+                username,
+                credential,
+            });
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(version,about, long_about = None)]
@@ -62,6 +101,17 @@ pub struct CliConfig {
     pub log_file: Option<String>,
     #[arg(long, env = "STREAMER_PATH")]
     pub streamer_path: Option<String>,
+    /// Disables the STUN ice server which are bundled by default.
+    /// This only disables the generation of them in the first config.
+    /// After the config.json has been generated the ice servers in the config will be used regardless if this is set.
+    #[arg(
+        long,
+        env = "DISABLE_DEFAULT_WEBRTC_ICE_SERVERS",
+        default_value_t = false
+    )]
+    pub disable_default_webrtc_ice_servers: bool,
+    #[arg(skip)]
+    pub webrtc_ice_servers: Vec<RtcIceServer>,
 }
 
 impl CliConfig {
@@ -71,7 +121,6 @@ impl CliConfig {
         }
         if let Some(webrtc_nat_1to1_host) = self.webrtc_nat_1to1_host {
             config.webrtc.nat_1to1 = Some(WebRtcNat1To1Mapping {
-                // TODO: test ip.to_string
                 ips: vec![webrtc_nat_1to1_host.to_string()],
                 ice_candidate_type: WebRtcNat1To1IceCandidateType::Host,
             });
@@ -117,5 +166,12 @@ impl CliConfig {
         if let Some(streamer_path) = self.streamer_path {
             config.streamer_path = streamer_path;
         }
+        if self.disable_default_webrtc_ice_servers {
+            config
+                .webrtc
+                .ice_servers
+                .retain(|server| !server.is_default);
+        }
+        config.webrtc.ice_servers.extend(self.webrtc_ice_servers);
     }
 }

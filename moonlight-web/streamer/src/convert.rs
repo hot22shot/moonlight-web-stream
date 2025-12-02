@@ -27,6 +27,7 @@ pub fn into_webrtc_ice(value: RtcIceServer) -> RTCIceServer {
 }
 pub fn from_webrtc_ice(value: RTCIceServer) -> RtcIceServer {
     RtcIceServer {
+        is_default: false,
         urls: value.urls,
         username: value.username,
         credential: value.credential,
