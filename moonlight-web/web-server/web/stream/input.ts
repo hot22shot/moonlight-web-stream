@@ -302,6 +302,11 @@ export class StreamInput {
         if (reliable) {
             trySendChannel(this.mouseReliable, this.buffer)
         } else {
+            const PACKET_SIZE = 1 + 2 + 2 + 2 + 2;
+
+            if (this.mouseAbsolute && this.mouseAbsolute.bufferedAmount > PACKET_SIZE) {
+                return
+            }
             trySendChannel(this.mouseAbsolute, this.buffer)
         }
     }
