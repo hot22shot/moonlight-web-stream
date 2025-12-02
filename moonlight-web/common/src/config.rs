@@ -1,29 +1,37 @@
 use std::{
+    fmt::Display,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    num::ParseIntError,
+    str::FromStr,
     time::Duration,
 };
 
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::api_bindings::RtcIceServer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    #[serde(default = "default_data_storage")]
+    #[serde(default)]
     pub data_storage: StorageConfig,
+    #[serde(default)]
     pub webrtc: WebRtcConfig,
+    #[serde(default)]
     pub web_server: WebServerConfig,
+    #[serde(default)]
     pub moonlight: MoonlightConfig,
     #[serde(default = "default_streamer_path")]
     pub streamer_path: String,
+    #[serde(default)]
     pub log: LogConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            data_storage: default_data_storage(),
+            data_storage: Default::default(),
             streamer_path: default_streamer_path(),
             web_server: Default::default(),
             moonlight: Default::default(),
@@ -44,14 +52,17 @@ pub struct LogConfig {
 impl Default for LogConfig {
     fn default() -> Self {
         Self {
-            level_filter: LevelFilter::Info,
+            level_filter: default_level_filter(),
             file_path: None,
         }
     }
 }
 
-// -- Data Storage
+fn default_level_filter() -> LevelFilter {
+    LevelFilter::Info
+}
 
+// -- Data Storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
@@ -62,10 +73,12 @@ pub enum StorageConfig {
     },
 }
 
-fn default_data_storage() -> StorageConfig {
-    StorageConfig::Json {
-        path: "server/data.json".to_string(),
-        session_expiration_check_interval: default_session_expiration_check_interval(),
+impl Default for StorageConfig {
+    fn default() -> Self {
+        StorageConfig::Json {
+            path: "server/data.json".to_string(),
+            session_expiration_check_interval: default_session_expiration_check_interval(),
+        }
     }
 }
 
@@ -89,6 +102,18 @@ pub struct WebRtcConfig {
     pub include_loopback_candidates: bool,
 }
 
+impl Default for WebRtcConfig {
+    fn default() -> Self {
+        Self {
+            ice_servers: default_ice_servers(),
+            port_range: None,
+            nat_1to1: None,
+            network_types: default_network_types(),
+            include_loopback_candidates: default_include_loopback_candidates(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WebRtcNetworkType {
     #[serde(rename = "udp4")]
@@ -99,6 +124,35 @@ pub enum WebRtcNetworkType {
     Tcp4,
     #[serde(rename = "tcp6")]
     Tcp6,
+}
+
+impl Display for WebRtcNetworkType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ty = match self {
+            Self::Udp4 => "udp4",
+            Self::Udp6 => "udp6",
+            Self::Tcp4 => "tcp4",
+            Self::Tcp6 => "tcp6",
+        };
+        write!(f, "{}", ty)
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("not a valid network type")]
+pub struct WebRtcNetworkTypeFromStr;
+
+impl FromStr for WebRtcNetworkType {
+    type Err = WebRtcNetworkTypeFromStr;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "udp4" => Ok(Self::Udp4),
+            "udp6" => Ok(Self::Udp6),
+            "tcp4" => Ok(Self::Tcp4),
+            "tcp6" => Ok(Self::Tcp6),
+            _ => Err(WebRtcNetworkTypeFromStr),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,15 +175,22 @@ pub struct PortRange {
     pub max: u16,
 }
 
-impl Default for WebRtcConfig {
-    fn default() -> Self {
-        Self {
-            ice_servers: default_ice_servers(),
-            port_range: None,
-            nat_1to1: None,
-            network_types: default_network_types(),
-            include_loopback_candidates: default_include_loopback_candidates(),
-        }
+#[derive(Debug, Error)]
+pub enum PortRangeFromStrError {
+    #[error("the port range must be of format \"MIN:MAX\"")]
+    Split,
+    #[error("couldn't parse number: {0}")]
+    ParseNumber(#[from] ParseIntError),
+}
+
+impl FromStr for PortRange {
+    type Err = PortRangeFromStrError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (min, max) = s.split_once(":").ok_or(PortRangeFromStrError::Split)?;
+        Ok(PortRange {
+            min: min.parse().map_err(PortRangeFromStrError::ParseNumber)?,
+            max: max.parse().map_err(PortRangeFromStrError::ParseNumber)?,
+        })
     }
 }
 
@@ -217,6 +278,15 @@ pub struct ForwardedHeaders {
     pub username_header: String,
     #[serde(default = "default_forwarded_headers_auto_create_user")]
     pub auto_create_missing_user: bool,
+}
+
+impl Default for ForwardedHeaders {
+    fn default() -> Self {
+        Self {
+            username_header: "X-Forwarded-User".to_string(),
+            auto_create_missing_user: default_forwarded_headers_auto_create_user(),
+        }
+    }
 }
 
 fn default_forwarded_headers_auto_create_user() -> bool {

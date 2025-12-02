@@ -1,3 +1,4 @@
+use clap::Parser;
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{io::ErrorKind, path::Path};
@@ -15,6 +16,7 @@ use simplelog::{ColorChoice, CombinedLogger, SharedLogger, TermLogger, TerminalM
 use crate::{
     api::api_service,
     app::App,
+    cli::{Cli, Command},
     human_json::preprocess_human_json,
     web::{web_config_js_service, web_service},
 };
@@ -23,12 +25,29 @@ mod api;
 mod app;
 mod web;
 
+mod cli;
 mod human_json;
 
 #[actix_web::main]
 async fn main() {
+    let cli = Cli::parse();
+
     // Load Config
-    let config = read_or_default::<Config>("./server/config.json", true).await;
+    let mut config = read_or_default::<Config>(cli.config_file, true).await;
+    cli.options.apply(&mut config);
+    // TODO: apply and then save default config
+
+    match cli.command {
+        Some(Command::PrintConfig) => {
+            let json =
+                serde_json::to_string_pretty(&config).expect("failed to serialize config to json");
+            println!("{json}");
+            return;
+        }
+        None | Some(Command::Run) => {
+            // Fallthrough
+        }
+    }
 
     // TODO: log config: anonymize ips when enabled in file
     // TODO: https://www.reddit.com/r/csharp/comments/166xgcl/comment/jynybpe/

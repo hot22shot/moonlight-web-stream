@@ -28,5 +28,7 @@ log = { workspace = true, features = ["serde"] }
 
 ts-rs = { workspace = true, features = ["uuid-impl"] }
 
+thiserror = { workspace = true }
+
 [lints]
 workspace = true

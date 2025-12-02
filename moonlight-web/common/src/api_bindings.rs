@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use moonlight_common::{
     ServerState,
     stream::bindings::{
@@ -343,6 +345,18 @@ pub struct RtcIceServer {
     pub username: String,
     #[serde(default)]
     pub credential: String,
+}
+
+impl Display for RtcIceServer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "urls=[{}], username=\"{}\", credential=\"{}\"",
+            self.urls.join(", "),
+            self.username,
+            self.credential,
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

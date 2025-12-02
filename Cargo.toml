@@ -11,7 +11,7 @@ members = [
 default-members = ["moonlight-web/streamer", "moonlight-web/web-server"]
 
 [workspace.package]
-version = "0.2.0"
+version = "2.0.0-prerelease.1"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
@@ -26,6 +26,9 @@ moonlight-common-sys = { path = "./moonlight-common-sys", features = [
 log = "0.4.28"
 simplelog = "0.12.2"
 printf-compat = { version = "0.2.1" }
+
+# Cli
+clap = { version = "4.5.53" }
 
 # Util
 slab = "0.4.10"

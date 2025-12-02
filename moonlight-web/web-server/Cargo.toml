@@ -10,6 +10,8 @@ common = { path = "../common" }
 
 tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
 
+clap = { workspace = true, features = ["derive", "env"] }
+
 actix-web = { workspace = true, features = ["openssl"] }
 openssl = { workspace = true }
 actix-files = { workspace = true }
