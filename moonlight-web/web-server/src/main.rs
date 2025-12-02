@@ -1,7 +1,7 @@
 use clap::Parser;
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-use std::{io::ErrorKind, path::Path};
+use std::{io::ErrorKind, path::PathBuf, str::FromStr};
 use tokio::fs::{self, File};
 
 use actix_web::{
@@ -10,7 +10,6 @@ use actix_web::{
     web::{Data, scope},
 };
 use log::{Level, error, info};
-use serde::{Serialize, de::DeserializeOwned};
 use simplelog::{ColorChoice, CombinedLogger, SharedLogger, TermLogger, TerminalMode, WriteLogger};
 
 use crate::{
@@ -33,9 +32,35 @@ async fn main() {
     let cli = Cli::parse();
 
     // Load Config
-    let mut config = read_or_default::<Config>(cli.config_file, true).await;
-    cli.options.apply(&mut config);
-    // TODO: apply and then save default config
+    let config_path = PathBuf::from_str(&cli.config_path).expect("invalid config file path");
+    let config = match fs::read_to_string(&config_path).await {
+        Ok(mut value) => {
+            value = preprocess_human_json(value);
+
+            let mut config = serde_json::from_str(&value).expect("invalid file");
+            cli.options.apply(&mut config);
+            config
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            let mut new_config = Config::default();
+            cli.options.apply(&mut new_config);
+
+            let value_str =
+                serde_json::to_string_pretty(&new_config).expect("failed to serialize file");
+
+            if let Some(parent) = config_path.parent() {
+                fs::create_dir_all(parent)
+                    .await
+                    .expect("failed to create directories to file");
+            }
+            fs::write(config_path, value_str)
+                .await
+                .expect("failed to write default file");
+
+            new_config
+        }
+        Err(err) => panic!("failed to read file: {err}"),
+    };
 
     match cli.command {
         Some(Command::PrintConfig) => {
@@ -51,8 +76,6 @@ async fn main() {
 
     // TODO: log config: anonymize ips when enabled in file
     // TODO: https://www.reddit.com/r/csharp/comments/166xgcl/comment/jynybpe/
-
-    // TODO: set config via environment variables or cli flags in docker container?
 
     let mut log_config = simplelog::ConfigBuilder::default();
 
@@ -143,36 +166,4 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
     }
 
     Ok(())
-}
-
-async fn read_or_default<T>(path: impl AsRef<Path>, hjson: bool) -> T
-where
-    T: DeserializeOwned + Serialize + Default,
-{
-    match fs::read_to_string(path.as_ref()).await {
-        Ok(mut value) => {
-            if hjson {
-                value = preprocess_human_json(value);
-            }
-
-            serde_json::from_str(&value).expect("invalid file")
-        }
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            let value = T::default();
-
-            let value_str = serde_json::to_string_pretty(&value).expect("failed to serialize file");
-
-            if let Some(parent) = path.as_ref().parent() {
-                fs::create_dir_all(parent)
-                    .await
-                    .expect("failed to create directories to file");
-            }
-            fs::write(path.as_ref(), value_str)
-                .await
-                .expect("failed to write default file");
-
-            value
-        }
-        Err(err) => panic!("failed to read file: {err}"),
-    }
 }

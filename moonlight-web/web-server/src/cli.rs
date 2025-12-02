@@ -11,7 +11,7 @@ use log::LevelFilter;
 #[command(version,about, long_about = None)]
 pub struct Cli {
     #[arg(short, long, default_value = "./server/config.json")]
-    pub config_file: String,
+    pub config_path: String,
 
     #[command(flatten)]
     pub options: CliConfig,
@@ -60,6 +60,8 @@ pub struct CliConfig {
     /// Overwrites `log.log_file_path`.
     #[arg(long, env = "LOG_FILE")]
     pub log_file: Option<String>,
+    #[arg(long, env = "STREAMER_PATH")]
+    pub streamer_path: Option<String>,
 }
 
 impl CliConfig {
@@ -111,6 +113,9 @@ impl CliConfig {
         }
         if let Some(log_file) = self.log_file {
             config.log.file_path = Some(log_file);
+        }
+        if let Some(streamer_path) = self.streamer_path {
+            config.streamer_path = streamer_path;
         }
     }
 }
