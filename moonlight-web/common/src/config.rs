@@ -196,6 +196,7 @@ impl FromStr for PortRange {
 
 fn default_ice_servers() -> Vec<RtcIceServer> {
     vec![RtcIceServer {
+        is_default: true,
         urls: vec![
             // Google
             "stun:stun.l.google.com:19302".to_string(),
