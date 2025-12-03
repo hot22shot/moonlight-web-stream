@@ -1,7 +1,4 @@
 
-# TODO
-- dockerfile
-
 # Moonlight Web
 An unofficial [Moonlight Client](https://moonlight-stream.org/) allowing you to stream your pc to the Web.
 It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/) traffic to a Browser using the [WebRTC Api](https://webrtc.org/).
@@ -14,7 +11,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 - [Limitations](#limitations)
 - [Installation](#installation)
   - [Manual Installation](#install-manually)
-  - [Docker Installation](#install-with-docker)
+  - [Docker Installation](docker/README.md)
 - [Setup](#setup)
   - [Streaming over the Internet](#streaming-over-the-internet)
   - [Configuring https](#configuring-https)
