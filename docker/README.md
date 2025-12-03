@@ -1,86 +1,28 @@
 
-# Docker Image for Moonlight-Web
+# Docker for Moonlight-Web
 
-1. Download [this folder](https://download-directory.github.io/?url=https%3A%2F%2Fgithub.com%2FMrCreativ3001%2Fmoonlight-web-stream%2Ftree%2Fmaster%2Fdocker)
-
-2. Edit the [default-config.json](default-config.json) (or the config.json inside the moonlight-server volume)
-
-- Change the [Nat 1 to 1 ips](https://github.com/MrCreativ3001/moonlight-web-stream?tab=readme-ov-file#webrtc-nat-1-to-1-ips) to the ip address of the device where you want to run the image on (this is required because docker is normally not able to see the ip of the device)
-
-```json
-{
-    "webrtc_nat_1to1": {
-        "ice_candidate_type": "host",
-        "ips": [
-            "127.0.0.1"
-        ]
-    }
-}
+Run with
+```sh
+docker run -d -p 8080:8080 -p 40000-40100:40000-40100/udp -e WEBRTC_NAT_1TO1_HOST=YOUR_LAN_IP mrcreativ3001/moonlight-web-stream:v2.0-prerelease.1
 ```
+and replace `YOUR_LAN_IP` with the device ip address of the local network.
 
-3. Build the Docker image with:
-```bash
-docker build -t moonlight-web:latest .
-```
+# Running with a TURN server
 
-4. Run with
-```bash
-docker run -d -p 8080:8080 -p 40000-40100:40000-40100/udp --name moonlight-web moonlight-web:latest
-```
-or
-```bash
-docker run -d --net=host --name moonlight-web moonlight-web:latest
-```
+1. Copy the [docker-compose.with-turn.yaml](./docker-compose.with-turn.yaml) into your own `docker-compose.yaml`.
 
-# Running with Turn Server
-
-1. Set new Turn credentials in the [.env file](.env)
+2. Create a new `.env` file with:
 ```dotenv
-TURN_USER=myrandomuser
-TURN_PASS=myrandompass
+ML_WEB_VERSION=v2.0-prerelease.1
+
+LAN_ADDRESS=127.0.0.1 # Change this to the device ip address of the local network.
+
+TURN_URL=myturn.com
+TURN_USERNAME=myrandomuser
+TURN_CREDENTIAL=myrandompass
 ```
 
-2. Edit the [default-config.json](default-config.json) (or the config.json inside the moonlight-server volume)
-
-- Include the TURN server URL and credentials
-- Change the [Nat 1 to 1 ips](https://github.com/MrCreativ3001/moonlight-web-stream?tab=readme-ov-file#webrtc-nat-1-to-1-ips) to the ip address of the device where you want to run the image on (this is required because docker is normally not able to see the ip of the device)
-
-```json
-{
-  "webrtc_ice_servers": [
-    {
-      "urls": [
-        "stun:l.google.com:19302",
-        "stun:stun.l.google.com:19302",
-        "stun:stun1.l.google.com:19302",
-        "stun:stun2.l.google.com:19302",
-        "stun:stun3.l.google.com:19302",
-        "stun:stun4.l.google.com:19302"
-      ],
-      "username": "",
-      "credential": ""
-    },
-    {
-      "urls": [
-        "turn:YOUR_PUBLIC_IP:3478?transport=udp",
-        "turn:YOUR_PUBLIC_IP:3478?transport=tcp",
-        "turn:YOUR_PUBLIC_IP:5349?transport=tcp",
-        "turn:YOUR_PUBLIC_IP:443?transport=tcp"
-      ],
-      "username": "myrandomuser",
-      "credential": "myrandompass"
-    }
-  ],
-  "webrtc_nat_1to1": {
-      "ice_candidate_type": "host",
-      "ips": [
-          "127.0.0.1"
-      ]
-  }
-}
-```
-
-3. Start with docker compose
-```bash
-docker compose -f docker-compose.with-turn.yaml up -d
+3. Run with docker-compose
+```sh
+docker compose up
 ```

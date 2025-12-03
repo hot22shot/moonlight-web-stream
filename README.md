@@ -13,6 +13,8 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 - [Images](#images)
 - [Limitations](#limitations)
 - [Installation](#installation)
+  - [Manual Installation](#install-manually)
+  - [Docker Installation](#install-with-docker)
 - [Setup](#setup)
   - [Streaming over the Internet](#streaming-over-the-internet)
   - [Configuring https](#configuring-https)
@@ -40,6 +42,10 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - Keyboard Lock (allows to capture almost all keys also OS Keys): [Experimental Keyboard Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Keyboard_API)
 
 ## Installation
+
+You can install it [manually](#install-manually) or with [docker](docker/README.md)
+
+### Install Manually
 
 1. Install [Sunshine](https://github.com/LizardByte/Sunshine/blob/v2025.628.4510/docs/getting_started.md)
 

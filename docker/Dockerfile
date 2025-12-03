@@ -6,20 +6,17 @@ ENV MOONLIGHT_WEB_PATH=/moonlight-web
 WORKDIR ${MOONLIGHT_WEB_PATH}
 
 # Download the release binary
-ADD https://github.com/MrCreativ3001/moonlight-web-stream/releases/latest/download/moonlight-web-x86_64-unknown-linux-gnu.tar.gz /tmp/app.tar.gz
+ADD https://github.com/MrCreativ3001/moonlight-web-stream/releases/download/v2.0-prerelease.1/moonlight-web-x86_64-unknown-linux-gnu.tar.gz /tmp/app.tar.gz
 
 # Extract it
 RUN tar -xvzf /tmp/app.tar.gz --strip-components=1 -C ${MOONLIGHT_WEB_PATH}/ &&\
     rm /tmp/app.tar.gz
 
-# Create a location with config defaults
-RUN mkdir ${MOONLIGHT_WEB_PATH}/defaults
-COPY ./default-config.json ${MOONLIGHT_WEB_PATH}/defaults/config.json
-
-# Create a volume with the default config.json and data.json
+# Create a volume with the config.json and data.json
 VOLUME ${MOONLIGHT_WEB_PATH}/server
 
-# Expose the port (adjust if you changed the config)
+# Expose the port (adjust if you changed it)
+ENV WEBRTC_PORT_RANGE=40000:40100
 EXPOSE 8080 40000-40100/udp
 
 # Create an entrypoint
