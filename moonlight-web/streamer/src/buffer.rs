@@ -72,7 +72,7 @@ where
         }
     }
 
-    pub fn get_utf8(&mut self, characters: usize) -> Result<&str, Utf8Error> {
+    pub fn get_utf8_raw(&mut self, characters: usize) -> Result<&str, Utf8Error> {
         if characters == 0 {
             return Ok("");
         }
@@ -147,5 +147,9 @@ where
         };
 
         self.put_u8_array(&bytes)
+    }
+
+    pub fn put_utf8_raw(&mut self, text: &str) -> bool {
+        self.put_u8_array(text.as_bytes())
     }
 }

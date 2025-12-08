@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytes::Bytes;
 use common::{
     StreamSettings,
     api_bindings::StreamerStatsUpdate,
@@ -63,6 +64,7 @@ use common::api_bindings::{
 
 use crate::{
     audio::{OpusTrackSampleAudioDecoder, register_audio_codecs},
+    buffer::ByteBuffer,
     connection::StreamConnectionListener,
     convert::{
         from_webrtc_ice, from_webrtc_sdp, into_webrtc_ice, into_webrtc_ice_candidate,
@@ -327,16 +329,14 @@ impl StreamConnection {
     ) -> Result<Arc<Self>, anyhow::Error> {
         // Send WebRTC Info
         ipc_sender
-            .send(StreamerIpcMessage::WebSocket(
-                StreamServerMessage::WebRtcConfig {
-                    ice_servers: config
-                        .ice_servers
-                        .iter()
-                        .cloned()
-                        .map(from_webrtc_ice)
-                        .collect(),
-                },
-            ))
+            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::Setup {
+                ice_servers: config
+                    .ice_servers
+                    .iter()
+                    .cloned()
+                    .map(from_webrtc_ice)
+                    .collect(),
+            }))
             .await;
 
         let peer = Arc::new(api.new_peer_connection(config).await?);
@@ -433,18 +433,16 @@ impl StreamConnection {
     }
 
     // -- Handle Connection State
-    async fn on_ice_connection_state_change(self: &Arc<Self>, state: RTCIceConnectionState) {
+    async fn on_ice_connection_state_change(self: &Arc<Self>, _state: RTCIceConnectionState) {}
+    async fn on_peer_connection_state_change(self: Arc<Self>, state: RTCPeerConnectionState) {
         #[allow(clippy::collapsible_if)]
-        if matches!(state, RTCIceConnectionState::Connected) {
+        if matches!(state, RTCPeerConnectionState::Connected) {
             if let Err(err) = self.start_stream().await {
                 warn!("[Stream]: failed to start stream: {err:?}");
 
                 self.stop().await;
             }
-        }
-    }
-    async fn on_peer_connection_state_change(self: Arc<Self>, state: RTCPeerConnectionState) {
-        if matches!(state, RTCPeerConnectionState::Closed) {
+        } else if matches!(state, RTCPeerConnectionState::Closed) {
             self.stop().await;
         } else if matches!(
             state,
@@ -486,14 +484,12 @@ impl StreamConnection {
 
         self.ipc_sender
             .clone()
-            .send(StreamerIpcMessage::WebSocket(
-                StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                    RtcSessionDescription {
-                        ty: from_webrtc_sdp(local_description.sdp_type),
-                        sdp: local_description.sdp,
-                    },
-                )),
-            ))
+            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::WebRtc(
+                StreamSignalingMessage::Description(RtcSessionDescription {
+                    ty: from_webrtc_sdp(local_description.sdp_type),
+                    sdp: local_description.sdp,
+                }),
+            )))
             .await;
 
         true
@@ -523,14 +519,12 @@ impl StreamConnection {
 
         self.ipc_sender
             .clone()
-            .send(StreamerIpcMessage::WebSocket(
-                StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                    RtcSessionDescription {
-                        ty: from_webrtc_sdp(local_description.sdp_type),
-                        sdp: local_description.sdp,
-                    },
-                )),
-            ))
+            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::WebRtc(
+                StreamSignalingMessage::Description(RtcSessionDescription {
+                    ty: from_webrtc_sdp(local_description.sdp_type),
+                    sdp: local_description.sdp,
+                }),
+            )))
             .await;
 
         true
@@ -549,7 +543,7 @@ impl StreamConnection {
     }
     async fn on_ws_message(&self, message: StreamClientMessage) {
         match message {
-            StreamClientMessage::Signaling(StreamSignalingMessage::Description(description)) => {
+            StreamClientMessage::WebRtc(StreamSignalingMessage::Description(description)) => {
                 debug!("[Signaling] Received Remote Description: {:?}", description);
 
                 let description = match &description.ty {
@@ -581,9 +575,7 @@ impl StreamConnection {
                     self.send_answer().await;
                 }
             }
-            StreamClientMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
-                description,
-            )) => {
+            StreamClientMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(description)) => {
                 debug!("[Signaling] Received Ice Candidate");
 
                 if let Err(err) = self
@@ -618,14 +610,13 @@ impl StreamConnection {
             candidate_json.candidate
         );
 
-        let message = StreamServerMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
-            RtcIceCandidate {
+        let message =
+            StreamServerMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(RtcIceCandidate {
                 candidate: candidate_json.candidate,
                 sdp_mid: candidate_json.sdp_mid,
                 sdp_mline_index: candidate_json.sdp_mline_index,
                 username_fragment: candidate_json.username_fragment,
-            },
-        ));
+            }));
 
         self.ipc_sender
             .clone()
@@ -745,7 +736,7 @@ impl StreamConnection {
                 .send(StreamerIpcMessage::WebSocket(
                     StreamServerMessage::ConnectionComplete {
                         capabilities,
-                        codec: format!("{:?}", video_setup.format),
+                        format: video_setup.format as u32,
                         width: video_setup.width,
                         height: video_setup.height,
                         fps: video_setup.redraw_rate,
@@ -776,7 +767,15 @@ impl StreamConnection {
             }
         };
 
-        if let Err(err) = stats_channel.send_text(json).await {
+        let mut raw_buffer = vec![0u8; json.len() + 2];
+
+        let mut buffer = ByteBuffer::new(&mut raw_buffer);
+        buffer.put_u16(json.len() as u16);
+        buffer.put_utf8_raw(&json);
+
+        let raw_buffer = Bytes::from(raw_buffer);
+
+        if let Err(err) = stats_channel.send(&raw_buffer).await {
             if let webrtc::Error::ErrClosedPipe = err {
                 let mut stats_channel = self.stats_channel.write().await;
                 stats_channel.take();

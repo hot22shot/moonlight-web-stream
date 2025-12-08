@@ -1,5 +1,6 @@
-import { StreamerStatsUpdate } from "../api_bindings.js"
-import { showErrorPopup } from "../component/error.js"
+import { StreamerStatsUpdate, TransportChannelId } from "../api_bindings.js"
+import { ByteBuffer } from "./buffer.js"
+import { DataTransportChannel, Transport } from "./transport/index.js"
 
 export type StreamStatsData = {
     videoCodec: string | null
@@ -7,7 +8,6 @@ export type StreamStatsData = {
     videoWidth: number | null
     videoHeight: number | null
     videoFps: number | null
-    webrtcFps: number | null
     streamerRttMs: number | null
     streamerRttVarianceMs: number | null
     minHostProcessingLatencyMs: number | null
@@ -16,20 +16,10 @@ export type StreamStatsData = {
     minStreamerProcessingTimeMs: number | null
     maxStreamerProcessingTimeMs: number | null
     avgStreamerProcessingTimeMs: number | null
-    webrtcJitterMs: number | null
-    webrtcJitterBufferDelayMs: number | null
-    webrtcJitterBufferTargetDelayMs: number | null
-    webrtcJitterBufferMinimumDelayMs: number | null
-    webrtcTotalAssemblyTime: number | null
-    webrtcTotalDecodeTime: number | null
-    webrtcTotalProcessingDelayMs: number | null
-    webrtcPacketsReceived: number | null,
-    webrtcPacketsLost: number | null
-    webrtcFramesDropped: number | null
-    webrtcKeyFramesDecoded: number | null
+    transport: Record<string, string>
 }
 
-function num(value: number | null, suffix?: string): string | null {
+function num(value: number | null | undefined, suffix?: string): string | null {
     if (value == null) {
         return null
     } else {
@@ -38,30 +28,32 @@ function num(value: number | null, suffix?: string): string | null {
 }
 
 export function streamStatsToText(statsData: StreamStatsData): string {
-    return `stats:
+    let text = `stats:
 video information: ${statsData.videoCodec}${statsData.decoderImplementation ? ` (${statsData.decoderImplementation})` : ""}, ${statsData.videoWidth}x${statsData.videoHeight}, ${statsData.videoFps} fps
 streamer round trip time: ${num(statsData.streamerRttMs, "ms")} (variance: ${num(statsData.streamerRttVarianceMs, "ms")})
 host processing latency min/max/avg: ${num(statsData.minHostProcessingLatencyMs, "ms")} / ${num(statsData.maxHostProcessingLatencyMs, "ms")} / ${num(statsData.avgHostProcessingLatencyMs, "ms")}
 streamer processing latency min/max/avg: ${num(statsData.minStreamerProcessingTimeMs, "ms")} / ${num(statsData.maxStreamerProcessingTimeMs, "ms")} / ${num(statsData.avgStreamerProcessingTimeMs, "ms")}
-webrtc fps: ${num(statsData.webrtcFps)}
-webrtc jitter: ${num(statsData.webrtcJitterMs, "ms")}
-webrtc jitter buffer delay normal/target/min: ${num(statsData.webrtcJitterBufferDelayMs, "ms")} / ${num(statsData.webrtcJitterBufferTargetDelayMs, "ms")} / ${num(statsData.webrtcJitterBufferMinimumDelayMs, "ms")}
-webrtc total decode time: ${num(statsData.webrtcTotalDecodeTime, "ms")}
-webrtc total assembly time: ${num(statsData.webrtcTotalAssemblyTime, "ms")}
-webrtc total processing delay: ${num(statsData.webrtcTotalProcessingDelayMs, "ms")}
-webrtc packets received/lost: ${num(statsData.webrtcPacketsReceived)} / ${num(statsData.webrtcPacketsLost)}
-webrtc frames dropped: ${num(statsData.webrtcFramesDropped)}
-webrtc key frames decoded: ${num(statsData.webrtcKeyFramesDecoded)}
 `
+    for (const key in statsData.transport) {
+        const value = statsData.transport[key]
+        let valuePretty = value
+
+        if (typeof value == "number" && key.endsWith("Ms")) {
+            valuePretty = `${num(value, "ms")}`
+        }
+
+        text += `${key}: ${valuePretty}\n`
+    }
+
+    return text
 }
 
 export class StreamStats {
 
     private enabled: boolean = false
-    private peer: RTCPeerConnection | null = null
-    private statsChannel: RTCDataChannel | null = null
+    private transport: Transport | null = null
+    private statsChannel: DataTransportChannel | null = null
     private updateIntervalId: number | null = null
-    private videoReceiver: RTCRtpReceiver | null = null
 
     private statsData: StreamStatsData = {
         videoCodec: null,
@@ -69,7 +61,6 @@ export class StreamStats {
         videoWidth: null,
         videoHeight: null,
         videoFps: null,
-        webrtcFps: null,
         streamerRttMs: null,
         streamerRttVarianceMs: null,
         minHostProcessingLatencyMs: null,
@@ -78,35 +69,32 @@ export class StreamStats {
         minStreamerProcessingTimeMs: null,
         maxStreamerProcessingTimeMs: null,
         avgStreamerProcessingTimeMs: null,
-        webrtcJitterMs: null,
-        webrtcJitterBufferDelayMs: null,
-        webrtcJitterBufferTargetDelayMs: null,
-        webrtcJitterBufferMinimumDelayMs: null,
-        webrtcTotalAssemblyTime: null,
-        webrtcTotalDecodeTime: null,
-        webrtcTotalProcessingDelayMs: null,
-        webrtcPacketsReceived: null,
-        webrtcPacketsLost: null,
-        webrtcFramesDropped: null,
-        webrtcKeyFramesDecoded: null,
+        transport: {}
     }
 
-    constructor(peer?: RTCPeerConnection) {
-        if (peer) {
-            this.setPeer(peer)
-        }
-    }
+    constructor() { }
 
-    setPeer(peer: RTCPeerConnection) {
-        this.peer = peer
+    setTransport(transport: Transport) {
+        this.transport = transport
 
         this.checkEnabled()
     }
     private checkEnabled() {
         if (this.enabled) {
-            if (!this.statsChannel && this.peer) {
-                this.statsChannel = this.peer.createDataChannel("stats")
-                this.statsChannel.onmessage = this.onRawMessage.bind(this)
+            if (this.statsChannel) {
+                this.statsChannel.removeReceiveListener(this.onRawData.bind(this))
+                this.statsChannel = null
+            }
+
+            if (!this.statsChannel && this.transport) {
+                const channel = this.transport.getChannel(TransportChannelId.STATS)
+                if (channel.type != "data") {
+                    // TODO: debug log?
+                    console.info(`Failed initialize debug transport channel because type is "${channel.type}" and not "data"`)
+                    return
+                }
+                channel.addReceiveListener(this.onRawData.bind(this))
+                this.statsChannel = channel
             }
             if (this.updateIntervalId == null) {
                 this.updateIntervalId = setInterval(this.updateLocalStats.bind(this), 1000)
@@ -131,14 +119,17 @@ export class StreamStats {
         this.setEnabled(!this.isEnabled())
     }
 
-    private onRawMessage(event: MessageEvent) {
-        const msg = event.data
-        if (typeof msg != "string") {
-            showErrorPopup("Cannot decode stats: not send as string")
-            return;
-        }
-        const json: StreamerStatsUpdate = JSON.parse(msg)
+    private buffer: ByteBuffer = new ByteBuffer(1000)
+    private onRawData(data: ArrayBuffer) {
+        this.buffer.reset()
+        this.buffer.putU8Array(new Uint8Array(data))
 
+        this.buffer.flip()
+
+        const textLength = this.buffer.getU16()
+        const text = this.buffer.getUtf8Raw(textLength)
+
+        const json: StreamerStatsUpdate = JSON.parse(text)
         this.onMessage(json)
     }
     private onMessage(msg: StreamerStatsUpdate) {
@@ -163,68 +154,19 @@ export class StreamStats {
     }
 
     private async updateLocalStats() {
-        if (!this.videoReceiver) {
+        if (!this.transport) {
+            console.debug("Cannot query stats without transport")
             return
         }
 
-        const stats = await this.videoReceiver.getStats()
-        for (const [_, value] of stats) {
-            if (value.type != "inbound-rtp") {
-                continue
-            }
+        const stats = await this.transport?.getStats()
+        for (const key in stats) {
+            const value = stats[key]
 
-            if ("decoderImplementation" in value && value.decoderImplementation != null) {
-                this.statsData.decoderImplementation = value.decoderImplementation
-            }
-            if ("frameWidth" in value && value.frameWidth != null) {
-                this.statsData.videoWidth = value.frameWidth
-            }
-            if ("frameHeight" in value && value.frameHeight != null) {
-                this.statsData.videoHeight = value.frameHeight
-            }
-            if ("framesPerSecond" in value && value.framesPerSecond != null) {
-                this.statsData.webrtcFps = value.framesPerSecond
-            }
-
-            if ("jitterBufferDelay" in value && value.jitterBufferDelay != null) {
-                this.statsData.webrtcJitterBufferDelayMs = value.jitterBufferDelay
-            }
-            if ("jitterBufferTargetDelay" in value && value.jitterBufferTargetDelay != null) {
-                this.statsData.webrtcJitterBufferTargetDelayMs = value.jitterBufferTargetDelay
-            }
-            if ("jitterBufferMinimumDelay" in value && value.jitterBufferMinimumDelay != null) {
-                this.statsData.webrtcJitterBufferMinimumDelayMs = value.jitterBufferMinimumDelay
-            }
-            if ("jitter" in value && value.jitter != null) {
-                this.statsData.webrtcJitterMs = value.jitter
-            }
-            if ("totalDecodeTime" in value && value.totalDecodeTime != null) {
-                this.statsData.webrtcTotalDecodeTime = value.totalDecodeTime
-            }
-            if ("totalAssemblyTime" in value && value.totalAssemblyTime != null) {
-                this.statsData.webrtcTotalAssemblyTime = value.totalAssemblyTime
-            }
-            if ("totalProcessingDelay" in value && value.totalProcessingDelay != null) {
-                this.statsData.webrtcTotalProcessingDelayMs = value.totalProcessingDelay
-            }
-            if ("packetsReceived" in value && value.packetsReceived != null) {
-                this.statsData.webrtcPacketsReceived = value.packetsReceived
-            }
-            if ("packetsLost" in value && value.packetsLost != null) {
-                this.statsData.webrtcPacketsLost = value.packetsLost
-            }
-            if ("framesDropped" in value && value.framesDropped != null) {
-                this.statsData.webrtcFramesDropped = value.framesDropped
-            }
-            if ("keyFramesDecoded" in value && value.keyFramesDecoded != null) {
-                this.statsData.webrtcKeyFramesDecoded = value.keyFramesDecoded
-            }
+            this.statsData.transport[key] = value
         }
     }
 
-    setVideoReceiver(videoReceiver: RTCRtpReceiver) {
-        this.videoReceiver = videoReceiver
-    }
     setVideoInfo(codec: string, width: number, height: number, fps: number) {
         this.statsData.videoCodec = codec
         this.statsData.videoWidth = width

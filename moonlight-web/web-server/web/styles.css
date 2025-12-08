@@ -627,6 +627,10 @@ canvas.video-stream {
     object-fit: contain;
 }
 
+.audio-stream {
+    display: none;
+}
+
 .video-stats {
     cursor: default;
 

@@ -24,8 +24,8 @@
   "license": "GPL-3.0-or-later",
   "private": "true",
   "devDependencies": {
-    "cpx": "^1.5.0",
-    "npm-watch": "^0.13.0",
-    "typescript": "^5.9.2"
+    "cpx": "1.2.1",
+    "npm-watch": "0.13.0",
+    "typescript": "5.9.3"
   }
 }

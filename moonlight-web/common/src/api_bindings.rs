@@ -285,6 +285,44 @@ pub struct GetUsersResponse {
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
 #[ts(export, export_to = EXPORT_PATH)]
 #[serde(rename_all = "lowercase")]
+pub enum TransportChannelMethod {
+    WebRTC,
+    WebSocket,
+}
+
+ts_consts!(
+    pub TransportChannelId(export_bindings_transport_channel_id: EXPORT_PATH) as u8:
+
+    pub const STATS: u8 = 0;
+    pub const HOST_VIDEO: u8 = 1;
+    pub const HOST_AUDIO: u8 = 2;
+    pub const MOUSE_RELIABLE: u8 = 3;
+    pub const MOUSE_ABSOLUTE: u8 = 4;
+    pub const MOUSE_RELATIVE: u8 = 5;
+    pub const KEYBOARD: u8 = 6;
+    pub const TOUCH: u8 = 7;
+    pub const CONTROLLERS: u8 = 8;
+    pub const CONTROLLER0: u8 = 9;
+    pub const CONTROLLER1: u8 = 10;
+    pub const CONTROLLER2: u8 = 11;
+    pub const CONTROLLER3: u8 = 12;
+    pub const CONTROLLER4: u8 = 13;
+    pub const CONTROLLER5: u8 = 14;
+    pub const CONTROLLER6: u8 = 15;
+    pub const CONTROLLER7: u8 = 16;
+    pub const CONTROLLER8: u8 = 17;
+    pub const CONTROLLER9: u8 = 18;
+    pub const CONTROLLER10: u8 = 19;
+    pub const CONTROLLER11: u8 = 20;
+    pub const CONTROLLER12: u8 = 21;
+    pub const CONTROLLER13: u8 = 22;
+    pub const CONTROLLER14: u8 = 23;
+    pub const CONTROLLER15: u8 = 24;
+);
+
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
+#[ts(export, export_to = EXPORT_PATH)]
+#[serde(rename_all = "lowercase")]
 pub enum RtcSdpType {
     Offer,
     Answer,
@@ -334,7 +372,7 @@ pub enum StreamClientMessage {
         video_colorspace: StreamColorspace,
         video_color_range_full: bool,
     },
-    Signaling(StreamSignalingMessage),
+    WebRtc(StreamSignalingMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
@@ -370,10 +408,10 @@ pub struct StreamCapabilities {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
-    WebRtcConfig {
+    Setup {
         ice_servers: Vec<RtcIceServer>,
     },
-    Signaling(StreamSignalingMessage),
+    WebRtc(StreamSignalingMessage),
     // Optional Info
     UpdateApp {
         app: App,
@@ -395,7 +433,8 @@ pub enum StreamServerMessage {
     },
     ConnectionComplete {
         capabilities: StreamCapabilities,
-        codec: String,
+        /// Use VideoSupportedCodec to figure this out
+        format: u32,
         width: u32,
         height: u32,
         fps: u32,

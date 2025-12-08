@@ -533,13 +533,14 @@ fn trim_bytes_to_range(mut buf: BytesMut, range: Range<usize>) -> BytesMut {
 #[derive(Debug, Default)]
 struct VideoStats {
     last_send: Option<Instant>,
-    frame_count: usize,
     min_host_processing_latency: Duration,
     max_host_processing_latency: Duration,
     total_host_processing_latency: Duration,
+    host_processing_frame_count: usize,
     min_streamer_processing_time: Duration,
     max_streamer_processing_time: Duration,
     total_streamer_processing_time: Duration,
+    streamer_processing_time_frame_count: usize,
 }
 
 impl VideoStats {
@@ -557,6 +558,7 @@ impl VideoStats {
                 .max_host_processing_latency
                 .max(host_processing_latency);
             self.total_host_processing_latency += host_processing_latency;
+            self.host_processing_frame_count += 1;
         }
 
         self.min_streamer_processing_time =
@@ -564,8 +566,7 @@ impl VideoStats {
         self.max_streamer_processing_time =
             self.max_streamer_processing_time.max(frame_processing_time);
         self.total_streamer_processing_time += frame_processing_time;
-
-        self.frame_count += 1;
+        self.streamer_processing_time_frame_count += 1;
 
         // Send in 1 sec intervall
         if self
@@ -574,18 +575,20 @@ impl VideoStats {
             .unwrap_or(true)
         {
             // Collect data
-            let has_host_processing_latency = unit.frame_processing_latency.is_some();
+            let has_host_processing_latency = self.host_processing_frame_count > 0;
             let min_host_processing_latency = self.min_host_processing_latency;
             let max_host_processing_latency = self.max_host_processing_latency;
             let avg_host_processing_latency = self
                 .total_host_processing_latency
-                .div_f32(self.frame_count as f32);
+                .checked_div(self.host_processing_frame_count as u32)
+                .unwrap_or(Duration::ZERO);
 
             let min_streamer_processing_time = self.min_streamer_processing_time;
             let max_streamer_processing_time = self.max_streamer_processing_time;
             let avg_streamer_processing_time = self
                 .total_streamer_processing_time
-                .div_f32(self.frame_count as f32);
+                .checked_div(self.streamer_processing_time_frame_count as u32)
+                .unwrap_or(Duration::ZERO);
 
             // Send data
             let runtime = stream.runtime.clone();
@@ -638,10 +641,11 @@ impl VideoStats {
             self.min_host_processing_latency = Duration::MAX;
             self.max_host_processing_latency = Duration::ZERO;
             self.total_host_processing_latency = Duration::ZERO;
+            self.host_processing_frame_count = 0;
             self.min_streamer_processing_time = Duration::MAX;
             self.max_streamer_processing_time = Duration::ZERO;
             self.total_streamer_processing_time = Duration::ZERO;
-            self.frame_count = 0;
+            self.streamer_processing_time_frame_count = 0;
 
             self.last_send = Some(Instant::now());
         }

@@ -1,8 +1,9 @@
-import { StreamCapabilities, StreamControllerCapabilities, StreamKeyModifiers, StreamKeys, StreamMouseButton } from "../api_bindings.js"
+import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton, TransportChannelId } from "../api_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
+import { DataTransportChannel, Transport, TransportChannelIdKey, TransportChannelIdValue } from "./transport/index.js"
 
 // Smooth scrolling multiplier
 const TOUCH_HIGH_RES_SCROLL_MULTIPLIER = 10
@@ -19,8 +20,8 @@ const TOUCHES_AS_KEYBOARD_DISTANCE = 100
 
 const CONTROLLER_RUMBLE_INTERVAL_MS = 60
 
-function trySendChannel(channel: RTCDataChannel | null, buffer: ByteBuffer) {
-    if (!channel || channel.readyState != "open") {
+function trySendChannel(channel: DataTransportChannel | null, buffer: ByteBuffer) {
+    if (!channel) {
         return
     }
 
@@ -62,8 +63,6 @@ export class StreamInput {
 
     private eventTarget = new EventTarget()
 
-    private peer: RTCPeerConnection | null = null
-
     private buffer: ByteBuffer = new ByteBuffer(1024)
 
     private connected = false
@@ -72,62 +71,55 @@ export class StreamInput {
     // Size of the streamer device
     private streamerSize: [number, number] = [0, 0]
 
-    private keyboard: RTCDataChannel | null = null
-    private mouseReliable: RTCDataChannel | null = null
-    private mouseClicks: RTCDataChannel | null = null
-    private mouseAbsolute: RTCDataChannel | null = null
-    private mouseRelative: RTCDataChannel | null = null
-    private touch: RTCDataChannel | null = null
-    private controllers: RTCDataChannel | null = null
-    private controllerInputs: Array<RTCDataChannel | null> = []
+    private keyboard: DataTransportChannel | null = null
+    private mouseReliable: DataTransportChannel | null = null
+    private mouseAbsolute: DataTransportChannel | null = null
+    private mouseRelative: DataTransportChannel | null = null
+    private touch: DataTransportChannel | null = null
+    private controllers: DataTransportChannel | null = null
+    private controllerInputs: Array<DataTransportChannel | null> = []
 
     private touchSupported: boolean | null = null
 
-    constructor(config?: StreamInputConfig, peer?: RTCPeerConnection,) {
-        if (peer) {
-            this.setPeer(peer)
-        }
-
+    constructor(config?: StreamInputConfig) {
         this.config = defaultStreamInputConfig()
         if (config) {
             this.setConfig(config)
         }
     }
 
-    setPeer(peer: RTCPeerConnection) {
-        if (this.peer) {
-            this.keyboard?.close()
-            this.mouseReliable?.close()
-            this.mouseClicks?.close()
-            this.mouseAbsolute?.close()
-            this.mouseRelative?.close()
-            this.touch?.close()
-            this.controllers?.close()
-            for (const controller of this.controllerInputs.splice(this.controllerInputs.length)) {
-                controller?.close()
-            }
+    private getDataChannel(transport: Transport, id: TransportChannelIdValue): DataTransportChannel {
+        const channel = transport.getChannel(id)
+        if (channel.type == "data") {
+            return channel
         }
-        this.peer = peer
+        throw `Failed to get channel ${id} as data transport channel`
+    }
+    setTransport(transport: Transport) {
+        this.keyboard = this.getDataChannel(transport, TransportChannelId.KEYBOARD)
 
-        this.keyboard = peer.createDataChannel("keyboard")
+        this.mouseReliable = this.getDataChannel(transport, TransportChannelId.MOUSE_RELIABLE)
+        this.mouseAbsolute = this.getDataChannel(transport, TransportChannelId.MOUSE_ABSOLUTE)
+        this.mouseRelative = this.getDataChannel(transport, TransportChannelId.MOUSE_RELATIVE)
 
-        this.mouseReliable = peer.createDataChannel("mouse")
-        this.mouseClicks = peer.createDataChannel("mouseClicks", {
-            ordered: false
-        })
-        this.mouseAbsolute = peer.createDataChannel("mouseAbsolute", {
-            ordered: true,
-            maxRetransmits: 0
-        })
-        this.mouseRelative = peer.createDataChannel("mouseRelative", {
-            ordered: false
-        })
+        if (this.touch) {
+            this.touch.removeReceiveListener(this.onTouchData.bind(this))
+        }
+        this.touch = this.getDataChannel(transport, TransportChannelId.TOUCH)
+        this.touch.addReceiveListener(this.onTouchData.bind(this))
 
-        this.touch = peer.createDataChannel("touch")
-        this.touch.onmessage = this.onTouchMessage.bind(this)
+        if (this.controllers) {
+            this.controllers.removeReceiveListener(this.onTouchData.bind(this))
+        }
+        this.controllers = this.getDataChannel(transport, TransportChannelId.CONTROLLERS)
+        this.controllers.addReceiveListener(this.onControllerData.bind(this))
 
-        this.controllers = peer.createDataChannel("controllers")
-        this.controllers.addEventListener("message", this.onControllerMessage.bind(this))
+        this.controllerInputs.length = 0
+        for (let i = 0; i < 16; i++) {
+            const channelId = TransportChannelId[`CONTROLLER${i}` as TransportChannelIdKey]
+
+            this.controllerInputs[i] = this.getDataChannel(transport, channelId)
+        }
     }
 
     setConfig(config: StreamInputConfig) {
@@ -225,7 +217,7 @@ export class StreamInput {
         this.buffer.putU8(1)
 
         this.buffer.putU8(text.length)
-        this.buffer.putUtf8(text)
+        this.buffer.putUtf8Raw(text)
 
         trySendChannel(this.keyboard, this.buffer)
     }
@@ -238,7 +230,7 @@ export class StreamInput {
         }
 
         if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow") {
-            this.sendMouseButton(true, button, false)
+            this.sendMouseButton(true, button)
         } else if (this.config.mouseMode == "pointAndDrag") {
             this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, true, button)
         }
@@ -250,9 +242,9 @@ export class StreamInput {
         }
 
         if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow") {
-            this.sendMouseButton(false, button, false)
+            this.sendMouseButton(false, button)
         } else if (this.config.mouseMode == "pointAndDrag") {
-            this.sendMouseButton(false, button, true)
+            this.sendMouseButton(false, button)
         }
     }
     onMouseMove(event: MouseEvent, rect: DOMRect) {
@@ -304,7 +296,7 @@ export class StreamInput {
         } else {
             const PACKET_SIZE = 1 + 2 + 2 + 2 + 2;
 
-            if (this.mouseAbsolute && this.mouseAbsolute.bufferedAmount > PACKET_SIZE) {
+            if (this.mouseAbsolute && this.mouseAbsolute.estimatedBufferedBytes() > PACKET_SIZE) {
                 return
             }
             trySendChannel(this.mouseAbsolute, this.buffer)
@@ -317,23 +309,19 @@ export class StreamInput {
             this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0, reliable)
 
             if (mouseButton != undefined) {
-                this.sendMouseButton(true, mouseButton, reliable)
+                this.sendMouseButton(true, mouseButton)
             }
         }
     }
     // Note: button = StreamMouseButton.
-    sendMouseButton(isDown: boolean, button: number, reliable: boolean) {
+    sendMouseButton(isDown: boolean, button: number) {
         this.buffer.reset()
 
         this.buffer.putU8(2)
         this.buffer.putBool(isDown)
         this.buffer.putU8(button)
 
-        if (reliable) {
-            trySendChannel(this.mouseReliable, this.buffer)
-        } else {
-            trySendChannel(this.mouseClicks, this.buffer)
-        }
+        trySendChannel(this.mouseReliable, this.buffer)
     }
     sendMouseWheelHighRes(deltaX: number, deltaY: number) {
         this.buffer.reset()
@@ -342,7 +330,7 @@ export class StreamInput {
         this.buffer.putI16(deltaX)
         this.buffer.putI16(deltaY)
 
-        trySendChannel(this.mouseClicks, this.buffer)
+        trySendChannel(this.mouseRelative, this.buffer)
     }
     sendMouseWheel(deltaX: number, deltaY: number) {
         this.buffer.reset()
@@ -351,7 +339,7 @@ export class StreamInput {
         this.buffer.putI8(deltaX)
         this.buffer.putI8(deltaY)
 
-        trySendChannel(this.mouseClicks, this.buffer)
+        trySendChannel(this.mouseRelative, this.buffer)
     }
 
     // -- Touch
@@ -367,9 +355,8 @@ export class StreamInput {
     private touchMouseAction: PredictedTouchAction = "default"
     private primaryTouch: number | null = null
 
-    private onTouchMessage(event: MessageEvent) {
-        const data = event.data
-        const buffer = new ByteBuffer(data)
+    private onTouchData(data: ArrayBuffer) {
+        const buffer = new ByteBuffer(new Uint8Array(data))
         this.touchSupported = buffer.getBool()
     }
 
@@ -498,7 +485,7 @@ export class StreamInput {
 
                         if (!oldTouch.mouseClicked) {
                             this.sendMousePositionClientCoordinates(oldTouch.originX, oldTouch.originY, rect, true)
-                            this.sendMouseButton(true, StreamMouseButton.LEFT, true)
+                            this.sendMouseButton(true, StreamMouseButton.LEFT)
                             oldTouch.mouseClicked = true
                         }
                     }
@@ -556,16 +543,16 @@ export class StreamInput {
                                     this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, true)
                                 }
                                 if (!oldTouch.mouseClicked) {
-                                    this.sendMouseButton(true, StreamMouseButton.LEFT, true)
+                                    this.sendMouseButton(true, StreamMouseButton.LEFT)
                                 }
-                                this.sendMouseButton(false, StreamMouseButton.LEFT, true)
+                                this.sendMouseButton(false, StreamMouseButton.LEFT)
                             } else {
-                                this.sendMouseButton(true, StreamMouseButton.RIGHT, true)
-                                this.sendMouseButton(false, StreamMouseButton.RIGHT, true)
+                                this.sendMouseButton(true, StreamMouseButton.RIGHT)
+                                this.sendMouseButton(false, StreamMouseButton.RIGHT)
                             }
                         } else if (this.config.touchMode == "pointAndDrag") {
-                            this.sendMouseButton(true, StreamMouseButton.LEFT, true)
-                            this.sendMouseButton(false, StreamMouseButton.LEFT, true)
+                            this.sendMouseButton(true, StreamMouseButton.LEFT)
+                            this.sendMouseButton(false, StreamMouseButton.LEFT)
                         }
                     }
                 }
@@ -755,14 +742,13 @@ export class StreamInput {
         }
     }
 
-    private onControllerMessage(event: MessageEvent) {
-        if (!(event.data instanceof ArrayBuffer)) {
-            return
-        }
+    private onControllerData(data: ArrayBuffer) {
         this.buffer.reset()
 
-        this.buffer.putU8Array(new Uint8Array(event.data))
+        this.buffer.putU8Array(new Uint8Array(data))
         this.buffer.flip()
+
+        // TODO: maybe move this into their respective controller channels?
 
         const ty = this.buffer.getU8()
         if (ty == 0) {
@@ -905,9 +891,9 @@ export class StreamInput {
         const PACKET_SIZE_BYTES = 1 + 4 + 1 + 1 + 2 + 2 + 2 + 2;
 
         const controllerChannel = this.controllerInputs[id]
-        if (controllerChannel && controllerChannel.bufferedAmount > PACKET_SIZE_BYTES) {
+        if (controllerChannel && controllerChannel.estimatedBufferedBytes() > PACKET_SIZE_BYTES) {
             // Only send packets when we can handle them
-            console.debug(`dropping controller packet for ${id} because the buffer amount is large enough: ${controllerChannel.bufferedAmount}`)
+            console.debug(`dropping controller packet for ${id} because the buffer amount is large enough: ${controllerChannel.estimatedBufferedBytes()}`)
             return
         }
 
@@ -922,16 +908,7 @@ export class StreamInput {
         this.buffer.putI16(Math.max(-1.0, Math.min(1.0, state.rightStickX)) * I16_MAX)
         this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -state.rightStickY)) * I16_MAX)
 
-        this.tryOpenControllerChannel(id)
         trySendChannel(this.controllerInputs[id], this.buffer)
-    }
-    private tryOpenControllerChannel(id: number) {
-        if (!this.controllerInputs[id]) {
-            this.controllerInputs[id] = this.peer?.createDataChannel(`controller${id}`, {
-                maxRetransmits: 0,
-                ordered: true,
-            }) ?? null
-        }
     }
 
 }
