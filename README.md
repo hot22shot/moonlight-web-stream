@@ -338,7 +338,7 @@ will currespond to the ice server
                 "urls": [
                     "stun:stun.l.google.com:19302",
                 ],
-                "username": "test",
+                "username": "name",
                 "credential": "cred"
             },
             {

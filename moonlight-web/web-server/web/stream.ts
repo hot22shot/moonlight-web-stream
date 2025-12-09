@@ -70,8 +70,6 @@ class ViewerApp implements Component {
     private sidebar: ViewerSidebar
 
     private div = document.createElement("div")
-    // TODO: canvas
-    // private canvasElement = document.createElement("canvas")
 
     private statsDiv = document.createElement("div")
     private stream: Stream | null = null
@@ -119,14 +117,6 @@ class ViewerApp implements Component {
         this.startStream(hostId, appId, settings, [browserWidth, browserHeight])
 
         this.settings = settings
-
-        // TODO: Configure canvas element
-        // if (this.settings.canvasRenderer) {
-        //     this.canvasElement.classList.add("video-stream")
-        //     this.div.appendChild(this.canvasElement)
-        //     this.canvasRenderer = new CanvasRenderer(this.canvasElement)
-        //     this.videoElement.autoplay = false
-        // }
 
         // Configure input
         this.addListeners(document)
@@ -196,7 +186,6 @@ class ViewerApp implements Component {
         this.stream.getInput().addScreenKeyboardVisibleEvent(this.onScreenKeyboardSetVisible.bind(this))
 
         this.stream.mount(this.div)
-        // TODO: unmount?
     }
 
     private async onInfo(event: InfoEvent) {
@@ -209,15 +198,6 @@ class ViewerApp implements Component {
         } else if (data.type == "connectionComplete") {
             this.sidebar.onCapabilitiesChange(data.capabilities)
         }
-        // TODO: canvas renderer
-        // } else if (data.type == "videoTrack") {
-        //     if (this.canvasRenderer) {
-        //         this.canvasRenderer.setVideoTrack(data.track)
-        //         if (this.stream) {
-        //             this.videoElement.srcObject = this.stream.getMediaStream()
-        //         }
-        //     }
-        // }
     }
 
     private focusInput() {
@@ -523,7 +503,6 @@ class ViewerApp implements Component {
         }
     }
 
-
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
     }
@@ -535,39 +514,6 @@ class ViewerApp implements Component {
         // The bounding rect of the videoElement or canvasElement can be bigger than the actual video
         // -> We need to correct for this when sending positions, else positions are wrong
         return this.stream?.getVideoRenderer()?.getStreamRect() ?? new DOMRect()
-
-        // TODO: canvas renderer
-        // if (this.settings?.canvasRenderer) {
-        //     const clientRect = this.canvasElement.getBoundingClientRect()
-
-        //     const canvasCssWidth = this.canvasElement.clientWidth
-        //     const canvasCssHeight = this.canvasElement.clientHeight
-
-        //     const boundingRectAspect = canvasCssWidth / canvasCssHeight
-        //     let x = clientRect.x
-        //     let y = clientRect.y
-        //     let width = canvasCssWidth
-        //     let height = canvasCssHeight
-        //     let videoMultiplier
-
-        //     if (boundingRectAspect > videoAspect) {
-        //         // Canvas is wider than video aspect, video will be pillarboxed
-        //         videoMultiplier = canvasCssHeight / videoSize[1]
-        //         const videoRenderedWidth = videoSize[0] * videoMultiplier
-        //         x += (canvasCssWidth - videoRenderedWidth) / 2 // Center horizontally
-        //         width = videoRenderedWidth
-        //     }
-        //     else {
-        //         // Canvas is taller than video aspect, video will be letterboxed
-        //         videoMultiplier = canvasCssWidth / videoSize[0]
-        //         const videoRenderedHeight = videoSize[1] * videoMultiplier
-        //         y += (canvasCssHeight - videoRenderedHeight) / 2 // Center vertically
-        //         height = videoRenderedHeight
-        //     }
-        //     return new DOMRect(x, y, width, height)
-        // } else {
-        //     throw "TODO"
-        // }
     }
     getStream(): Stream | null {
         return this.stream

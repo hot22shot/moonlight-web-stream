@@ -1,8 +1,6 @@
 import { Component } from "../../component/index.js"
 import { StreamSupportedVideoFormats } from "../../api_bindings.js"
 
-export type VideoRenderer = (DataVideoRenderer | TrackVideoRenderer)
-
 export type VideoRendererSetup = {
     format: keyof typeof StreamSupportedVideoFormats,
     width: number
@@ -10,15 +8,23 @@ export type VideoRendererSetup = {
     fps: number
 }
 
-interface VideoRendererBase extends Component {
+// TODO: class? YES PLEASE, check using instanceof
+export abstract class VideoRenderer implements Component {
     readonly implementationName: string
-    readonly type: string
 
-    setup(setup: VideoRendererSetup): void
-    cleanup(): void
+    constructor(implementationName: string) {
+        this.implementationName = implementationName
+    }
 
-    onUserInteraction(): void
-    getStreamRect(): DOMRect
+    /// Returns the success
+    abstract setup(setup: VideoRendererSetup): void
+    abstract cleanup(): void
+
+    abstract onUserInteraction(): void
+    abstract getStreamRect(): DOMRect
+
+    abstract mount(parent: HTMLElement): void
+    abstract unmount(parent: HTMLElement): void
 }
 
 export function getStreamRectCorrected(boundingRect: DOMRect, videoSize: [number, number]): DOMRect {
@@ -56,10 +62,10 @@ export function getStreamRectCorrected(boundingRect: DOMRect, videoSize: [number
     )
 }
 
-export interface TrackVideoRenderer extends VideoRendererBase {
-    readonly type: "stream"
+export abstract class TrackVideoRenderer extends VideoRenderer {
+    static readonly type: string = "videotrack"
 
-    setTrack(track: MediaStreamTrack): void
+    abstract setTrack(track: MediaStreamTrack): void
 }
 
 export type VideoDecodeUnit = {
@@ -69,9 +75,16 @@ export type VideoDecodeUnit = {
     data: ArrayBuffer
 }
 
-export interface DataVideoRenderer extends VideoRendererBase {
-    readonly type: "moonlightdata"
+export abstract class DataVideoRenderer extends VideoRenderer {
+    static readonly type: string = "data"
 
-    // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298
-    submitDecodeUnit(unit: VideoDecodeUnit): void
+    /// Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298
+    abstract submitDecodeUnit(unit: VideoDecodeUnit): void
+}
+
+export abstract class FrameVideoRenderer extends VideoRenderer {
+    static readonly type: string = "videoframe"
+
+    /// Submits a frame. This renderer now "owns" the frame and needs to clean it up via close.
+    abstract submitFrame(frame: VideoFrame): void
 }

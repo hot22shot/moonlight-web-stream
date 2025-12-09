@@ -1,5 +1,5 @@
 import { StreamSignalingMessage, TransportChannelId } from "../../api_bindings.js";
-import { DataTransportChannel, TrackTransportChannel, Transport, TRANSPORT_CHANNEL_OPTIONS, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportVideoSetup } from "./index.js";
+import { DataTransportChannel, Transport, TRANSPORT_CHANNEL_OPTIONS, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportVideoSetup, AudioTrackTransportChannel, VideoTrackTransportChannel, TrackTransportChannel } from "./index.js";
 
 export class WebRTCTransport implements Transport {
     implementationName: string = "webrtc"
@@ -225,11 +225,13 @@ export class WebRTCTransport implements Transport {
             const options = TRANSPORT_CHANNEL_OPTIONS[channel]
 
             if (channel == "HOST_VIDEO") {
-                this.channels[TransportChannelId.HOST_VIDEO] = new WebRTCInboundTrackTransportChannel("video", this.videoTrackHolder)
+                const channel: VideoTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"videotrack">("videotrack", "video", this.videoTrackHolder)
+                this.channels[TransportChannelId.HOST_VIDEO] = channel
                 continue
             }
             if (channel == "HOST_AUDIO") {
-                this.channels[TransportChannelId.HOST_AUDIO] = new WebRTCInboundTrackTransportChannel("video", this.audioTrackHolder)
+                const channel: AudioTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"audiotrack">("audiotrack", "audio", this.audioTrackHolder)
+                this.channels[TransportChannelId.HOST_AUDIO] = channel
                 continue
             }
 
@@ -279,8 +281,7 @@ export class WebRTCTransport implements Transport {
             }
             this.videoTrackHolder.ontrack()
         } else if (track.kind == "audio") {
-            // Audio cracks, which we don't want
-            event.receiver.jitterBufferTarget = 20
+            // no jitterBufferTarget because Audio cracks, which we don't want
 
             this.audioTrackHolder.track = track
             if (!this.audioTrackHolder.ontrack) {
@@ -387,8 +388,8 @@ type TrackHolder = {
 }
 
 // This receives track data
-class WebRTCInboundTrackTransportChannel implements TrackTransportChannel {
-    type: "track" = "track"
+class WebRTCInboundTrackTransportChannel<T extends string> implements TrackTransportChannel {
+    type: T
 
     canReceive: boolean = true
     canSend: boolean = false
@@ -396,7 +397,8 @@ class WebRTCInboundTrackTransportChannel implements TrackTransportChannel {
     private label: string
     private trackHolder: TrackHolder
 
-    constructor(label: string, trackHolder: TrackHolder) {
+    constructor(type: T, label: string, trackHolder: TrackHolder) {
+        this.type = type
         this.label = label
         this.trackHolder = trackHolder
 

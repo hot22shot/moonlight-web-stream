@@ -3,16 +3,16 @@ import { TransportChannelId } from "../../api_bindings.js"
 export type TransportChannelIdKey = keyof typeof TransportChannelId
 export type TransportChannelIdValue = typeof TransportChannelId[TransportChannelIdKey]
 
-export type TransportVideoType = "stream" // TrackTransportChannel
-    | "nalu" // TODO: Each packet represents a NALU, raw video via data channel
+export type TransportVideoType = "videotrack" // TrackTransportChannel
+    | "data" // TODO: Each packet represents a NALU, raw video via data channel
 
 export type TransportVideoSetup = {
     // List containing all supported types, priority highest=0, lowest=biggest index
     type: Array<TransportVideoType>
 }
 
-export type TransportAudioType = "stream" // TrackTransportChannel
-    | "opus" // TODO: what here? raw audio via data channels
+export type TransportAudioType = "audiotrack" // TrackTransportChannel
+    | "data" // TODO: what here? raw audio via data channels
 
 export type TransportAudioSetup = {
     // List containing all supported types, priority highest=0, lowest=biggest index
@@ -73,7 +73,7 @@ export interface Transport {
     getStats(): Promise<Record<string, string>>
 }
 
-export type TransportChannel = TrackTransportChannel | DataTransportChannel
+export type TransportChannel = VideoTrackTransportChannel | AudioTrackTransportChannel | DataTransportChannel
 interface TransportChannelBase {
     readonly type: string
 
@@ -82,12 +82,16 @@ interface TransportChannelBase {
 }
 
 export interface TrackTransportChannel extends TransportChannelBase {
-    readonly type: "track"
-
     setTrack(track: MediaStreamTrack | null): void
 
     addTrackListener(listener: (track: MediaStreamTrack) => void): void
     removeTrackListener(listener: (track: MediaStreamTrack) => void): void
+}
+export interface VideoTrackTransportChannel extends TrackTransportChannel {
+    readonly type: "videotrack"
+}
+export interface AudioTrackTransportChannel extends TrackTransportChannel {
+    readonly type: "audiotrack"
 }
 
 export interface DataTransportChannel extends TransportChannelBase {

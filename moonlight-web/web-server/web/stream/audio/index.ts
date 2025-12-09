@@ -4,21 +4,24 @@ export type AudioPlayerSetup = {
 
 }
 
-export type AudioPlayer = StreamAudioPlayer
-interface AudioPlayerBase extends Component {
+export abstract class AudioPlayer implements Component {
     readonly implementationName: string
-    readonly type: string
 
-    setup(setup: AudioPlayerSetup): void
-    cleanup(): void
+    constructor(implementationName: string) {
+        this.implementationName = implementationName
+    }
 
-    onUserInteraction(): void
+    abstract setup(setup: AudioPlayerSetup): void
+    abstract cleanup(): void
+
+    abstract onUserInteraction(): void
+
+    abstract mount(parent: HTMLElement): void
+    abstract unmount(parent: HTMLElement): void
 }
 
-export interface StreamAudioPlayer extends AudioPlayerBase {
-    readonly type: "stream"
-
-    setTrack(track: MediaStreamTrack): void
+export abstract class StreamAudioPlayer extends AudioPlayer {
+    abstract setTrack(track: MediaStreamTrack): void
 }
 
 export type AudioDecodeUnit = {
@@ -27,7 +30,7 @@ export type AudioDecodeUnit = {
     data: ArrayBuffer
 }
 
-export interface DataAudioPlayer extends AudioPlayerBase {
+export interface DataAudioPlayer extends AudioPlayer {
     readonly type: "moonlightdata"
 
     // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L356

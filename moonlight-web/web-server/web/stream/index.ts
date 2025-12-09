@@ -9,9 +9,8 @@ import { StreamStats } from "./stats.js"
 import { Transport, TransportAudioSetup, TransportVideoSetup } from "./transport/index.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
 import { createSupportedVideoFormatsBits, getSelectedVideoFormat, VideoCodecSupport } from "./video.js"
-import { CanvasVideoRenderer as VideoCanvasRenderer } from "./video/canvas.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
-import { VideoElementRenderer } from "./video/video_element.js"
+import { buildVideoPipeline } from "./video/pipeline.js"
 
 export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
@@ -304,37 +303,28 @@ export class Stream implements Component {
         }
 
         await this.transport.setupHostVideo({
-            type: ["stream"]
+            type: ["videotrack"]
         })
 
         const video = this.transport.getChannel(TransportChannelId.HOST_VIDEO)
-        if (video.type == "track") {
-            if (this.settings.canvasRenderer) {
-                if (VideoCanvasRenderer.isBrowserSupported()) {
-                    const videoRenderer = new VideoCanvasRenderer()
-                    videoRenderer.mount(this.divElement)
+        if (video.type == "videotrack") {
+            const { videoRenderer, log, error } = buildVideoPipeline("videotrack", this.settings)
+            this.debugLog(log)
 
-                    videoRenderer.setup(setup)
-                    video.addTrackListener((track) => videoRenderer.setTrack(track))
-                    this.videoRenderer = videoRenderer
-                } else {
-                    this.debugLog("Failed to create video canvas renderer because it is not supported this this browser", "fatal")
-                }
-            } else if (VideoElementRenderer.isBrowserSupported()) {
-                const videoRenderer = new VideoElementRenderer()
-                videoRenderer.mount(this.divElement)
-
-                videoRenderer.setup(setup)
-                video.addTrackListener((track) => videoRenderer.setTrack(track))
-
-                this.videoRenderer = videoRenderer
-            } else {
-                this.debugLog("No supported video renderer found!", "fatal")
+            if (error != null) {
+                this.debugLog(error, "fatal")
                 return
             }
+
+            videoRenderer.mount(this.divElement)
+
+            videoRenderer.setup(setup)
+            video.addTrackListener((track) => videoRenderer.setTrack(track))
+
+            this.videoRenderer = videoRenderer
         } else {
-            // TODO
-            throw "TODO"
+            this.debugLog(`Failed to create video pipeline with transport channel of type ${video.type} (${this.transport.implementationName})`)
+            return
         }
     }
     private async setupAudio() {
@@ -351,11 +341,12 @@ export class Stream implements Component {
         }
 
         this.transport.setupHostAudio({
-            type: ["stream"]
+            type: ["audiotrack"]
         })
 
         const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
-        if (audio.type == "track") {
+        if (audio.type == "audiotrack") {
+            // TODO: create build audio pipeline fn
             if (AudioElementPlayer.isBrowserSupported()) {
                 const audioPlayer = new AudioElementPlayer()
                 audioPlayer.mount(this.divElement)
@@ -369,7 +360,6 @@ export class Stream implements Component {
                 return
             }
         } else {
-            // TODO
             throw "TODO"
         }
     }

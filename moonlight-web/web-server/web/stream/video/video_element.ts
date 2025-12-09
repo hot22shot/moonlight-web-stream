@@ -1,12 +1,8 @@
 import { getStreamRectCorrected, TrackVideoRenderer, VideoRendererSetup } from "./index.js";
 
-export class VideoElementRenderer implements TrackVideoRenderer {
-    implementationName: string = "video_element"
-    type: "stream" = "stream"
-
+export class VideoElementRenderer extends TrackVideoRenderer {
     static isBrowserSupported(): boolean {
-        // TODO
-        return true
+        return "HTMLVideoElement" in window && "srcObject" in HTMLVideoElement.prototype
     }
 
     private videoElement = document.createElement("video")
@@ -16,6 +12,8 @@ export class VideoElementRenderer implements TrackVideoRenderer {
     private size: [number, number] | null = null
 
     constructor() {
+        super("video_element")
+
         this.videoElement.classList.add("video-stream")
         this.videoElement.preload = "none"
         this.videoElement.controls = false
@@ -23,7 +21,19 @@ export class VideoElementRenderer implements TrackVideoRenderer {
         this.videoElement.disablePictureInPicture = true
         this.videoElement.playsInline = true
         this.videoElement.muted = true
-        this.videoElement.srcObject = this.stream
+
+        if ("srcObject" in this.videoElement) {
+            try {
+                this.videoElement.srcObject = this.stream
+            } catch (err: any) {
+                if (err.name !== "TypeError") {
+                    throw err;
+                }
+
+                console.error(err)
+                throw `video_element renderer not supported: ${err}`
+            }
+        }
     }
 
     setup(setup: VideoRendererSetup): void {

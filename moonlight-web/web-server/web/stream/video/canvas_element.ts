@@ -1,87 +1,46 @@
-import { getStreamRectCorrected, TrackVideoRenderer, VideoRendererSetup } from "./index.js"
+import { FrameVideoRenderer, getStreamRectCorrected, VideoRendererSetup } from "./index.js"
 
-export class CanvasVideoRenderer implements TrackVideoRenderer {
-    implementationName: string = "track_processor_canvas_element"
-
-    type: "stream" = "stream"
-
+export class CanvasVideoRenderer extends FrameVideoRenderer {
     static isBrowserSupported(): boolean {
-        return "MediaStreamTrackProcessor" in window
+        // TODO
+        return true
     }
 
     private canvas: HTMLCanvasElement = document.createElement("canvas")
     private context: CanvasRenderingContext2D | null = null
-    private trackProcessor: MediaStreamTrackProcessor | null = null
     private currentFrame: VideoFrame | null = null
 
     private animationFrameRequest: number | null = null
-    private running: boolean = false
 
     private videoSize: [number, number] | null = null
 
-    constructor() { }
+    constructor() {
+        super("canvas_element")
 
-    setTrack(track: MediaStreamTrack) {
         this.canvas.classList.add("video-stream")
-
-        this.trackProcessor = new MediaStreamTrackProcessor({ track })
     }
 
     setup(setup: VideoRendererSetup): void {
-        this.running = true
         this.videoSize = [setup.width, setup.height]
 
         if (this.animationFrameRequest == null) {
             this.animationFrameRequest = requestAnimationFrame(this.onAnimationFrame.bind(this))
         }
-        this.readTrack()
     }
 
     cleanup(): void {
         this.context = null
 
-        this.running = false
         if (this.animationFrameRequest != null) {
             cancelAnimationFrame(this.animationFrameRequest)
             this.animationFrameRequest = null
         }
     }
 
-    private async readTrack() {
-        let reader: ReadableStreamDefaultReader<VideoFrame> | null = null
+    submitFrame(frame: VideoFrame): void {
+        this.currentFrame?.close()
 
-        while (this.running) {
-            if (!reader) {
-                if (this.trackProcessor?.readable.locked) {
-                    // Shouldn't happen
-                    throw "Canvas video track processor is locked"
-                }
-
-                const newReader = this.trackProcessor?.readable.getReader()
-                if (newReader) {
-                    reader = newReader
-                }
-                await CanvasVideoRenderer.wait(100)
-                continue
-            }
-
-            // TODO: byob?
-            const { done, value } = await reader.read()
-            if (done) {
-                console.error("Track Processor is done!")
-                return
-            }
-
-            if (this.currentFrame) {
-                this.currentFrame.close()
-            }
-            this.currentFrame = value
-        }
-    }
-    private static wait(time: number): Promise<void> {
-        return new Promise((resolve, _reject) => {
-            setTimeout(resolve, time)
-        })
+        this.currentFrame = frame
     }
 
     private onAnimationFrame() {

@@ -1,12 +1,9 @@
-import { AudioPlayerSetup, StreamAudioPlayer } from ".";
+import { AudioPlayerSetup, StreamAudioPlayer } from "./index.js";
 
-export class AudioElementPlayer implements StreamAudioPlayer {
-    implementationName: string = "audio_element"
-    type: "stream" = "stream"
+export class AudioElementPlayer extends StreamAudioPlayer {
 
     static isBrowserSupported(): boolean {
-        // TODO
-        return true
+        return "HTMLAudioElement" in window && "srcObject" in HTMLAudioElement.prototype
     }
 
     private audioElement = document.createElement("audio")
@@ -14,6 +11,8 @@ export class AudioElementPlayer implements StreamAudioPlayer {
     private stream = new MediaStream()
 
     constructor() {
+        super("audio_element")
+
         this.audioElement.classList.add("audio-stream")
         this.audioElement.preload = "none"
         this.audioElement.controls = false
@@ -22,7 +21,9 @@ export class AudioElementPlayer implements StreamAudioPlayer {
         this.audioElement.srcObject = this.stream
     }
 
-    setup(_setup: AudioPlayerSetup): void { }
+    setup(_setup: AudioPlayerSetup) {
+        return true
+    }
     cleanup(): void {
         if (this.oldTrack) {
             this.stream.removeTrack(this.oldTrack)
