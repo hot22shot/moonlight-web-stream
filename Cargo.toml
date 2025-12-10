@@ -11,7 +11,7 @@ members = [
 default-members = ["moonlight-web/streamer", "moonlight-web/web-server"]
 
 [workspace.package]
-version = "2.0.0-prerelease.1"
+version = "2.0.0"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
