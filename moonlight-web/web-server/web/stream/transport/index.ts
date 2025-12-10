@@ -57,8 +57,6 @@ export type TransportShutdown = "failednoconnect" | "failed" | "disconnect"
 export interface Transport {
     readonly implementationName: string
 
-    ondebug: ((message: string, type?: "fatal" | "recover") => void) | null
-
     onconnected: (() => void) | null
     ondisconnected: (() => void) | null
 

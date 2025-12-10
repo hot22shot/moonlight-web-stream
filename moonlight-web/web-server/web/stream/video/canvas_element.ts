@@ -2,8 +2,7 @@ import { FrameVideoRenderer, getStreamRectCorrected, VideoRendererSetup } from "
 
 export class CanvasVideoRenderer extends FrameVideoRenderer {
     static isBrowserSupported(): boolean {
-        // TODO
-        return true
+        return "HTMLCanvasElement" in window && "CanvasRenderingContext2D" in window
     }
 
     private canvas: HTMLCanvasElement = document.createElement("canvas")

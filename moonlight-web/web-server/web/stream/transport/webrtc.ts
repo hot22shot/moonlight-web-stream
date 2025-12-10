@@ -1,25 +1,23 @@
 import { StreamSignalingMessage, TransportChannelId } from "../../api_bindings.js";
+import { Logger } from "../log.js";
 import { DataTransportChannel, Transport, TRANSPORT_CHANNEL_OPTIONS, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportVideoSetup, AudioTrackTransportChannel, VideoTrackTransportChannel, TrackTransportChannel } from "./index.js";
 
 export class WebRTCTransport implements Transport {
     implementationName: string = "webrtc"
 
-    ondebug: ((message: string, type?: "fatal" | "recover") => void) | null = null
-    private debugLog(message: string, type?: "fatal" | "recover") {
-        if (this.ondebug) {
-            this.ondebug(message, type)
-        }
-    }
+    private logger: Logger | null
 
     private peer: RTCPeerConnection | null = null
 
-    constructor() { }
+    constructor(logger?: Logger) {
+        this.logger = logger ?? null
+    }
 
     async initPeer(configuration?: RTCConfiguration) {
-        this.debugLog(`Creating Client Peer`)
+        this.logger?.debug(`Creating Client Peer`)
 
         if (this.peer) {
-            this.debugLog(`Cannot create Peer because a Peer already exists`)
+            this.logger?.debug(`Cannot create Peer because a Peer already exists`)
             return
         }
 
@@ -48,7 +46,7 @@ export class WebRTCTransport implements Transport {
     }
 
     private onError(event: Event) {
-        this.debugLog(`Web Socket or WebRtcPeer Error`)
+        this.logger?.debug(`Web Socket or WebRtcPeer Error`)
 
         console.error(`Web Socket or WebRtcPeer Error`, event)
     }
@@ -58,7 +56,7 @@ export class WebRTCTransport implements Transport {
         if (this.onsendmessage) {
             this.onsendmessage(message)
         } else {
-            this.debugLog("Failed to call onicecandidate because no handler is set")
+            this.logger?.debug("Failed to call onicecandidate because no handler is set")
         }
     }
     async onReceiveMessage(message: StreamSignalingMessage) {
@@ -82,18 +80,18 @@ export class WebRTCTransport implements Transport {
     private async onNegotiationNeeded() {
         // We're polite
         if (!this.peer) {
-            this.debugLog("OnNegotiationNeeded without a peer")
+            this.logger?.debug("OnNegotiationNeeded without a peer")
             return
         }
 
         await this.peer.setLocalDescription()
         const localDescription = this.peer.localDescription
         if (!localDescription) {
-            this.debugLog("Failed to set local description in OnNegotiationNeeded")
+            this.logger?.debug("Failed to set local description in OnNegotiationNeeded")
             return
         }
 
-        this.debugLog(`OnNegotiationNeeded: Sending local description: ${localDescription.type}`)
+        this.logger?.debug(`OnNegotiationNeeded: Sending local description: ${localDescription.type}`)
         this.sendMessage({
             Description: {
                 ty: localDescription.type,
@@ -104,7 +102,7 @@ export class WebRTCTransport implements Transport {
 
     private remoteDescription: RTCSessionDescriptionInit | null = null
     private async handleRemoteDescription(sdp: RTCSessionDescriptionInit | null) {
-        this.debugLog(`Received remote description: ${sdp?.type}`)
+        this.logger?.debug(`Received remote description: ${sdp?.type}`)
 
         this.remoteDescription = sdp
         if (!this.peer) {
@@ -118,11 +116,11 @@ export class WebRTCTransport implements Transport {
                 await this.peer.setLocalDescription()
                 const localDescription = this.peer.localDescription
                 if (!localDescription) {
-                    this.debugLog("Peer didn't have a localDescription whilst receiving an offer and trying to answer")
+                    this.logger?.debug("Peer didn't have a localDescription whilst receiving an offer and trying to answer")
                     return
                 }
 
-                this.debugLog(`Responding to offer description: ${localDescription.type}`)
+                this.logger?.debug(`Responding to offer description: ${localDescription.type}`)
                 this.sendMessage({
                     Description: {
                         ty: localDescription.type,
@@ -138,7 +136,7 @@ export class WebRTCTransport implements Transport {
     private onIceCandidate(event: RTCPeerConnectionIceEvent) {
         if (event.candidate) {
             const candidate = event.candidate.toJSON()
-            this.debugLog(`Sending ice candidate: ${candidate.candidate}`)
+            this.logger?.debug(`Sending ice candidate: ${candidate.candidate}`)
 
             this.sendMessage({
                 AddIceCandidate: {
@@ -149,16 +147,17 @@ export class WebRTCTransport implements Transport {
                 }
             })
         } else {
-            this.debugLog("No new ice candidates")
+            this.logger?.debug("No new ice candidates")
         }
     }
 
     private iceCandidates: Array<RTCIceCandidateInit> = []
     private async addIceCandidate(candidate: RTCIceCandidateInit) {
-        this.debugLog(`Received ice candidate: ${candidate.candidate}`)
+        this.logger?.debug(`Received ice candidate: ${candidate.candidate}`)
 
         if (!this.peer) {
-            this.debugLog("Buffering ice candidate")
+            this.logger?.debug("Buffering ice candidate")
+
             this.iceCandidates.push(candidate)
             return
         }
@@ -168,7 +167,7 @@ export class WebRTCTransport implements Transport {
     }
     private async tryDequeueIceCandidates() {
         if (!this.peer) {
-            this.debugLog("called tryDequeueIceCandidates without a peer")
+            this.logger?.debug("called tryDequeueIceCandidates without a peer")
             return
         }
 
@@ -180,11 +179,11 @@ export class WebRTCTransport implements Transport {
 
     private onConnectionStateChange() {
         if (!this.peer) {
-            this.debugLog("OnConnectionStateChange without a peer")
+            this.logger?.debug("OnConnectionStateChange without a peer")
             return
         }
 
-        let type: undefined | "fatal" | "recover" = undefined
+        let type: null | "fatal" | "recover" = null
 
         if (this.peer.connectionState == "connected") {
             type = "recover"
@@ -192,31 +191,33 @@ export class WebRTCTransport implements Transport {
             type = "fatal"
         }
 
-        this.debugLog(`Changing Peer State to ${this.peer.connectionState}`, type)
+        this.logger?.debug(`Changing Peer State to ${this.peer.connectionState}`, {
+            type: type ?? undefined
+        })
     }
     private onIceConnectionStateChange() {
         if (!this.peer) {
-            this.debugLog("OnIceConnectionStateChange without a peer")
+            this.logger?.debug("OnIceConnectionStateChange without a peer")
             return
         }
-        this.debugLog(`Changing Peer Ice State to ${this.peer.iceConnectionState}`)
+        this.logger?.debug(`Changing Peer Ice State to ${this.peer.iceConnectionState}`)
     }
     private onIceGatheringStateChange() {
         if (!this.peer) {
-            this.debugLog("OnIceGatheringStateChange without a peer")
+            this.logger?.debug("OnIceGatheringStateChange without a peer")
             return
         }
-        this.debugLog(`Changing Peer Ice Gathering State to ${this.peer.iceGatheringState}`)
+        this.logger?.debug(`Changing Peer Ice Gathering State to ${this.peer.iceGatheringState}`)
     }
 
     private channels: Array<TransportChannel | null> = []
     private initChannels() {
         if (!this.peer) {
-            this.debugLog("Failed to initialize channel without peer")
+            this.logger?.debug("Failed to initialize channel without peer")
             return
         }
         if (this.channels.length > 0) {
-            this.debugLog("Already initialized channels")
+            this.logger?.debug("Already initialized channels")
             return
         }
 
@@ -225,12 +226,12 @@ export class WebRTCTransport implements Transport {
             const options = TRANSPORT_CHANNEL_OPTIONS[channel]
 
             if (channel == "HOST_VIDEO") {
-                const channel: VideoTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"videotrack">("videotrack", "video", this.videoTrackHolder)
+                const channel: VideoTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"videotrack">(this.logger, "videotrack", "video", this.videoTrackHolder)
                 this.channels[TransportChannelId.HOST_VIDEO] = channel
                 continue
             }
             if (channel == "HOST_AUDIO") {
-                const channel: AudioTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"audiotrack">("audiotrack", "audio", this.audioTrackHolder)
+                const channel: AudioTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"audiotrack">(this.logger, "audiotrack", "audio", this.audioTrackHolder)
                 this.channels[TransportChannelId.HOST_AUDIO] = channel
                 continue
             }
@@ -259,14 +260,14 @@ export class WebRTCTransport implements Transport {
         if ("playoutDelayHint" in event.receiver) {
             event.receiver.playoutDelayHint = 0
         } else {
-            this.debugLog(`playoutDelayHint not supported in receiver: ${event.receiver.track.label}`)
+            this.logger?.debug(`playoutDelayHint not supported in receiver: ${event.receiver.track.label}`)
         }
 
         if (track.kind == "video") {
             this.videoReceiver = event.receiver
         }
 
-        this.debugLog(`Adding receiver: ${track.kind}, ${track.id}, ${track.label}`)
+        this.logger?.debug(`Adding receiver: ${track.kind}, ${track.id}, ${track.label}`)
 
         if (track.kind == "video") {
             event.receiver.jitterBufferTarget = 0
@@ -293,7 +294,7 @@ export class WebRTCTransport implements Transport {
 
     async setupHostVideo(_setup: TransportVideoSetup): Promise<void> {
         if (!this.peer) {
-            this.debugLog("Failed to setup video without peer")
+            this.logger?.debug("Failed to setup video without peer")
             return
         }
     }
@@ -303,6 +304,7 @@ export class WebRTCTransport implements Transport {
     getChannel(id: TransportChannelIdValue): TransportChannel {
         const channel = this.channels[id]
         if (!channel) {
+            this.logger?.debug("Failed to setup video without peer")
             throw `Failed to get channel because it is not yet initialized, Id: ${id}`
         }
 
@@ -394,10 +396,14 @@ class WebRTCInboundTrackTransportChannel<T extends string> implements TrackTrans
     canReceive: boolean = true
     canSend: boolean = false
 
+    private logger: Logger | null
+
     private label: string
     private trackHolder: TrackHolder
 
-    constructor(type: T, label: string, trackHolder: TrackHolder) {
+    constructor(logger: Logger | null, type: T, label: string, trackHolder: TrackHolder) {
+        this.logger = logger
+
         this.type = type
         this.label = label
         this.trackHolder = trackHolder
@@ -411,13 +417,15 @@ class WebRTCInboundTrackTransportChannel<T extends string> implements TrackTrans
     private onTrack() {
         const track = this.trackHolder.track
         if (!track) {
-            throw "WebRTC TrackHolder.track is null!"
+            this.logger?.debug("WebRTC TrackHolder.track is null!")
+            return
         }
 
         for (const listener of this.trackListeners) {
             listener(track)
         }
     }
+
 
     private trackListeners: Array<(track: MediaStreamTrack) => void> = []
     addTrackListener(listener: (track: MediaStreamTrack) => void): void {

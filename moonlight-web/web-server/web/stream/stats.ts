@@ -89,6 +89,7 @@ export class StreamStats {
             if (!this.statsChannel && this.transport) {
                 const channel = this.transport.getChannel(TransportChannelId.STATS)
                 if (channel.type != "data") {
+                    // TODO: create logger
                     // TODO: debug log?
                     console.info(`Failed initialize debug transport channel because type is "${channel.type}" and not "data"`)
                     return

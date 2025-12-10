@@ -587,7 +587,10 @@ class ConnectionInfoModal implements Modal<void> {
 
             this.eventTarget.dispatchEvent(new Event("ml-connected"))
         } else if (data.type == "addDebugLine") {
-            this.debugLog(data.line)
+            const message = data.line.trim()
+            if (message) {
+                this.debugLog(message)
+            }
 
             if (data.additional == "fatal") {
                 showModal(this)

@@ -5,8 +5,9 @@ import { StreamSettings } from "../component/settings_menu.js"
 import { AudioElementPlayer } from "./audio/audio_element.js"
 import { AudioPlayer } from "./audio/index.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
+import { Logger } from "./log.js"
 import { StreamStats } from "./stats.js"
-import { Transport, TransportAudioSetup, TransportVideoSetup } from "./transport/index.js"
+import { Transport } from "./transport/index.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
 import { createSupportedVideoFormatsBits, getSelectedVideoFormat, VideoCodecSupport } from "./video.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
@@ -48,13 +49,13 @@ export function getStreamerSize(settings: StreamSettings, viewerScreenSize: [num
     return [width, height]
 }
 
-type TransportSetup = {
-    video: TransportVideoSetup,
-    audio: TransportAudioSetup,
-}
+// TODO: create logger
 
 export class Stream implements Component {
+    private logger: Logger = new Logger()
+
     private api: Api
+
     private hostId: number
     private appId: number
 
@@ -75,7 +76,12 @@ export class Stream implements Component {
     private streamerSize: [number, number]
 
     constructor(api: Api, hostId: number, appId: number, settings: StreamSettings, supportedVideoFormats: VideoCodecSupport, viewerScreenSize: [number, number]) {
+        this.logger.addInfoListener((info, type) => {
+            this.debugLog(info, type ?? undefined)
+        })
+
         this.api = api
+
         this.hostId = hostId
         this.appId = appId
 
@@ -279,8 +285,7 @@ export class Stream implements Component {
             return
         }
 
-        const transport = new WebRTCTransport()
-        transport.ondebug = this.debugLog.bind(this)
+        const transport = new WebRTCTransport(this.logger)
         transport.onsendmessage = (message) => this.sendWsMessage({ WebRtc: message })
 
         transport.initPeer({
