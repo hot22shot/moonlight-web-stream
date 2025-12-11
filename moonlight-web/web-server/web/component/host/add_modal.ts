@@ -1,8 +1,8 @@
-import { PutHostRequest } from "../../api_bindings.js"
+import { PostHostRequest } from "../../api_bindings.js"
 import { InputComponent } from "../input.js"
 import { FormModal } from "../modal/form.js"
 
-export class AddHostModal extends FormModal<PutHostRequest> {
+export class AddHostModal extends FormModal<PostHostRequest> {
 
     private header: HTMLElement = document.createElement("h2")
 
@@ -14,7 +14,9 @@ export class AddHostModal extends FormModal<PutHostRequest> {
 
         this.header.innerText = "Host"
 
-        this.address = new InputComponent("address", "text", "Address")
+        this.address = new InputComponent("address", "text", "Address", {
+            formRequired: true
+        })
 
         this.httpPort = new InputComponent("httpPort", "text", "Port", {
             inputMode: "numeric"
@@ -25,7 +27,7 @@ export class AddHostModal extends FormModal<PutHostRequest> {
         this.address.reset()
         this.httpPort.reset()
     }
-    submit(): PutHostRequest | null {
+    submit(): PostHostRequest | null {
         const address = this.address.getValue()
         const httpPort = parseInt(this.httpPort.getValue())
 

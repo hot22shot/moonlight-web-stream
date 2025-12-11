@@ -27,6 +27,15 @@ export type InputInit = {
     step?: string
     accept?: string
     inputMode?: string
+    hasEnableCheckbox?: boolean
+    placeholer?: string
+    formRequired?: boolean
+    // Only allowed with type == "number"
+    numberSlider?: {
+        range_min: number,
+        range_max: number
+        // Use step to set the step
+    }
 }
 
 export type InputChangeListener = (event: ComponentEvent<InputComponent>) => void
@@ -34,6 +43,9 @@ export type InputChangeListener = (event: ComponentEvent<InputComponent>) => voi
 export class InputComponent extends ElementWithLabel {
 
     private fileLabel: HTMLDivElement | null = null
+    private numberSlider: HTMLInputElement | null = null
+
+    private inputEnabled: HTMLInputElement | null = null
     private input: HTMLInputElement = document.createElement("input")
 
     constructor(internalName: string, type: string, displayName?: string, init?: InputInit) {
@@ -61,6 +73,12 @@ export class InputComponent extends ElementWithLabel {
         if (init && init.inputMode != null) {
             this.input.inputMode = init.inputMode
         }
+        if (init && init.formRequired != null) {
+            this.input.required = init.formRequired
+        }
+        if (init && init.placeholer != null) {
+            this.input.placeholder = init.placeholer
+        }
 
         if (type == "file") {
             this.fileLabel = document.createElement("div")
@@ -73,17 +91,74 @@ export class InputComponent extends ElementWithLabel {
             this.div.insertBefore(this.fileLabel, this.label)
         }
 
+        if (init?.hasEnableCheckbox) {
+            this.inputEnabled = document.createElement("input")
+            this.inputEnabled.type = "checkbox"
+            this.inputEnabled.defaultChecked = false
+
+            this.inputEnabled.addEventListener("change", () => {
+                this.setEnabled(
+                    this.inputEnabled?.checked ?? (() => { throw "inputEnabled is null" })()
+                )
+
+                this.div.dispatchEvent(new ComponentEvent("ml-change", this))
+            })
+
+            this.div.appendChild(this.inputEnabled)
+        }
+
         this.div.appendChild(this.input)
 
         this.input.addEventListener("change", () => {
+            if (this.numberSlider) {
+                this.numberSlider.value = this.input.value
+            }
+
             this.div.dispatchEvent(new ComponentEvent("ml-change", this))
         })
+
+        if (init?.numberSlider && type != "number") {
+            throw "tried to create InputComponent with number slider but type wasn't number"
+        }
+        if (type == "number" && init?.numberSlider) {
+            this.numberSlider = document.createElement("input")
+            this.numberSlider.type = "range"
+            this.numberSlider.min = `${init.numberSlider.range_min}`
+            this.numberSlider.max = `${init.numberSlider.range_max}`
+            this.numberSlider.step = init.step?.toString() ?? ""
+
+            this.numberSlider.addEventListener("change", () => {
+                if (this.numberSlider) {
+                    this.input.value = this.numberSlider.value
+                } else {
+                    throw "failed to get value of number slider because it wasn't created"
+                }
+
+                this.div.dispatchEvent(new ComponentEvent("ml-change", this))
+            })
+
+            this.div.appendChild(this.numberSlider)
+        }
+
+        if (init?.hasEnableCheckbox) {
+            // The main logic is further up
+            this.setEnabled(false)
+        }
     }
 
     reset() {
         this.input.value = ""
+        if (this.numberSlider) {
+            this.numberSlider.value = ""
+        }
     }
 
+    setValue(value: string) {
+        this.input.value = value
+        if (this.numberSlider) {
+            this.numberSlider.value = value
+        }
+    }
     getValue(): string {
         return this.input.value
     }
@@ -97,7 +172,17 @@ export class InputComponent extends ElementWithLabel {
     }
 
     setEnabled(enabled: boolean) {
+        if (this.inputEnabled) {
+            this.inputEnabled.checked = enabled
+        }
+
         this.input.disabled = !enabled
+        if (this.numberSlider) {
+            this.numberSlider.disabled = !enabled
+        }
+    }
+    isEnabled(): boolean {
+        return !this.input.disabled
     }
 
     addChangeListener(listener: InputChangeListener, options?: AddEventListenerOptions) {
@@ -105,6 +190,18 @@ export class InputComponent extends ElementWithLabel {
     }
     removeChangeListener(listener: InputChangeListener) {
         this.div.removeEventListener("ml-change", listener as any)
+    }
+
+    setPlaceholder(newPlaceholder: string) {
+        this.input.placeholder = newPlaceholder
+    }
+
+    mount(parent: HTMLElement): void {
+        super.mount(parent)
+
+        if (this.numberSlider) {
+            this.numberSlider.value = this.input.value
+        }
     }
 }
 
@@ -189,7 +286,7 @@ export class SelectComponent extends ElementWithLabel {
             inputElement.value = ""
         } else {
             const selectElement = (this.optionRoot as HTMLSelectElement)
-            selectElement.value = ""
+            selectElement.value = this.preSelectedOption
         }
     }
 

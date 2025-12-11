@@ -1,5 +1,5 @@
-import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
-import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp } from "../../api.js"
+import { DetailedHost, DetailedUser, PatchHostRequest, UndetailedHost } from "../../api_bindings.js"
+import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiGetUser, apiPatchHost } from "../../api.js"
 import { Component, ComponentEvent } from "../index.js"
 import { setContextMenu } from "../context_menu.js"
 import { showErrorPopup } from "../error.js"
@@ -12,6 +12,7 @@ export class Host implements Component {
     private api: Api
 
     private hostId: number
+    private userCache: DetailedUser | null = null
     private cache: UndetailedHost | DetailedHost | null = null
 
     private divElement: HTMLDivElement = document.createElement("div")
@@ -46,19 +47,23 @@ export class Host implements Component {
 
         // Update cache
         if (host != null) {
-            this.updateCache(host)
+            this.updateCache(host, null)
+
+            apiGetUser(api).then((user) => this.userCache = user)
         } else {
-            this.forceFetch(false)
+            this.forceFetch()
         }
     }
 
-    async forceFetch(forceServerRefresh?: boolean) {
-        const newCache = await apiGetHost(this.api, {
-            host_id: this.hostId,
-            force_refresh: forceServerRefresh || false
-        })
+    async forceFetch() {
+        const [newCache, user] = await Promise.all([
+            apiGetHost(this.api, {
+                host_id: this.hostId,
+            }),
+            apiGetUser(this.api)
+        ])
 
-        this.updateCache(newCache)
+        this.updateCache(newCache, user)
     }
     async getCurrentGame(): Promise<number | null> {
         await this.forceFetch()
@@ -88,7 +93,7 @@ export class Host implements Component {
                 name: "Show Details",
                 callback: this.showDetails.bind(this),
             })
-        } else {
+        } else if (this.cache?.paired == "Paired") {
             elements.push({
                 name: "Send Wake Up Packet",
                 callback: this.wakeUp.bind(this)
@@ -97,20 +102,39 @@ export class Host implements Component {
 
         elements.push({
             name: "Reload",
-            callback: async () => this.forceFetch(true)
+            callback: async () => this.forceFetch()
         })
 
-        if (this.cache?.paired == "NotPaired") {
+        if (this.cache?.server_state != null && this.cache?.paired == "NotPaired") {
             elements.push({
                 name: "Pair",
                 callback: this.pair.bind(this)
             })
         }
 
-        elements.push({
-            name: "Remove Host",
-            callback: this.remove.bind(this)
-        })
+        // Make private / global
+        if (this.userCache?.role == "Admin") {
+            if (this.cache?.owner == "Global") {
+                elements.push({
+                    name: "Make Private",
+                    callback: this.makePrivate.bind(this),
+                    classes: ["context-menu-element-red"]
+                })
+            } else if (this.cache?.owner == "ThisUser") {
+                elements.push({
+                    name: "Make Global",
+                    callback: this.makeGlobal.bind(this),
+                    classes: ["context-menu-element-red"]
+                })
+            }
+        }
+
+        if (this.cache?.owner == "ThisUser" || this.userCache?.role == "Admin") {
+            elements.push({
+                name: "Remove Host",
+                callback: this.remove.bind(this)
+            })
+        }
 
         setContextMenu(event, {
             elements
@@ -122,14 +146,13 @@ export class Host implements Component {
         if (!host || !isDetailedHost(host)) {
             host = await apiGetHost(this.api, {
                 host_id: this.hostId,
-                force_refresh: false
             })
         }
         if (!host || !isDetailedHost(host)) {
             showErrorPopup(`failed to get details for host ${this.hostId}`)
             return;
         }
-        this.updateCache(host)
+        this.updateCache(host, this.userCache)
 
         await showMessage(
             `Web Id: ${host.host_id}\n` +
@@ -165,14 +188,36 @@ export class Host implements Component {
         this.divElement.removeEventListener("ml-hostopen", listener as any, options)
     }
 
+    private async makeGlobal() {
+        await apiPatchHost(this.api, {
+            host_id: this.hostId,
+            change_owner: true,
+            owner: null,
+        })
+
+        if (this.cache) {
+            this.cache.owner = "Global"
+        }
+    }
+    private async makePrivate() {
+        const user = this.userCache ?? await apiGetUser(this.api)
+
+        await apiPatchHost(this.api, {
+            host_id: this.hostId,
+            change_owner: true,
+            owner: user.id,
+        })
+
+        if (this.cache) {
+            this.cache.owner = "ThisUser"
+        }
+    }
+
     private async remove() {
-        const success = await apiDeleteHost(this.api, {
+        await apiDeleteHost(this.api, {
             host_id: this.getHostId()
         })
 
-        if (!success) {
-            showErrorPopup(`something went wrong whilst removing the host ${this.getHostId()}`)
-        }
         this.divElement.dispatchEvent(new ComponentEvent("ml-hostremove", this))
     }
     private async wakeUp() {
@@ -192,17 +237,27 @@ export class Host implements Component {
             }
         }
 
-        const pinResponse = await apiPostPair(this.api, {
+        const responseStream = await apiPostPair(this.api, {
             host_id: this.getHostId()
         })
 
-        const messageAbort = new AbortController()
-        showMessage(`Please pair your host ${this.getCache()?.name} with this pin:\nPin: ${pinResponse.pin}`, { signal: messageAbort.signal })
+        if (typeof responseStream.response == "string") {
+            throw `failed to pair (stage 1): ${responseStream.response}`
+        }
 
-        const resultResponse = await pinResponse.result
+        const messageAbort = new AbortController()
+        showMessage(`Please pair your host ${this.getCache()?.name} with this pin:\nPin: ${responseStream.response.Pin}`, { signal: messageAbort.signal })
+
+        const resultResponse = await responseStream.next()
         messageAbort.abort()
 
-        this.updateCache(resultResponse)
+        if (!resultResponse) {
+            throw "missing stage 2 of pairing"
+        } else if (typeof resultResponse == "string") {
+            throw `failed to pair (stage 2): ${resultResponse}`
+        }
+
+        this.updateCache(resultResponse.Paired, null)
     }
 
     getHostId(): number {
@@ -213,7 +268,7 @@ export class Host implements Component {
         return this.cache
     }
 
-    updateCache(host: UndetailedHost | DetailedHost) {
+    updateCache(host: UndetailedHost | DetailedHost, user: DetailedUser | null) {
         if (this.getHostId() != host.host_id) {
             showErrorPopup(`tried to overwrite host ${this.getHostId()} with data from ${host.host_id}`)
             return
@@ -229,6 +284,10 @@ export class Host implements Component {
             } else {
                 this.cache = host
             }
+        }
+
+        if (user) {
+            this.userCache = user
         }
 
         // Update Elements

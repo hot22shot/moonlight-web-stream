@@ -16,7 +16,7 @@ export class GameList extends FetchListComponent<App, Game> {
     constructor(api: Api, hostId: number, cache: App[] | null) {
         super({
             listClasses: ["app-list"],
-            elementDivClasses: ["animated-list-element", "app-element"]
+            elementLiClasses: ["animated-list-element", "app-element"]
         })
 
         this.api = api
@@ -37,10 +37,9 @@ export class GameList extends FetchListComponent<App, Game> {
         this.forceFetch()
     }
 
-    async forceFetch(forceServerRefresh?: boolean) {
+    async forceFetch() {
         const apps = await apiGetApps(this.api, {
             host_id: this.hostId,
-            force_refresh: forceServerRefresh || false
         })
 
         this.updateCache(apps)

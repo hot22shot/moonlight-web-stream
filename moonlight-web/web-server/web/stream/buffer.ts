@@ -66,7 +66,7 @@ export class ByteBuffer {
         this.bytesUsed(4, false)
     }
 
-    putUtf8(text: string) {
+    putUtf8Raw(text: string) {
         const encoder = new TextEncoder()
         const result = encoder.encodeInto(text, this.buffer.subarray(this.position))
 
@@ -101,6 +101,14 @@ export class ByteBuffer {
     }
     getBool(): boolean {
         return this.getU8() != 0
+    }
+
+    getUtf8Raw(length: number): string {
+        const buffer = new Uint8Array(length)
+        this.get(buffer, 0, length)
+
+        const decoder = new TextDecoder()
+        return decoder.decode(buffer)
     }
 
     reset() {

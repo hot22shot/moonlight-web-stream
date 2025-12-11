@@ -1,7 +1,7 @@
-use std::{process::Stdio, time::Duration};
+use std::process::Stdio;
 
 use actix_web::{
-    Either, Error, HttpRequest, HttpResponse, get, post, rt as actix_rt,
+    Error, HttpRequest, HttpResponse, get, post, rt as actix_rt,
     web::{Data, Json, Payload},
 };
 use actix_ws::{Closed, Message, Session};
@@ -10,29 +10,33 @@ use common::{
     api_bindings::{
         PostCancelRequest, PostCancelResponse, StreamClientMessage, StreamServerMessage,
     },
-    config::Config,
-    ipc::{ServerIpcMessage, StreamerIpcMessage, create_child_ipc},
+    ipc::{ServerIpcMessage, StreamerConfig, StreamerIpcMessage, create_child_ipc},
     serialize_json,
 };
 use log::{debug, error, info, warn};
-use moonlight_common::{PairStatus, stream::bindings::SupportedVideoFormats};
-use tokio::{process::Command, spawn, time::sleep};
+use moonlight_common::stream::bindings::SupportedVideoFormats;
+use tokio::{process::Command, spawn};
 
-use crate::{api::auth::ApiCredentials, data::RuntimeApiData};
+use crate::app::{
+    App, AppError,
+    host::{AppId, HostId},
+    user::AuthenticatedUser,
+};
 
-/// The stream handler WILL authenticate the client because it is a websocket
-/// The Authenticator will let this route through
 #[get("/host/stream")]
 pub async fn start_host(
-    data: Data<RuntimeApiData>,
-    config: Data<Config>,
-    credentials: Data<ApiCredentials>,
+    web_app: Data<App>,
+    mut user: AuthenticatedUser,
     request: HttpRequest,
     payload: Payload,
 ) -> Result<HttpResponse, Error> {
     let (response, mut session, mut stream) = actix_ws::handle(&request, payload)?;
 
+    let client_unique_id = user.host_unique_id().await?;
+
+    let web_app = web_app.clone();
     actix_rt::spawn(async move {
+        // -- Init and Configure
         let message;
         loop {
             message = match stream.recv().await {
@@ -58,8 +62,7 @@ pub async fn start_host(
             }
         };
 
-        let StreamClientMessage::AuthenticateAndInit {
-            credentials: request_credentials,
+        let StreamClientMessage::Init {
             host_id,
             app_id,
             bitrate,
@@ -67,7 +70,7 @@ pub async fn start_host(
             fps,
             width,
             height,
-            video_sample_queue_size,
+            video_frame_queue_size,
             play_audio_local,
             audio_sample_queue_size,
             video_supported_formats,
@@ -76,22 +79,13 @@ pub async fn start_host(
         } = message
         else {
             let _ = session.close(None).await;
+
+            warn!("WebSocket didn't send init as first message, closing it");
             return;
         };
 
-        if !credentials.authenticate_with_credentials(request_credentials.as_deref()) {
-            let _ = send_ws_message(
-                &mut session,
-                StreamServerMessage::StageFailed {
-                    stage: "Authentication".to_string(),
-                    error_code: -1,
-                },
-            )
-            .await;
-
-            let _ = session.close(None).await;
-            return;
-        }
+        let host_id = HostId(host_id);
+        let app_id = AppId(app_id);
 
         let stream_settings = StreamSettings {
             bitrate,
@@ -99,7 +93,7 @@ pub async fn start_host(
             fps,
             width,
             height,
-            video_sample_queue_size,
+            video_frame_queue_size,
             audio_sample_queue_size,
             play_audio_local,
             video_supported_formats: SupportedVideoFormats::from_bits(video_supported_formats)
@@ -111,76 +105,76 @@ pub async fn start_host(
             video_color_range_full,
         };
 
-        // Collect host data
-        let (
-            host_address,
-            host_http_port,
-            client_private_key_pem,
-            client_certificate_pem,
-            server_certificate_pem,
-            app,
-        ) = {
-            let hosts = data.hosts.read().await;
-            let Some(host) = hosts.get(host_id as usize) else {
+        // -- Collect host data
+        let mut host = match user.host(host_id).await {
+            Ok(host) => host,
+            Err(AppError::HostNotFound) => {
                 let _ = send_ws_message(&mut session, StreamServerMessage::HostNotFound).await;
                 let _ = session.close(None).await;
                 return;
-            };
-            let mut host = host.lock().await;
-            let host = &mut host.moonlight;
-
-            if host.is_paired() == PairStatus::NotPaired {
-                warn!("[Stream]: tried to connect to a not paired host");
-
-                let _ = send_ws_message(&mut session, StreamServerMessage::HostNotPaired).await;
-                let _ = session.close(None).await;
-                return;
             }
+            Err(err) => {
+                warn!("failed to start stream for host {host_id:?} (at host): {err:?}");
 
-            let apps = match host.app_list().await {
-                Ok(value) => value,
-                Err(err) => {
-                    error!("[Stream]: failed to get app list from host: {err:?}");
-
-                    let _ = send_ws_message(&mut session, StreamServerMessage::InternalServerError)
-                        .await;
-                    let _ = session.close(None).await;
-                    return;
-                }
-            };
-            let Some(app) = apps.iter().find(|app| app.id == app_id).cloned() else {
-                warn!("[Stream]: failed to get request app from user");
-
-                let _ = send_ws_message(&mut session, StreamServerMessage::AppNotFound).await;
+                let _ =
+                    send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
                 let _ = session.close(None).await;
-                return;
-            };
-
-            if let Some(client_private_key) = host.client_private_key()
-                && let Some(client_certificate) = host.client_certificate()
-                && let Some(server_certificate) = host.server_certificate()
-            {
-                (
-                    host.address().to_string(),
-                    host.http_port(),
-                    client_private_key.to_string(),
-                    client_certificate.to_string(),
-                    server_certificate.to_string(),
-                    app,
-                )
-            } else {
                 return;
             }
         };
 
-        // Send App info
+        let apps = match host.list_apps(&mut user).await {
+            Ok(apps) => apps,
+            Err(err) => {
+                warn!("failed to start stream for host {host_id:?} (at list_apps): {err:?}");
+
+                let _ =
+                    send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
+                let _ = session.close(None).await;
+                return;
+            }
+        };
+
+        let Some(app) = apps.into_iter().find(|app| app.id == app_id) else {
+            warn!("failed to start stream for host {host_id:?} because the app couldn't be found!");
+
+            let _ = send_ws_message(&mut session, StreamServerMessage::AppNotFound).await;
+            let _ = session.close(None).await;
+            return;
+        };
+
+        let (address, http_port) = match host.address_port(&mut user).await {
+            Ok(address_port) => address_port,
+            Err(err) => {
+                warn!("failed to start stream for host {host_id:?} (at get address_port): {err:?}");
+
+                let _ =
+                    send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
+                let _ = session.close(None).await;
+                return;
+            }
+        };
+
+        let pair_info = match host.pair_info(&mut user).await {
+            Ok(pair_info) => pair_info,
+            Err(err) => {
+                warn!("failed to start stream for host {host_id:?} (at get pair_info): {err:?}");
+
+                let _ =
+                    send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
+                let _ = session.close(None).await;
+                return;
+            }
+        };
+
+        // -- Send App info
         let _ = send_ws_message(
             &mut session,
             StreamServerMessage::UpdateApp { app: app.into() },
         )
         .await;
 
-        // Starting stage: launch streamer
+        // -- Starting stage: launch streamer
         let _ = send_ws_message(
             &mut session,
             StreamServerMessage::StageStarting {
@@ -190,7 +184,7 @@ pub async fn start_host(
         .await;
 
         // Spawn child
-        let (mut child, stdin, stdout) = match Command::new(&config.streamer_path)
+        let (mut child, stdin, stdout) = match Command::new(&web_app.config().streamer_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -227,14 +221,13 @@ pub async fn start_host(
         };
 
         // Create ipc
-        let (mut ipc_sender, mut ipc_receiver) =
-            create_child_ipc::<ServerIpcMessage, StreamerIpcMessage>(
-                "Streamer".to_string(),
-                stdin,
-                stdout,
-                child.stderr.take(),
-            )
-            .await;
+        let (mut ipc_sender, mut ipc_receiver) = create_child_ipc::<
+            ServerIpcMessage,
+            StreamerIpcMessage,
+        >(
+            "Streamer", stdin, stdout, child.stderr.take()
+        )
+        .await;
 
         // Redirect ipc message into ws
         spawn(async move {
@@ -256,21 +249,31 @@ pub async fn start_host(
             info!("[Ipc]: ipc receiver is closed");
 
             // close the websocket when the streamer crashed / disconnected / whatever
-            let _ = session.close(None).await;
+            if let Err(err) = session.close(None).await {
+                warn!("failed to close streamer web socket: {err}");
+            }
+
+            // kill the streamer
+            if let Err(err) = child.kill().await {
+                warn!("failed to kill streamer child: {err}");
+            }
         });
 
         // Send init into ipc
         ipc_sender
             .send(ServerIpcMessage::Init {
-                server_config: Config::clone(&config),
+                config: StreamerConfig {
+                    webrtc: web_app.config().webrtc.clone(),
+                    log_level: web_app.config().log.level_filter,
+                },
                 stream_settings,
-                host_address,
-                host_http_port,
-                host_unique_id: None,
-                client_private_key_pem,
-                client_certificate_pem,
-                server_certificate_pem,
-                app_id,
+                host_address: address,
+                host_http_port: http_port,
+                client_unique_id: Some(client_unique_id),
+                client_private_key: pair_info.client_private_key,
+                client_certificate: pair_info.client_certificate,
+                server_certificate: pair_info.server_certificate,
+                app_id: app_id.0,
             })
             .await;
 
@@ -282,22 +285,6 @@ pub async fn start_host(
             };
 
             ipc_sender.send(ServerIpcMessage::WebSocket(message)).await;
-        }
-
-        // -- After the websocket disconnects we kill the stream:
-        ipc_sender.send(ServerIpcMessage::Stop).await;
-        drop(ipc_sender);
-
-        sleep(Duration::from_secs(4)).await;
-
-        info!("[Stream]: killing streamer");
-        match child.kill().await {
-            Ok(_) => {
-                info!("[Stream]: killed streamer");
-            }
-            Err(err) => {
-                warn!("[Stream]: failed to kill child: {err:?}");
-            }
         }
     });
 
@@ -314,26 +301,14 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
 
 #[post("/host/cancel")]
 pub async fn cancel_host(
-    data: Data<RuntimeApiData>,
-    request: Json<PostCancelRequest>,
-) -> Either<Json<PostCancelResponse>, HttpResponse> {
-    let hosts = data.hosts.read().await;
+    mut user: AuthenticatedUser,
+    Json(request): Json<PostCancelRequest>,
+) -> Result<Json<PostCancelResponse>, AppError> {
+    let host_id = HostId(request.host_id);
 
-    let host_id = request.host_id;
-    let Some(host) = hosts.get(host_id as usize) else {
-        return Either::Right(HttpResponse::NotFound().finish());
-    };
+    let mut host = user.host(host_id).await?;
 
-    let mut host = host.lock().await;
+    host.cancel_app(&mut user).await?;
 
-    let success = match host.moonlight.cancel().await {
-        Ok(value) => value,
-        Err(err) => {
-            warn!("[Api]: failed to cancel stream for {host_id}:{err:?}");
-
-            return Either::Right(HttpResponse::InternalServerError().finish());
-        }
-    };
-
-    Either::Left(Json(PostCancelResponse { success }))
+    Ok(Json(PostCancelResponse { success: true }))
 }

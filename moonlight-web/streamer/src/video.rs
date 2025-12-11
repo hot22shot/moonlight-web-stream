@@ -5,14 +5,19 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    thread::spawn,
+    time::{Duration, Instant},
 };
 
 use bytes::{Bytes, BytesMut};
+use common::api_bindings::{StatsHostProcessingLatency, StreamerStatsUpdate};
 use log::{debug, error, info, warn};
 use moonlight_common::stream::{
-    bindings::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
-    video::VideoDecoder,
+    bindings::{
+        DecodeResult, EstimatedRttInfo, FrameType, SupportedVideoFormats, VideoDecodeUnit,
+        VideoFormat,
+    },
+    video::{PullVideoDecoder, PullVideoManager, VideoSetup},
 };
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
@@ -85,104 +90,83 @@ enum VideoCodec {
     },
 }
 
-pub struct TrackSampleVideoDecoder {
-    sender: TrackLocalSender<SequencedTrackLocalStaticRTP>,
-    clock_rate: u32,
+pub fn spawn_video_thread(
+    stream: Arc<StreamConnection>,
     supported_formats: SupportedVideoFormats,
-    // Video important
-    video_codec: Option<VideoCodec>,
-    samples: Vec<BytesMut>,
-    needs_idr: Arc<AtomicBool>,
-    old_presentation_time: Duration,
+    frame_queue_size: usize,
+) -> PullVideoDecoder {
+    let (decoder, manager) = PullVideoManager::new(supported_formats);
+
+    spawn(move || {
+        video_thread(stream, manager, supported_formats, frame_queue_size);
+    });
+
+    decoder
 }
 
-impl TrackSampleVideoDecoder {
-    pub fn new(
-        stream: Arc<StreamConnection>,
-        supported_formats: SupportedVideoFormats,
-        channel_queue_size: usize,
-    ) -> Self {
-        Self {
-            sender: TrackLocalSender::new(stream, channel_queue_size),
-            clock_rate: 0,
-            supported_formats,
-            video_codec: None,
-            samples: Vec::new(),
-            needs_idr: Default::default(),
-            old_presentation_time: Duration::ZERO,
-        }
+fn video_thread(
+    stream: Arc<StreamConnection>,
+    mut manager: PullVideoManager,
+    supported_formats: SupportedVideoFormats,
+    frame_queue_size: usize,
+) {
+    let mut sender: TrackLocalSender<SequencedTrackLocalStaticRTP> =
+        TrackLocalSender::new(stream.clone(), frame_queue_size);
+    let needs_idr = Arc::new(AtomicBool::new(false));
+
+    let video_setup = manager
+        .wait_for_setup()
+        .expect("failed to setup video renderer");
+
+    let VideoSetup {
+        format,
+        width,
+        height,
+        redraw_rate,
+        flags: _,
+    } = video_setup;
+
+    info!("[Stream] Stream setup: {width}x{height}x{redraw_rate} and {format:?}");
+
+    {
+        let mut stream_info = stream.stream_info.blocking_lock();
+
+        *stream_info = Some(video_setup);
     }
 
-    fn send_single_frame(
-        samples: &mut Vec<BytesMut>,
-        sender: &mut TrackLocalSender<SequencedTrackLocalStaticRTP>,
-        payloader: &mut impl Payloader,
-        timestamp: u32,
-    ) {
-        let mut peekable = samples.drain(..).peekable();
-        while let Some(sample) = peekable.next() {
-            let packets = match packetize(
-                payloader,
-                RTP_OUTBOUND_MTU,
-                0, // is set in the write fn
-                timestamp,
-                &sample.freeze(),
-                peekable.peek().is_none(),
-            ) {
-                Ok(value) => value,
-                Err(err) => {
-                    warn!("failed to packetize packet: {err:?}");
-                    continue;
-                }
-            };
+    if !format.contained_in(supported_formats) {
+        error!(
+            "tried to setup a video stream with a non supported video format: {format:?}, supported formats: {:?}",
+            supported_formats.iter_names().collect::<Vec<_>>()
+        );
 
-            for packet in packets {
-                sender.blocking_send_sample(packet);
-            }
-        }
+        manager
+            .send_setup_result(-1)
+            .expect("failed to send video setup result");
+        return;
     }
-}
 
-impl VideoDecoder for TrackSampleVideoDecoder {
-    fn setup(
-        &mut self,
-        format: VideoFormat,
-        width: u32,
-        height: u32,
-        redraw_rate: u32,
-        _flags: i32,
-    ) -> i32 {
-        info!("[Stream] Stream setup: {width}x{height}x{redraw_rate} and {format:?}");
+    let Some(codec) = video_format_to_codec(format) else {
+        error!("Failed to get video codec with format {format:?}");
 
+        manager
+            .send_setup_result(-1)
+            .expect("failed to send video setup result");
+        return;
+    };
+
+    let clock_rate = codec.capability.clock_rate;
+
+    if let Err(err) = sender.blocking_create_track(
+        TrackLocalStaticRTP::new(
+            codec.capability.clone(),
+            "video".to_string(),
+            "moonlight".to_string(),
+        )
+        .into(),
         {
-            let mut video_size = self.sender.stream.video_size.blocking_lock();
+            let needs_idr = needs_idr.clone();
 
-            *video_size = (width, height);
-        }
-
-        if !format.contained_in(self.supported_formats()) {
-            error!(
-                "tried to setup a video stream with a non supported video format: {format:?}, supported formats: {:?}",
-                self.supported_formats().iter_names().collect::<Vec<_>>()
-            );
-            return -1;
-        }
-
-        let Some(codec) = video_format_to_codec(format) else {
-            error!("Failed to get video codec with format {format:?}");
-            return -1;
-        };
-
-        self.clock_rate = codec.capability.clock_rate;
-
-        let needs_idr = self.needs_idr.clone();
-        if let Err(err) = self.sender.blocking_create_track(
-            TrackLocalStaticRTP::new(
-                codec.capability.clone(),
-                "video".to_string(),
-                "moonlight".to_string(),
-            )
-            .into(),
             move |packet| {
                 let packet = packet.as_any();
 
@@ -193,63 +177,71 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                 {
                     // Moonlight doesn't support dynamic bitrate changing :(
                 }
-            },
-        ) {
-            error!(
-                "Failed to create video track with format {format:?} and codec \"{codec:?}\": {err:?}"
-            );
-            return -1;
-        }
+            }
+        },
+    ) {
+        error!(
+            "Failed to create video track with format {format:?} and codec \"{codec:?}\": {err:?}"
+        );
 
-        match format {
-            // -- H264
-            VideoFormat::H264 | VideoFormat::H264High8_444 => {
-                self.video_codec = Some(VideoCodec::H264 {
-                    nal_reader: H264Reader::new(Cursor::new(Vec::new()), 0),
-                    payloader: Default::default(),
-                });
-            }
-            // -- H265
-            VideoFormat::H265
-            | VideoFormat::H265Main10
-            | VideoFormat::H265Rext8_444
-            | VideoFormat::H265Rext10_444 => {
-                self.video_codec = Some(VideoCodec::H265 {
-                    nal_reader: H265Reader::new(Cursor::new(Vec::new()), 0),
-                    payloader: Default::default(),
-                });
-            }
-            // -- AV1
-            VideoFormat::Av1Main8
-            | VideoFormat::Av1Main10
-            | VideoFormat::Av1High8_444
-            | VideoFormat::Av1High10_444 => {
-                self.video_codec = Some(VideoCodec::Av1 {
-                    annex_b: AnnexBSplitter::new(Cursor::new(Vec::new()), 0),
-                    payloader: Default::default(),
-                });
-            }
-        }
-
-        0
+        manager
+            .send_setup_result(-1)
+            .expect("failed to send video setup result");
+        return;
     }
-    fn start(&mut self) {}
-    fn stop(&mut self) {}
 
-    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let timestamp = (unit.presentation_time.as_secs_f64() * self.clock_rate as f64) as u32;
+    let mut video_codec = match format {
+        // -- H264
+        VideoFormat::H264 | VideoFormat::H264High8_444 => VideoCodec::H264 {
+            nal_reader: H264Reader::new(Cursor::new(Vec::new()), 0),
+            payloader: Default::default(),
+        },
+        // -- H265
+        VideoFormat::H265
+        | VideoFormat::H265Main10
+        | VideoFormat::H265Rext8_444
+        | VideoFormat::H265Rext10_444 => VideoCodec::H265 {
+            nal_reader: H265Reader::new(Cursor::new(Vec::new()), 0),
+            payloader: Default::default(),
+        },
+        // -- AV1
+        VideoFormat::Av1Main8
+        | VideoFormat::Av1Main10
+        | VideoFormat::Av1High8_444
+        | VideoFormat::Av1High10_444 => VideoCodec::Av1 {
+            annex_b: AnnexBSplitter::new(Cursor::new(Vec::new()), 0),
+            payloader: Default::default(),
+        },
+    };
+
+    manager
+        .send_setup_result(0)
+        .expect("failed to send video setup result");
+
+    let mut stats = VideoStats::default();
+    let mut samples = Vec::new();
+
+    loop {
+        let Ok(mut unit) = manager.wait_for_next_video_frame() else {
+            continue;
+        };
+        let start_frame = Instant::now();
+
+        let timestamp = (unit.presentation_time.as_secs_f64() * clock_rate as f64) as u32;
 
         let mut full_frame = Vec::new();
         for buffer in unit.buffers {
             full_frame.extend_from_slice(buffer.data);
         }
 
-        match &mut self.video_codec {
+        let important = matches!(unit.frame_type, FrameType::Idr);
+
+        match &mut video_codec {
             // -- H264
-            Some(VideoCodec::H264 {
+            VideoCodec::H264 {
                 nal_reader,
                 payloader,
-            }) => {
+            } => {
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
@@ -258,16 +250,23 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         nal.header_range.start..nal.payload_range.end,
                     );
 
-                    self.samples.push(data);
+                    samples.push(data);
                 }
 
-                Self::send_single_frame(&mut self.samples, &mut self.sender, payloader, timestamp);
+                send_single_frame(
+                    &mut samples,
+                    &mut sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &needs_idr,
+                );
             }
             // -- H265
-            Some(VideoCodec::H265 {
+            VideoCodec::H265 {
                 nal_reader,
                 payloader,
-            }) => {
+            } => {
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
@@ -276,45 +275,91 @@ impl VideoDecoder for TrackSampleVideoDecoder {
                         nal.header_range.start..nal.payload_range.end,
                     );
 
-                    self.samples.push(data);
+                    samples.push(data);
                 }
 
-                Self::send_single_frame(&mut self.samples, &mut self.sender, payloader, timestamp);
+                send_single_frame(
+                    &mut samples,
+                    &mut sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &needs_idr,
+                );
             }
             // -- AV1
-            Some(VideoCodec::Av1 { annex_b, payloader }) => {
+            VideoCodec::Av1 { annex_b, payloader } => {
                 annex_b.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(annex_b_payload)) = annex_b.next() {
                     let data =
                         trim_bytes_to_range(annex_b_payload.full, annex_b_payload.payload_range);
 
-                    self.samples.push(data);
+                    samples.push(data);
                 }
 
-                Self::send_single_frame(&mut self.samples, &mut self.sender, payloader, timestamp);
-            }
-            None => {
-                // this shouldn't happen
-                unreachable!()
+                send_single_frame(
+                    &mut samples,
+                    &mut sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &needs_idr,
+                );
             }
         }
 
-        self.old_presentation_time = unit.presentation_time;
-
-        if self
-            .needs_idr
+        if needs_idr
             .compare_exchange_weak(true, false, Ordering::SeqCst, Ordering::Relaxed)
             .is_ok()
         {
-            return DecodeResult::NeedIdr;
+            unit.set_result(DecodeResult::NeedIdr);
         }
 
-        DecodeResult::Ok
+        let frame_processing_time = Instant::now() - start_frame;
+        stats.analyze(stream.clone(), &unit, frame_processing_time);
+    }
+}
+
+fn send_single_frame(
+    samples: &mut Vec<BytesMut>,
+    sender: &mut TrackLocalSender<SequencedTrackLocalStaticRTP>,
+    payloader: &mut impl Payloader,
+    timestamp: u32,
+    important: bool,
+    needs_idr: &AtomicBool,
+) {
+    if important {
+        sender.blocking_clear_queue(false);
     }
 
-    fn supported_formats(&self) -> SupportedVideoFormats {
-        self.supported_formats
+    let mut peekable = samples.drain(..).peekable();
+
+    let mut frame_samples = Vec::new();
+    while let Some(sample) = peekable.next() {
+        let packets = match packetize(
+            payloader,
+            RTP_OUTBOUND_MTU,
+            0, // is set in the write fn
+            timestamp,
+            &sample.freeze(),
+            peekable.peek().is_none(),
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                warn!("failed to packetize packet: {err:?}");
+                continue;
+            }
+        };
+
+        frame_samples.extend(packets);
+    }
+
+    if !sender.blocking_send_samples(frame_samples, important) {
+        sender.blocking_clear_queue(true);
+
+        // We've dropped a frame (likely due to buffering)
+        needs_idr.store(true, Ordering::Release);
     }
 }
 
@@ -483,4 +528,126 @@ fn trim_bytes_to_range(mut buf: BytesMut, range: Range<usize>) -> BytesMut {
     }
 
     buf
+}
+
+#[derive(Debug, Default)]
+struct VideoStats {
+    last_send: Option<Instant>,
+    min_host_processing_latency: Duration,
+    max_host_processing_latency: Duration,
+    total_host_processing_latency: Duration,
+    host_processing_frame_count: usize,
+    min_streamer_processing_time: Duration,
+    max_streamer_processing_time: Duration,
+    total_streamer_processing_time: Duration,
+    streamer_processing_time_frame_count: usize,
+}
+
+impl VideoStats {
+    fn analyze(
+        &mut self,
+        stream: Arc<StreamConnection>,
+        unit: &VideoDecodeUnit,
+        frame_processing_time: Duration,
+    ) {
+        if let Some(host_processing_latency) = unit.frame_processing_latency {
+            self.min_host_processing_latency = self
+                .min_host_processing_latency
+                .min(host_processing_latency);
+            self.max_host_processing_latency = self
+                .max_host_processing_latency
+                .max(host_processing_latency);
+            self.total_host_processing_latency += host_processing_latency;
+            self.host_processing_frame_count += 1;
+        }
+
+        self.min_streamer_processing_time =
+            self.min_streamer_processing_time.min(frame_processing_time);
+        self.max_streamer_processing_time =
+            self.max_streamer_processing_time.max(frame_processing_time);
+        self.total_streamer_processing_time += frame_processing_time;
+        self.streamer_processing_time_frame_count += 1;
+
+        // Send in 1 sec intervall
+        if self
+            .last_send
+            .map(|last_send| last_send + Duration::from_secs(1) < Instant::now())
+            .unwrap_or(true)
+        {
+            // Collect data
+            let has_host_processing_latency = self.host_processing_frame_count > 0;
+            let min_host_processing_latency = self.min_host_processing_latency;
+            let max_host_processing_latency = self.max_host_processing_latency;
+            let avg_host_processing_latency = self
+                .total_host_processing_latency
+                .checked_div(self.host_processing_frame_count as u32)
+                .unwrap_or(Duration::ZERO);
+
+            let min_streamer_processing_time = self.min_streamer_processing_time;
+            let max_streamer_processing_time = self.max_streamer_processing_time;
+            let avg_streamer_processing_time = self
+                .total_streamer_processing_time
+                .checked_div(self.streamer_processing_time_frame_count as u32)
+                .unwrap_or(Duration::ZERO);
+
+            // Send data
+            let runtime = stream.runtime.clone();
+            runtime.spawn(async move {
+                // Send Video info
+                stream
+                    .send_stats(StreamerStatsUpdate::Video {
+                        host_processing_latency: has_host_processing_latency.then_some(
+                            StatsHostProcessingLatency {
+                                min_host_processing_latency_ms: min_host_processing_latency
+                                    .as_secs_f64()
+                                    * 1000.0,
+                                max_host_processing_latency_ms: max_host_processing_latency
+                                    .as_secs_f64()
+                                    * 1000.0,
+                                avg_host_processing_latency_ms: avg_host_processing_latency
+                                    .as_secs_f64()
+                                    * 1000.0,
+                            },
+                        ),
+                        min_streamer_processing_time_ms: min_streamer_processing_time.as_secs_f64()
+                            * 1000.0,
+                        max_streamer_processing_time_ms: max_streamer_processing_time.as_secs_f64()
+                            * 1000.0,
+                        avg_streamer_processing_time_ms: avg_streamer_processing_time.as_secs_f64()
+                            * 1000.0,
+                    })
+                    .await;
+
+                // Send RTT info
+                let ml_stream = stream.stream.read().await;
+                if let Some(ml_stream) = ml_stream.as_ref() {
+                    match ml_stream.estimated_rtt_info() {
+                        Ok(EstimatedRttInfo { rtt, rtt_variance }) => {
+                            stream
+                                .send_stats(StreamerStatsUpdate::Rtt {
+                                    rtt_ms: rtt.as_secs_f64() * 1000.0,
+                                    rtt_variance_ms: rtt_variance.as_secs_f64() * 1000.0,
+                                })
+                                .await;
+                        }
+                        Err(err) => {
+                            warn!("failed to get estimated rtt info: {err:?}");
+                        }
+                    };
+                }
+            });
+
+            // Clear data
+            self.min_host_processing_latency = Duration::MAX;
+            self.max_host_processing_latency = Duration::ZERO;
+            self.total_host_processing_latency = Duration::ZERO;
+            self.host_processing_frame_count = 0;
+            self.min_streamer_processing_time = Duration::MAX;
+            self.max_streamer_processing_time = Duration::ZERO;
+            self.total_streamer_processing_time = Duration::ZERO;
+            self.streamer_processing_time_frame_count = 0;
+
+            self.last_send = Some(Instant::now());
+        }
+    }
 }

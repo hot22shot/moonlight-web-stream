@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use moonlight_common::{
     ServerState,
     stream::bindings::{
@@ -15,8 +17,14 @@ const EXPORT_PATH: &str = "../../web-server/web/api_bindings.ts";
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct ConfigJs {
-    pub enable_credential_authentication: bool,
     pub path_prefix: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS, Clone)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostLoginRequest {
+    pub name: String,
+    pub password: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy)]
@@ -54,8 +62,16 @@ impl From<moonlight_common::PairStatus> for PairStatus {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub enum HostOwner {
+    ThisUser,
+    Global,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub struct UndetailedHost {
     pub host_id: u32,
+    pub owner: HostOwner,
     pub name: String,
     pub paired: PairStatus,
     /// None if offline else the state
@@ -66,9 +82,10 @@ pub struct UndetailedHost {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct DetailedHost {
     pub host_id: u32,
+    pub owner: HostOwner,
     pub name: String,
     pub paired: PairStatus,
-    pub server_state: HostState,
+    pub server_state: Option<HostState>,
     pub address: String,
     pub http_port: u16,
     pub https_port: u16,
@@ -111,8 +128,6 @@ pub struct GetHostsResponse {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetHostQuery {
     pub host_id: u32,
-    #[serde(default)]
-    pub force_refresh: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -123,15 +138,25 @@ pub struct GetHostResponse {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct PutHostRequest {
+pub struct PostHostRequest {
     pub address: String,
     pub http_port: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct PutHostResponse {
+pub struct PostHostResponse {
     pub host: DetailedHost,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PatchHostRequest {
+    /// The host id of the host to change
+    pub host_id: u32,
+    /// Option<Option<u32>> are not supported
+    pub change_owner: bool,
+    pub owner: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -171,8 +196,6 @@ pub struct PostWakeUpRequest {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetAppsQuery {
     pub host_id: u32,
-    #[serde(default)]
-    pub force_refresh: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -201,6 +224,101 @@ pub struct PostCancelRequest {
 pub struct PostCancelResponse {
     pub success: bool,
 }
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum UserRole {
+    User,
+    Admin,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetUserQuery {
+    pub name: Option<String>,
+    pub user_id: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct DetailedUser {
+    pub id: u32,
+    pub is_default_user: bool,
+    pub name: String,
+    pub role: UserRole,
+    pub client_unique_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostUserRequest {
+    pub name: String,
+    pub password: String,
+    pub role: UserRole,
+    pub client_unique_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PatchUserRequest {
+    /// The user id of the user to change
+    pub id: u32,
+    pub password: Option<String>,
+    pub role: Option<UserRole>,
+    pub client_unique_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct DeleteUserRequest {
+    pub id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetUsersResponse {
+    pub users: Vec<DetailedUser>,
+}
+
+// -- Stream
+
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
+#[ts(export, export_to = EXPORT_PATH)]
+#[serde(rename_all = "lowercase")]
+pub enum TransportChannelMethod {
+    WebRTC,
+    WebSocket,
+}
+
+ts_consts!(
+    pub TransportChannelId(export_bindings_transport_channel_id: EXPORT_PATH) as u8:
+
+    pub const STATS: u8 = 0;
+    pub const HOST_VIDEO: u8 = 1;
+    pub const HOST_AUDIO: u8 = 2;
+    pub const MOUSE_RELIABLE: u8 = 3;
+    pub const MOUSE_ABSOLUTE: u8 = 4;
+    pub const MOUSE_RELATIVE: u8 = 5;
+    pub const KEYBOARD: u8 = 6;
+    pub const TOUCH: u8 = 7;
+    pub const CONTROLLERS: u8 = 8;
+    pub const CONTROLLER0: u8 = 9;
+    pub const CONTROLLER1: u8 = 10;
+    pub const CONTROLLER2: u8 = 11;
+    pub const CONTROLLER3: u8 = 12;
+    pub const CONTROLLER4: u8 = 13;
+    pub const CONTROLLER5: u8 = 14;
+    pub const CONTROLLER6: u8 = 15;
+    pub const CONTROLLER7: u8 = 16;
+    pub const CONTROLLER8: u8 = 17;
+    pub const CONTROLLER9: u8 = 18;
+    pub const CONTROLLER10: u8 = 19;
+    pub const CONTROLLER11: u8 = 20;
+    pub const CONTROLLER12: u8 = 21;
+    pub const CONTROLLER13: u8 = 22;
+    pub const CONTROLLER14: u8 = 23;
+    pub const CONTROLLER15: u8 = 24;
+);
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
 #[ts(export, export_to = EXPORT_PATH)]
@@ -239,8 +357,7 @@ pub enum StreamSignalingMessage {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamClientMessage {
-    AuthenticateAndInit {
-        credentials: Option<String>,
+    Init {
         host_id: u32,
         app_id: u32,
         bitrate: u32,
@@ -248,24 +365,38 @@ pub enum StreamClientMessage {
         fps: u32,
         width: u32,
         height: u32,
-        video_sample_queue_size: u32,
+        video_frame_queue_size: u32,
         play_audio_local: bool,
         audio_sample_queue_size: u32,
         video_supported_formats: u32,
         video_colorspace: StreamColorspace,
         video_color_range_full: bool,
     },
-    Signaling(StreamSignalingMessage),
+    WebRtc(StreamSignalingMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceServer {
+    #[serde(skip)]
+    pub is_default: bool,
     pub urls: Vec<String>,
     #[serde(default)]
     pub username: String,
     #[serde(default)]
     pub credential: String,
+}
+
+impl Display for RtcIceServer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "urls=[{}], username=\"{}\", credential=\"{}\"",
+            self.urls.join(", "),
+            self.username,
+            self.credential,
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -277,10 +408,10 @@ pub struct StreamCapabilities {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
-    WebRtcConfig {
+    Setup {
         ice_servers: Vec<RtcIceServer>,
     },
-    Signaling(StreamSignalingMessage),
+    WebRtc(StreamSignalingMessage),
     // Optional Info
     UpdateApp {
         app: App,
@@ -302,13 +433,15 @@ pub enum StreamServerMessage {
     },
     ConnectionComplete {
         capabilities: StreamCapabilities,
+        /// Use VideoSupportedCodec to figure this out
+        format: u32,
         width: u32,
         height: u32,
+        fps: u32,
     },
     ConnectionTerminated {
         error_code: i32,
     },
-    PeerDisconnect,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -331,8 +464,30 @@ impl From<moonlight_common::stream::bindings::ConnectionStatus> for ConnectionSt
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerGeneralMessage {
-    ConnectionTerminated,
     ConnectionStatusUpdate { status: ConnectionStatus },
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct StatsHostProcessingLatency {
+    pub min_host_processing_latency_ms: f64,
+    pub max_host_processing_latency_ms: f64,
+    pub avg_host_processing_latency_ms: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum StreamerStatsUpdate {
+    Rtt {
+        rtt_ms: f64,
+        rtt_variance_ms: f64,
+    },
+    Video {
+        host_processing_latency: Option<StatsHostProcessingLatency>,
+        min_streamer_processing_time_ms: f64,
+        max_streamer_processing_time_ms: f64,
+        avg_streamer_processing_time_ms: f64,
+    },
 }
 
 // Virtual-Key Codes

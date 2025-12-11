@@ -1,3 +1,4 @@
+import "./polyfill/index.js"
 import { Api, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
@@ -8,10 +9,10 @@ import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, Str
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { getStandardVideoFormats, getSupportedVideoFormats } from "./stream/video.js";
-import { CanvasRenderer } from "./stream/canvas.js";
 import { StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
+import { streamStatsToText } from "./stream/stats.js";
 
 async function startApp() {
     const api = await getApi()
@@ -69,15 +70,11 @@ class ViewerApp implements Component {
     private sidebar: ViewerSidebar
 
     private div = document.createElement("div")
-    private videoElement = document.createElement("video")
-    private canvasElement = document.createElement("canvas")
 
+    private statsDiv = document.createElement("div")
     private stream: Stream | null = null
 
-    private canvasRenderer: CanvasRenderer | null = null
     private settings: StreamSettings
-
-    private streamerSize: [number, number]
 
     private inputConfig: StreamInputConfig = defaultStreamInputConfig()
     private previousMouseMode: MouseMode
@@ -91,6 +88,24 @@ class ViewerApp implements Component {
         this.sidebar = new ViewerSidebar(this)
         setSidebar(this.sidebar)
 
+        // Configure stats element
+        this.statsDiv.hidden = true
+        this.statsDiv.classList.add("video-stats")
+
+        setInterval(() => {
+            // Update stats display every 100ms
+            const stats = this.getStream()?.getStats()
+            if (stats && stats.isEnabled()) {
+                this.statsDiv.hidden = false
+
+                const text = streamStatsToText(stats.getCurrentStats())
+                this.statsDiv.innerText = text
+            } else {
+                this.statsDiv.hidden = true
+            }
+        }, 100)
+        this.div.appendChild(this.statsDiv)
+
         // Configure stream
         const settings = getLocalStreamSettings() ?? defaultStreamSettings()
 
@@ -101,32 +116,20 @@ class ViewerApp implements Component {
         this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
         this.startStream(hostId, appId, settings, [browserWidth, browserHeight])
 
-        this.streamerSize = getStreamerSize(settings, [browserWidth, browserHeight])
-
         this.settings = settings
-
-        // Configure video element
-        this.videoElement.classList.add("video-stream")
-        this.videoElement.preload = "none"
-        this.videoElement.controls = false
-        this.videoElement.autoplay = true
-        this.videoElement.disablePictureInPicture = true
-        this.videoElement.playsInline = true
-        this.videoElement.muted = true
-
-        // Configure canvas element
-        if(this.settings.canvasRenderer) {
-            this.canvasElement.classList.add("video-stream")
-            this.div.appendChild(this.canvasElement)
-            this.canvasRenderer = new CanvasRenderer(this.canvasElement)
-            this.videoElement.autoplay = false
-        }
-
-        this.div.appendChild(this.videoElement)
 
         // Configure input
         this.addListeners(document)
         this.addListeners(document.getElementById("input") as HTMLDivElement)
+
+        window.addEventListener("blur", () => {
+            this.stream?.getInput().raiseAllKeys()
+        })
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState !== "visible") {
+                this.stream?.getInput().raiseAllKeys()
+            }
+        })
 
         document.addEventListener("pointerlockchange", this.onPointerLockChange.bind(this))
         document.addEventListener("fullscreenchange", this.onFullscreenChange.bind(this))
@@ -176,16 +179,13 @@ class ViewerApp implements Component {
         this.stream.addInfoListener(connectionInfo.onInfo.bind(connectionInfo))
         showModal(connectionInfo)
 
-        // Set video
-        if(!this.settings?.canvasRenderer) {
-            this.videoElement.srcObject = this.stream.getMediaStream()
-        }
-
         // Start animation frame loop
         this.onTouchUpdate()
         this.onGamepadUpdate()
 
         this.stream.getInput().addScreenKeyboardVisibleEvent(this.onScreenKeyboardSetVisible.bind(this))
+
+        this.stream.mount(this.div)
     }
 
     private async onInfo(event: InfoEvent) {
@@ -197,34 +197,21 @@ class ViewerApp implements Component {
             document.title = `Stream: ${app.title}`
         } else if (data.type == "connectionComplete") {
             this.sidebar.onCapabilitiesChange(data.capabilities)
-        } else if (data.type == "videoTrack") {
-            if (this.canvasRenderer) {
-                this.canvasRenderer.setVideoTrack(data.track)
-                if(this.stream) {
-                    this.videoElement.srcObject = this.stream.getMediaStream()
-                }
-            }
         }
     }
 
     private focusInput() {
-        const inputElement = document.getElementById("input") as HTMLDivElement
-        inputElement.focus()
+        if (this.stream?.getInput().getCurrentPredictedTouchAction() != "screenKeyboard" && !this.sidebar.getScreenKeyboard().isVisible()) {
+            const inputElement = document.getElementById("input") as HTMLDivElement
+            inputElement.focus()
+        }
     }
 
     onUserInteraction() {
         this.focusInput()
 
-        if (this.videoElement) {
-            this.videoElement.muted = false
-            if(this.videoElement.paused) {
-                this.videoElement.play().then(() => {
-                    // Playing
-                }).catch(error => {
-                    console.error(`Failed to play videoElement: ${error.message || error}`);
-                })
-            }
-        }
+        this.stream?.getVideoRenderer()?.onUserInteraction()
+        this.stream?.getAudioPlayer()?.onUserInteraction()
     }
     private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
         console.info(event.detail)
@@ -516,7 +503,6 @@ class ViewerApp implements Component {
         }
     }
 
-
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
     }
@@ -527,75 +513,7 @@ class ViewerApp implements Component {
     getStreamRect(): DOMRect {
         // The bounding rect of the videoElement or canvasElement can be bigger than the actual video
         // -> We need to correct for this when sending positions, else positions are wrong
-
-        const videoSize = this.stream?.getStreamerSize() ?? this.streamerSize
-        const videoAspect = videoSize[0] / videoSize[1]
-
-        if(!this.settings?.canvasRenderer) {
-            const boundingRect = this.videoElement.getBoundingClientRect()
-            const boundingRectAspect = boundingRect.width / boundingRect.height
-
-            let x = boundingRect.x
-            let y = boundingRect.y
-            let videoMultiplier
-            if (boundingRectAspect > videoAspect) {
-                // How much is the video scaled up
-                videoMultiplier = boundingRect.height / videoSize[1]
-
-                // Note: Both in boundingRect / page scale
-                const boundingRectHalfWidth = boundingRect.width / 2
-                const videoHalfWidth = videoSize[0] * videoMultiplier / 2
-
-                x += boundingRectHalfWidth - videoHalfWidth
-            } else {
-                // Same as above but inverted
-                videoMultiplier = boundingRect.width / videoSize[0]
-
-                const boundingRectHalfHeight = boundingRect.height / 2
-                const videoHalfHeight = videoSize[1] * videoMultiplier / 2
-
-                y += boundingRectHalfHeight - videoHalfHeight
-            }
-
-            return new DOMRect(
-                x,
-                y,
-                videoSize[0] * videoMultiplier,
-                videoSize[1] * videoMultiplier
-            )
-        }
-        else {
-            const clientRect = this.canvasElement.getBoundingClientRect()
-            
-            const canvasCssWidth = this.canvasElement.clientWidth
-            const canvasCssHeight = this.canvasElement.clientHeight
-
-            const boundingRectAspect = canvasCssWidth / canvasCssHeight
-            let x = clientRect.x
-            let y = clientRect.y
-            let width = canvasCssWidth
-            let height = canvasCssHeight
-            let videoMultiplier
-
-            if (boundingRectAspect > videoAspect) {
-                // Canvas is wider than video aspect, video will be pillarboxed
-                videoMultiplier = canvasCssHeight / videoSize[1]
-                const videoRenderedWidth = videoSize[0] * videoMultiplier
-                x += (canvasCssWidth - videoRenderedWidth) / 2 // Center horizontally
-                width = videoRenderedWidth
-            }
-            else {
-                // Canvas is taller than video aspect, video will be letterboxed
-                videoMultiplier = canvasCssWidth / videoSize[0]
-                const videoRenderedHeight = videoSize[1] * videoMultiplier
-                y += (canvasCssHeight - videoRenderedHeight) / 2 // Center vertically
-                height = videoRenderedHeight
-            }
-            return new DOMRect(x, y, width, height)
-        }
-    }
-    getElement(): HTMLElement {
-        return !this.settings?.canvasRenderer ? this.videoElement : this.canvasElement
+        return this.stream?.getVideoRenderer()?.getStreamRect() ?? new DOMRect()
     }
     getStream(): Stream | null {
         return this.stream
@@ -669,17 +587,22 @@ class ConnectionInfoModal implements Modal<void> {
 
             this.eventTarget.dispatchEvent(new Event("ml-connected"))
         } else if (data.type == "addDebugLine") {
-            this.debugLog(data.line)
-        }
-        // Reopen the modal cause we might already be closed at this point
-        else if (data.type == "connectionTerminated") {
-            const text = `Server: Connection Terminated with code ${data.errorCode}`
+            const message = data.line.trim()
+            if (message) {
+                this.debugLog(message)
+            }
+
+            if (data.additional == "fatal") {
+                showModal(this)
+            } else if (data.additional == "recover") {
+                showModal(null)
+            }
+        } else if (data.type == "serverMessage") {
+            const text = `Server: ${data.message}`
             this.text.innerText = text
             this.debugLog(text)
-
-            showModal(this)
-        } else if (data.type == "error") {
-            const text = `Server: Error: ${data.message}`
+        } else if (data.type == "connectionTerminated") {
+            const text = `Server: Connection Terminated with code ${data.errorCode}`
             this.text.innerText = text
             this.debugLog(text)
 
@@ -715,6 +638,8 @@ class ViewerSidebar implements Component, Sidebar {
 
     private lockMouseButton = document.createElement("button")
     private fullscreenButton = document.createElement("button")
+
+    private statsButton = document.createElement("button")
 
     private mouseMode: SelectComponent
     private touchMode: SelectComponent
@@ -774,6 +699,15 @@ class ViewerSidebar implements Component, Sidebar {
         })
         this.buttonDiv.appendChild(this.fullscreenButton)
 
+        // Stats
+        this.statsButton.innerText = "Stats"
+        this.statsButton.addEventListener("click", () => {
+            const stats = this.app.getStream()?.getStats()
+            if (stats) {
+                stats.toggle()
+            }
+        })
+        this.buttonDiv.appendChild(this.statsButton)
 
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [
@@ -856,12 +790,13 @@ class SendKeycodeModal extends FormModal<number> {
         super()
 
         const keyList = []
-        for (const keyName of Object.keys(StreamKeys)) {
+        for (const keyNameRaw in StreamKeys) {
+            const keyName = keyNameRaw as keyof typeof StreamKeys
             const keyValue = StreamKeys[keyName]
 
             const PREFIX = "VK_"
 
-            let name = keyName
+            let name: string = keyName
             if (name.startsWith(PREFIX)) {
                 name = name.slice(PREFIX.length)
             }

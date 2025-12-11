@@ -6,7 +6,7 @@ import { ListComponent } from "./list.js"
 const ERROR_REMOVAL_TIME_MS = 10000
 
 const errorListElement = document.getElementById("error-list")
-const errorListComponent = new ListComponent<ErrorComponent>([], { listClasses: ["error-list"], elementDivClasses: ["error-element"] })
+const errorListComponent = new ListComponent<ErrorComponent>([], { listClasses: ["error-list"], elementLiClasses: ["error-element"] })
 if (errorListElement) {
     errorListComponent.mount(errorListElement)
 }
@@ -39,6 +39,7 @@ export function showErrorPopup(message: string, fatal: boolean = false, errorObj
     }, ERROR_REMOVAL_TIME_MS)
 }
 
+// TODO: wtf am i doing here? why fatal = that?
 function handleError(event: ErrorEvent) {
     const fatal = event instanceof FetchError
 

@@ -1,4 +1,5 @@
-import { Api, getApi, apiPutHost, FetchError } from "./api.js";
+import "./polyfill/index.js"
+import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -7,9 +8,10 @@ import { showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
-import { App } from "./api_bindings.js";
+import { App, DetailedUser } from "./api_bindings.js";
 import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
-import { setTouchContextMenuEnabled } from "./ios_right_click.js";
+import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
+import { buildUrl } from "./config_.js";
 
 async function startApp() {
     setTouchContextMenuEnabled(true)
@@ -22,14 +24,26 @@ async function startApp() {
         return;
     }
 
+    let lastAppState: AppState | null = null
+    if (sessionStorage) {
+        const lastStateText = sessionStorage.getItem("mlState")
+        if (lastStateText) {
+            lastAppState = JSON.parse(lastStateText)
+        }
+    }
+
     const app = new MainApp(api)
     app.mount(rootElement)
 
+    window.addEventListener("popstate", event => {
+        app.setAppState(event.state, false)
+    })
+
     app.forceFetch()
 
-    window.addEventListener("popstate", event => {
-        app.setAppState(event.state)
-    })
+    if (lastAppState) {
+        app.setAppState(lastAppState)
+    }
 }
 
 startApp()
@@ -37,23 +51,45 @@ startApp()
 type DisplayStates = "hosts" | "games" | "settings"
 
 type AppState = { display: DisplayStates, hostId?: number }
-function pushAppState(state: AppState) {
-    history.pushState(state, "")
+function setAppState(state: AppState, pushHistory: boolean) {
+    if (pushHistory) {
+        history.pushState(state, "")
+    }
+
+    if (sessionStorage) {
+        sessionStorage.setItem("mlState", JSON.stringify(state))
+    }
+}
+function backAppState() {
+    history.back()
 }
 
 class MainApp implements Component {
     private api: Api
+    private user: DetailedUser | null = null
 
     private divElement = document.createElement("div")
 
+    // Top Line
+    private topLine = document.createElement("div")
+
     private moonlightTextElement = document.createElement("h1")
+
+    private topLineActions = document.createElement("div")
+    private logoutButton = document.createElement("button")
+    // This is for the default user
+    private loginButton = document.createElement("button")
+    private adminButton = document.createElement("button")
+
+    // Actions
     private actionElement = document.createElement("div")
 
-    private backToHostsButton: HTMLButtonElement = document.createElement("button")
+    private backButton: HTMLButtonElement = document.createElement("button")
 
     private hostAddButton: HTMLButtonElement = document.createElement("button")
     private settingsButton: HTMLButtonElement = document.createElement("button")
 
+    // Different submenus
     private currentDisplay: DisplayStates | null = null
 
     private hostList: HostList
@@ -63,15 +99,41 @@ class MainApp implements Component {
     constructor(api: Api) {
         this.api = api
 
-        // Moonlight text
+        // Top Line
+        this.topLine.classList.add("top-line")
+
         this.moonlightTextElement.innerHTML = "Moonlight Web"
+        this.topLine.appendChild(this.moonlightTextElement)
+
+        this.topLine.appendChild(this.topLineActions)
+        this.topLineActions.classList.add("top-line-actions")
+
+        this.logoutButton.addEventListener("click", async () => {
+            await apiLogout(this.api)
+            window.location.reload()
+        })
+        this.logoutButton.classList.add("logout-button")
+
+        this.loginButton.addEventListener("click", async () => {
+            const success = await tryLogin()
+            if (success) {
+                window.location.reload()
+            }
+        })
+        this.loginButton.classList.add("login-button")
+
+        this.adminButton.addEventListener("click", async () => {
+            window.location.href = buildUrl("/admin.html")
+        })
+        this.adminButton.classList.add("admin-button")
 
         // Actions
         this.actionElement.classList.add("actions-list")
 
         // Back button
-        this.backToHostsButton.innerText = "Back"
-        this.backToHostsButton.addEventListener("click", () => this.setCurrentDisplay("hosts"))
+        this.backButton.innerText = "Back"
+        this.backButton.classList.add("button-fit-content")
+        this.backButton.addEventListener("click", backAppState)
 
         // Host add button
         this.hostAddButton.classList.add("host-add")
@@ -90,7 +152,7 @@ class MainApp implements Component {
         this.settings.addChangeListener(this.onSettingsChange.bind(this))
 
         // Append default elements
-        this.divElement.appendChild(this.moonlightTextElement)
+        this.divElement.appendChild(this.topLine)
         this.divElement.appendChild(this.actionElement)
 
         this.setCurrentDisplay("hosts")
@@ -99,13 +161,13 @@ class MainApp implements Component {
         document.body.addEventListener("contextmenu", this.onContextMenu.bind(this), { passive: false })
     }
 
-    setAppState(state: AppState) {
+    setAppState(state: AppState, pushIntoHistory?: boolean) {
         if (state.display == "hosts") {
-            this.setCurrentDisplay("hosts")
+            this.setCurrentDisplay("hosts", null, pushIntoHistory)
         } else if (state.display == "games" && state.hostId != null) {
-            this.setCurrentDisplay("games", state.hostId)
+            this.setCurrentDisplay("games", { hostId: state.hostId }, pushIntoHistory)
         } else if (state.display == "settings") {
-            this.setCurrentDisplay("settings")
+            this.setCurrentDisplay("settings", null, pushIntoHistory)
         }
     }
 
@@ -117,12 +179,12 @@ class MainApp implements Component {
         if (host) {
             let newHost
             try {
-                newHost = await apiPutHost(this.api, host)
+                newHost = await apiPostHost(this.api, host)
             } catch (e) {
                 if (e instanceof FetchError) {
                     const response = e.getResponse()
-                    if (response && response.status == 400) {
-                        showErrorPopup("couldn't add host: not found")
+                    if (response && response.status == 404) {
+                        showErrorPopup(`Host "${host.address}" is not reachable`)
                         return
                     }
                 }
@@ -151,7 +213,7 @@ class MainApp implements Component {
     private async onHostOpen(event: ComponentEvent<Host>) {
         const hostId = event.component.getHostId()
 
-        this.setCurrentDisplay("games", hostId)
+        this.setCurrentDisplay("games", { hostId })
     }
 
     private onSettingsChange() {
@@ -160,19 +222,38 @@ class MainApp implements Component {
         setLocalStreamSettings(newSettings)
     }
 
-    private setCurrentDisplay(display: "hosts"): void
-    private setCurrentDisplay(display: "games", hostId: number, hostCache?: Array<App>): void
-    private setCurrentDisplay(display: "settings"): void
+    private setCurrentDisplay(display: "hosts",
+        extraInfo?: null,
+        pushIntoHistory?: boolean
+    ): void
+    private setCurrentDisplay(
+        display: "games",
+        extraInfo?: {
+            hostId?: number | null,
+            hostCache?: Array<App>
+        },
+        pushIntoHistory?: boolean
+    ): void
+    private setCurrentDisplay(display: "settings", extraInfo?: null, pushIntoHistory?: boolean): void
 
-    private setCurrentDisplay(display: "hosts" | "games" | "settings", hostId?: number | null, hostCache?: Array<App>) {
-        if (display == "games" && hostId == null) {
+    private setCurrentDisplay(
+        display: "hosts" | "games" | "settings",
+        extraInfo?: {
+            hostId?: number | null,
+            hostCache?: Array<App>
+        } | null,
+        pushIntoHistory_?: boolean
+    ) {
+        const pushIntoHistory = pushIntoHistory_ === undefined ? true : pushIntoHistory_
+
+        if (display == "games" && extraInfo?.hostId == null) {
             // invalid input state
-            return
+            throw "invalid display state was requested"
         }
 
         // Check if we need to change
         if (this.currentDisplay == display) {
-            if (this.currentDisplay == "games" && this.gameList?.getHostId() != hostId) {
+            if (this.currentDisplay == "games" && this.gameList?.getHostId() != extraInfo?.hostId) {
                 // fall through
             } else {
                 return
@@ -186,11 +267,12 @@ class MainApp implements Component {
 
             this.hostList.unmount(this.divElement)
         } else if (this.currentDisplay == "games") {
-            this.actionElement.removeChild(this.backToHostsButton)
+            this.actionElement.removeChild(this.backButton)
+            this.actionElement.removeChild(this.settingsButton)
 
             this.gameList?.unmount(this.divElement)
         } else if (this.currentDisplay == "settings") {
-            this.actionElement.removeChild(this.backToHostsButton)
+            this.actionElement.removeChild(this.backButton)
 
             this.settings.unmount(this.divElement)
         }
@@ -202,12 +284,13 @@ class MainApp implements Component {
 
             this.hostList.mount(this.divElement)
 
-            pushAppState({ display: "hosts" })
-        } else if (display == "games" && hostId != null) {
-            this.actionElement.appendChild(this.backToHostsButton)
+            setAppState({ display: "hosts" }, pushIntoHistory)
+        } else if (display == "games" && extraInfo?.hostId != null) {
+            this.actionElement.appendChild(this.backButton)
+            this.actionElement.appendChild(this.settingsButton)
 
-            if (this.gameList?.getHostId() != hostId) {
-                this.gameList = new GameList(this.api, hostId, hostCache ?? null)
+            if (this.gameList?.getHostId() != extraInfo?.hostId) {
+                this.gameList = new GameList(this.api, extraInfo?.hostId, extraInfo?.hostCache ?? null)
                 this.gameList.addForceReloadListener(this.forceFetch.bind(this))
             }
 
@@ -215,22 +298,24 @@ class MainApp implements Component {
 
             this.refreshGameListActiveGame()
 
-            pushAppState({ display: "games", hostId: this.gameList?.getHostId() })
+            setAppState({ display: "games", hostId: this.gameList?.getHostId() }, pushIntoHistory)
         } else if (display == "settings") {
-            this.actionElement.appendChild(this.backToHostsButton)
+            this.actionElement.appendChild(this.backButton)
 
             this.settings.mount(this.divElement)
 
-            pushAppState({ display: "settings" })
+            setAppState({ display: "settings" }, pushIntoHistory)
         }
 
         this.currentDisplay = display
     }
 
     async forceFetch() {
+        const promiseUser = this.refreshUserRole()
+
         await Promise.all([
             this.hostList.forceFetch(),
-            this.gameList?.forceFetch(true)
+            this.gameList?.forceFetch()
         ])
 
         if (this.currentDisplay == "games"
@@ -240,7 +325,33 @@ class MainApp implements Component {
             this.setCurrentDisplay("hosts")
         }
 
-        await this.refreshGameListActiveGame()
+        await Promise.all([
+            promiseUser,
+            this.refreshGameListActiveGame()
+        ])
+    }
+    private async refreshUserRole() {
+        this.user = await apiGetUser(this.api)
+
+        if (this.topLineActions.contains(this.logoutButton)) {
+            this.topLineActions.removeChild(this.logoutButton)
+        }
+        if (this.topLineActions.contains(this.loginButton)) {
+            this.topLineActions.removeChild(this.loginButton)
+        }
+        if (this.topLineActions.contains(this.adminButton)) {
+            this.topLineActions.removeChild(this.adminButton)
+        }
+
+        if (this.user.is_default_user) {
+            this.topLineActions.appendChild(this.loginButton)
+        } else {
+            this.topLineActions.appendChild(this.logoutButton)
+        }
+
+        if (this.user.role == "Admin") {
+            this.topLineActions.appendChild(this.adminButton)
+        }
     }
     private async refreshGameListActiveGame() {
         const gameList = this.gameList
@@ -250,11 +361,17 @@ class MainApp implements Component {
         }
 
         const host = this.hostList.getHost(hostId)
-        if (host == null) {
-            return
+
+        let currentGame = null
+        if (host != null) {
+            currentGame = await host.getCurrentGame()
+        } else {
+            const host = await apiGetHost(this.api, { host_id: hostId })
+            if (host.current_game != 0) {
+                currentGame = host.current_game
+            }
         }
 
-        const currentGame = await host.getCurrentGame()
         if (currentGame != null) {
             gameList?.setActiveGame(currentGame)
         } else {

@@ -53,6 +53,10 @@ button:hover {
     box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
+.button-fit-content {
+    height: fit-content;
+}
+
 /** Checkbox */
 input[type="checkbox"] {
     /* remove native box */
@@ -90,6 +94,23 @@ input[type="checkbox"]:checked::after {
     /* scale in */
     transform: translate(-50%, -50%) scale(1);
     opacity: 1;
+}
+
+/** Slider */
+input[type="range"] {
+    accent-color: rgba(63, 81, 181, 1.0);
+
+    width: 200px;
+    height: 32px;
+    margin: 8px;
+
+    overflow: hidden;
+
+    cursor: grab;
+}
+
+input[type="range"]:active {
+    cursor: grabbing;
 }
 
 /** Text Field likes  */
@@ -132,6 +153,10 @@ input[type=number]:disabled {
     color: gray;
 }
 
+input[type=range]:disabled {
+    color: gray;
+}
+
 select option {
     background-color: rgb(66, 66, 66);
 }
@@ -149,6 +174,12 @@ input[type=number] {
     appearance: textfield;
     /* Firefox */
     -moz-appearance: textfield;
+}
+
+.list-like {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
 }
 
 /** Modal */
@@ -219,6 +250,14 @@ input[type=number] {
     /** animation */
     transition: all 0.2s;
     background-color: rgba(255, 255, 255, 0.2);
+}
+
+.context-menu-element-red {
+    background-color: #7d0e0e;
+}
+
+.context-menu-element-red:hover {
+    background-color: #a43535;
 }
 
 .context-menu-disabled {
@@ -387,11 +426,54 @@ input[type=number] {
     transition: opacity 0.3s ease-in;
 }
 
+/** top line */
+.top-line {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.top-line-actions {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: right;
+}
+
+.logout-button {
+    background-color: red;
+    background-image: url("resources/new/logout-svgrepo-com.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
+.login-button {
+    background-image: url("resources/new/user.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
+.admin-button {
+    background-color: red;
+    background-image: url("resources/new/admin-svgrepo-com.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
 /** Actions */
 .actions-list {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
+    align-items: center;
 }
 
 /** Settings */
@@ -545,6 +627,19 @@ canvas.video-stream {
     object-fit: contain;
 }
 
+.audio-stream {
+    display: none;
+}
+
+.video-stats {
+    cursor: default;
+
+    color: yellow;
+
+    position: relative;
+    z-index: 1;
+}
+
 .sidebar-stream {
     display: flex;
     flex-direction: column;
@@ -565,4 +660,59 @@ canvas.video-stream {
 /* Prevent starting animation for elements */
 .prevent-start-transition {
     transition: none;
+}
+
+/* Admin */
+.user-button {
+    background-image: url("resources/new/user.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 60px;
+    width: 70px;
+    height: 70px;
+}
+
+.user-panel {
+    display: flex;
+    flex-direction: column;
+    max-width: 225px;
+}
+
+.user-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.user-element {
+    margin: 0;
+    padding: 10px;
+    min-width: 110px;
+    cursor: pointer;
+    border-radius: 5px;
+    /** animation */
+    transition: all 0.15s;
+    background-color: rgba(255, 255, 255, 0);
+}
+
+.user-element:hover {
+    /** animation */
+    transition: all 0.2s;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.user-element p {
+    padding: 0;
+    margin: 0;
+}
+
+.admin-panel-content {
+    display: flex;
+    flex-direction: row;
+}
+
+.user-info-delete {
+    background-color: red;
 }

@@ -22,10 +22,6 @@ macro_rules! ts_consts {
                 let mut decl = String::new();
 
                 write!(&mut decl, "const {}", stringify!($struct)).unwrap();
-                $(
-                    let value_ty = <$record_ty as TS>::inline();
-                    write!(&mut decl, ": Record<string, {value_ty}>").unwrap();
-                )?
                 write!(&mut decl, " = {}", Self::inline()).unwrap();
                 write!(&mut decl, ";").unwrap();
 

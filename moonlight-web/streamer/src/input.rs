@@ -1,7 +1,7 @@
 use std::{pin::Pin, sync::Arc};
 
 use bytes::Bytes;
-use log::{debug, warn};
+use log::warn;
 use moonlight_common::stream::{
     MoonlightStream,
     bindings::{
@@ -35,16 +35,12 @@ impl StreamInput {
     pub async fn on_data_channel(
         &self,
         connection: &Arc<StreamConnection>,
-        data_channel: Arc<RTCDataChannel>,
+        data_channel: &Arc<RTCDataChannel>,
     ) -> bool {
-        debug!(
-            "[Stream Input]: adding data channel: \"{}\"",
-            data_channel.label()
-        );
         let label = data_channel.label();
 
         match label {
-            "mouseClicks" | "mouseAbsolute" | "mouseRelative" => {
+            "mouse_reliable" | "mouse_absolute" | "mouse_relative" => {
                 data_channel.on_message(Self::create_simple_handler(
                     connection.clone(),
                     Self::on_mouse_message,
@@ -76,7 +72,7 @@ impl StreamInput {
                 }));
 
                 let mut controllers = self.controllers.write().await;
-                controllers.replace(data_channel);
+                controllers.replace(data_channel.clone());
 
                 return true;
             }
@@ -181,7 +177,7 @@ impl StreamInput {
                 MouseButtonAction::Release
             };
             let Some(button) = MouseButton::from_u8(buffer.get_u8()) else {
-                warn!("[Stream Input]: recieved invalid mouse button");
+                warn!("[Stream Input]: received invalid mouse button");
                 return;
             };
 
@@ -237,7 +233,7 @@ impl StreamInput {
             );
         } else if ty == 1 {
             let len = buffer.get_u8();
-            let Ok(key) = buffer.get_utf8(len as usize) else {
+            let Ok(key) = buffer.get_utf8_raw(len as usize) else {
                 warn!("[Stream Input]: received invalid keyboard text message");
                 return;
             };

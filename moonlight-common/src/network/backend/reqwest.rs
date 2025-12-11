@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use bytes::Bytes;
 use log::debug;
 use pem::Pem;
@@ -9,9 +7,11 @@ use url::{ParseError, Url};
 
 use crate::network::{
     ApiError,
-    request_client::{QueryParamsRef, RequestClient},
+    backend::{DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT},
+    request_client::{QueryParamsRef, RequestClient, RequestError},
 };
 
+pub type ReqwestClient = reqwest::Client;
 #[cfg(feature = "high")]
 pub type ReqwestMoonlightHost = crate::high::MoonlightHost<reqwest::Client>;
 
@@ -24,16 +24,27 @@ pub enum ReqwestError {
 }
 pub type ReqwestApiError = ApiError<ReqwestError>;
 
+impl RequestError for ReqwestError {
+    fn is_connect(&self) -> bool {
+        matches!(self, ReqwestError::Reqwest(err) if err.is_connect() || err.is_timeout())
+    }
+    fn is_encryption(&self) -> bool {
+        match self {
+            ReqwestError::Reqwest(err) => err.is_decode(),
+            _ => false,
+        }
+    }
+}
+
 fn default_builder() -> ClientBuilder {
     ClientBuilder::new()
         .use_native_tls()
-        .connect_timeout(Duration::from_secs(1))
-        .timeout(Duration::from_secs(90))
+        .timeout(DEFAULT_LONG_TIMEOUT)
         // https://github.com/seanmonstar/reqwest/issues/2021
         .pool_max_idle_per_host(0)
 }
 fn timeout_builder() -> ClientBuilder {
-    default_builder().timeout(Duration::from_secs(2))
+    default_builder().timeout(DEFAULT_TIMEOUT)
 }
 
 fn build_url(

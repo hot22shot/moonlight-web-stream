@@ -1,8 +1,17 @@
-use std::{panic, process::exit, str::FromStr, sync::Arc};
+use std::{
+    panic,
+    process::exit,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
+use bytes::Bytes;
 use common::{
     StreamSettings,
-    api_bindings::StreamServerGeneralMessage,
+    api_bindings::StreamerStatsUpdate,
     config::PortRange,
     ipc::{IpcReceiver, IpcSender, ServerIpcMessage, StreamerIpcMessage, create_process_ipc},
     serialize_json,
@@ -10,15 +19,15 @@ use common::{
 use log::{LevelFilter, debug, info, warn};
 use moonlight_common::{
     MoonlightError,
-    high::HostError,
-    network::reqwest::ReqwestMoonlightHost,
+    high::{HostError, MoonlightHost},
+    network::backend::reqwest::ReqwestClient,
     pair::ClientAuth,
     stream::{
         MoonlightInstance, MoonlightStream,
-        bindings::{ColorRange, EncryptionFlags, HostFeatures},
+        bindings::{ColorRange, EncryptionFlags, HostFeatures, VideoFormat},
+        video::VideoSetup,
     },
 };
-use pem::Pem;
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use tokio::{
     io::{stdin, stdout},
@@ -26,6 +35,7 @@ use tokio::{
     spawn,
     sync::{Mutex, Notify, RwLock},
     task::spawn_blocking,
+    time::sleep,
 };
 use webrtc::{
     api::{
@@ -54,14 +64,19 @@ use common::api_bindings::{
 
 use crate::{
     audio::{OpusTrackSampleAudioDecoder, register_audio_codecs},
+    buffer::ByteBuffer,
     connection::StreamConnectionListener,
     convert::{
         from_webrtc_ice, from_webrtc_sdp, into_webrtc_ice, into_webrtc_ice_candidate,
         into_webrtc_network_type,
     },
     input::StreamInput,
-    video::{TrackSampleVideoDecoder, register_video_codecs},
+    video::{register_video_codecs, spawn_video_thread},
 };
+
+pub type RequestClient = ReqwestClient;
+
+pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
 mod audio;
 mod buffer;
@@ -73,19 +88,6 @@ mod video;
 
 #[tokio::main]
 async fn main() {
-    #[cfg(debug_assertions)]
-    let log_level = LevelFilter::Debug;
-    #[cfg(not(debug_assertions))]
-    let log_level = LevelFilter::Info;
-
-    TermLogger::init(
-        log_level,
-        simplelog::Config::default(),
-        TerminalMode::Stderr,
-        ColorChoice::Auto,
-    )
-    .expect("failed to init logger");
-
     let default_panic = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         default_panic(info);
@@ -106,26 +108,26 @@ async fn main() {
         .await;
 
     let (
-        server_config,
+        config,
         stream_settings,
         host_address,
         host_http_port,
-        host_unique_id,
-        client_private_key_pem,
-        client_certificate_pem,
-        server_certificate_pem,
+        client_unique_id,
+        client_private_key,
+        client_certificate,
+        server_certificate,
         app_id,
     ) = loop {
         match ipc_receiver.recv().await {
             Some(ServerIpcMessage::Init {
-                server_config,
+                config,
                 stream_settings,
                 host_address,
                 host_http_port,
-                host_unique_id,
-                client_private_key_pem,
-                client_certificate_pem,
-                server_certificate_pem,
+                client_unique_id,
+                client_private_key,
+                client_certificate,
+                server_certificate,
                 app_id,
             }) => {
                 debug!(
@@ -137,20 +139,31 @@ async fn main() {
                 );
 
                 break (
-                    server_config,
+                    config,
                     stream_settings,
                     host_address,
                     host_http_port,
-                    host_unique_id,
-                    client_private_key_pem,
-                    client_certificate_pem,
-                    server_certificate_pem,
+                    client_unique_id,
+                    client_private_key,
+                    client_certificate,
+                    server_certificate,
                     app_id,
                 );
             }
             _ => continue,
         }
     };
+
+    TermLogger::init(
+        config.log_level,
+        simplelog::ConfigBuilder::new()
+            .add_filter_ignore_str("webrtc_sctp")
+            .set_time_level(LevelFilter::Off)
+            .build(),
+        TerminalMode::Stderr,
+        ColorChoice::Never,
+    )
+    .expect("failed to init logger");
 
     // Send stage
     ipc_sender
@@ -162,17 +175,15 @@ async fn main() {
         .await;
 
     // -- Create the host and pair it
-    let mut host = ReqwestMoonlightHost::new(host_address, host_http_port, host_unique_id)
+    let mut host = MoonlightHost::new(host_address, host_http_port, client_unique_id)
         .expect("failed to create host");
 
     host.set_pairing_info(
         &ClientAuth {
-            private_key: Pem::from_str(&client_private_key_pem)
-                .expect("failed to parse client private key"),
-            certificate: Pem::from_str(&client_certificate_pem)
-                .expect("failed to parse client certificate"),
+            certificate: client_certificate,
+            private_key: client_private_key,
         },
-        &Pem::from_str(&server_certificate_pem).expect("failed to parse server certificate"),
+        &server_certificate,
     )
     .expect("failed to set pairing info");
 
@@ -181,8 +192,9 @@ async fn main() {
 
     // -- Configure WebRTC
     let rtc_config = RTCConfiguration {
-        ice_servers: server_config
-            .webrtc_ice_servers
+        ice_servers: config
+            .webrtc
+            .ice_servers
             .clone()
             .into_iter()
             .map(into_webrtc_ice)
@@ -191,7 +203,7 @@ async fn main() {
     };
     let mut api_settings = SettingEngine::default();
 
-    if let Some(PortRange { min, max }) = server_config.webrtc_port_range {
+    if let Some(PortRange { min, max }) = config.webrtc.port_range {
         match EphemeralUDP::new(min, max) {
             Ok(udp) => {
                 api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
@@ -201,20 +213,23 @@ async fn main() {
             }
         }
     }
-    if let Some(mapping) = server_config.webrtc_nat_1to1 {
+    if let Some(mapping) = config.webrtc.nat_1to1 {
         api_settings.set_nat_1to1_ips(
             mapping.ips.clone(),
             into_webrtc_ice_candidate(mapping.ice_candidate_type),
         );
     }
     api_settings.set_network_types(
-        server_config
-            .webrtc_network_types
+        config
+            .webrtc
+            .network_types
             .iter()
             .copied()
             .map(into_webrtc_network_type)
             .collect(),
     );
+
+    api_settings.set_include_loopback_candidate(config.webrtc.include_loopback_candidates);
 
     // -- Register media codecs
     let mut api_media = MediaEngine::default();
@@ -277,7 +292,7 @@ async fn main() {
 }
 
 struct StreamInfo {
-    host: Mutex<ReqwestMoonlightHost>,
+    host: Mutex<MoonlightHost<RequestClient>>,
     app_id: u32,
 }
 
@@ -292,9 +307,13 @@ struct StreamConnection {
     // Input
     pub input: StreamInput,
     // Video
-    pub video_size: Mutex<(u32, u32)>,
+    pub stream_info: Mutex<Option<VideoSetup>>,
+    // Stats
+    pub stats_channel: RwLock<Option<Arc<RTCDataChannel>>>,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
+    pub timeout_terminate_request: Mutex<Option<Instant>>,
+    pub is_terminating: AtomicBool,
     pub terminate: Notify,
 }
 
@@ -310,16 +329,14 @@ impl StreamConnection {
     ) -> Result<Arc<Self>, anyhow::Error> {
         // Send WebRTC Info
         ipc_sender
-            .send(StreamerIpcMessage::WebSocket(
-                StreamServerMessage::WebRtcConfig {
-                    ice_servers: config
-                        .ice_servers
-                        .iter()
-                        .cloned()
-                        .map(from_webrtc_ice)
-                        .collect(),
-                },
-            ))
+            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::Setup {
+                ice_servers: config
+                    .ice_servers
+                    .iter()
+                    .cloned()
+                    .map(from_webrtc_ice)
+                    .collect(),
+            }))
             .await;
 
         let peer = Arc::new(api.new_peer_connection(config).await?);
@@ -337,9 +354,12 @@ impl StreamConnection {
             peer: peer.clone(),
             ipc_sender,
             general_channel,
-            video_size: Mutex::new((0, 0)),
+            stream_info: Mutex::new(None),
             input,
+            stats_channel: Default::default(),
             stream: Default::default(),
+            timeout_terminate_request: Default::default(),
+            is_terminating: AtomicBool::new(false),
             terminate: Notify::new(),
         });
 
@@ -413,24 +433,24 @@ impl StreamConnection {
     }
 
     // -- Handle Connection State
-    async fn on_ice_connection_state_change(self: &Arc<Self>, state: RTCIceConnectionState) {
+    async fn on_ice_connection_state_change(self: &Arc<Self>, _state: RTCIceConnectionState) {}
+    async fn on_peer_connection_state_change(self: Arc<Self>, state: RTCPeerConnectionState) {
         #[allow(clippy::collapsible_if)]
-        if matches!(state, RTCIceConnectionState::Connected) {
+        if matches!(state, RTCPeerConnectionState::Connected) {
             if let Err(err) = self.start_stream().await {
                 warn!("[Stream]: failed to start stream: {err:?}");
 
                 self.stop().await;
             }
-        }
-    }
-    async fn on_peer_connection_state_change(&self, state: RTCPeerConnectionState) {
-        if matches!(
-            state,
-            RTCPeerConnectionState::Failed
-                | RTCPeerConnectionState::Disconnected
-                | RTCPeerConnectionState::Closed
-        ) {
+        } else if matches!(state, RTCPeerConnectionState::Closed) {
             self.stop().await;
+        } else if matches!(
+            state,
+            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Disconnected
+        ) {
+            self.request_terminate().await;
+        } else {
+            self.clear_terminate_request().await;
         }
     }
 
@@ -464,14 +484,12 @@ impl StreamConnection {
 
         self.ipc_sender
             .clone()
-            .send(StreamerIpcMessage::WebSocket(
-                StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                    RtcSessionDescription {
-                        ty: from_webrtc_sdp(local_description.sdp_type),
-                        sdp: local_description.sdp,
-                    },
-                )),
-            ))
+            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::WebRtc(
+                StreamSignalingMessage::Description(RtcSessionDescription {
+                    ty: from_webrtc_sdp(local_description.sdp_type),
+                    sdp: local_description.sdp,
+                }),
+            )))
             .await;
 
         true
@@ -501,14 +519,12 @@ impl StreamConnection {
 
         self.ipc_sender
             .clone()
-            .send(StreamerIpcMessage::WebSocket(
-                StreamServerMessage::Signaling(StreamSignalingMessage::Description(
-                    RtcSessionDescription {
-                        ty: from_webrtc_sdp(local_description.sdp_type),
-                        sdp: local_description.sdp,
-                    },
-                )),
-            ))
+            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::WebRtc(
+                StreamSignalingMessage::Description(RtcSessionDescription {
+                    ty: from_webrtc_sdp(local_description.sdp_type),
+                    sdp: local_description.sdp,
+                }),
+            )))
             .await;
 
         true
@@ -527,7 +543,7 @@ impl StreamConnection {
     }
     async fn on_ws_message(&self, message: StreamClientMessage) {
         match message {
-            StreamClientMessage::Signaling(StreamSignalingMessage::Description(description)) => {
+            StreamClientMessage::WebRtc(StreamSignalingMessage::Description(description)) => {
                 debug!("[Signaling] Received Remote Description: {:?}", description);
 
                 let description = match &description.ty {
@@ -559,9 +575,7 @@ impl StreamConnection {
                     self.send_answer().await;
                 }
             }
-            StreamClientMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
-                description,
-            )) => {
+            StreamClientMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(description)) => {
                 debug!("[Signaling] Received Ice Candidate");
 
                 if let Err(err) = self
@@ -578,7 +592,7 @@ impl StreamConnection {
                 }
             }
             // This should already be done
-            StreamClientMessage::AuthenticateAndInit { .. } => {}
+            StreamClientMessage::Init { .. } => {}
         }
     }
 
@@ -596,14 +610,13 @@ impl StreamConnection {
             candidate_json.candidate
         );
 
-        let message = StreamServerMessage::Signaling(StreamSignalingMessage::AddIceCandidate(
-            RtcIceCandidate {
+        let message =
+            StreamServerMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(RtcIceCandidate {
                 candidate: candidate_json.candidate,
                 sdp_mid: candidate_json.sdp_mid,
                 sdp_mline_index: candidate_json.sdp_mline_index,
                 username_fragment: candidate_json.username_fragment,
-            },
-        ));
+            }));
 
         self.ipc_sender
             .clone()
@@ -613,7 +626,16 @@ impl StreamConnection {
 
     // -- Data Channels
     async fn on_data_channel(self: &Arc<Self>, channel: Arc<RTCDataChannel>) {
-        self.input.on_data_channel(self, channel).await;
+        debug!("adding data channel: \"{}\"", channel.label());
+
+        if self.input.on_data_channel(self, &channel).await {
+            return;
+        }
+
+        if channel.label() == "stats" {
+            let mut stats = self.stats_channel.write().await;
+            *stats = Some(channel);
+        }
     }
 
     // Start Moonlight Stream
@@ -632,10 +654,10 @@ impl StreamConnection {
 
         let gamepads = self.input.active_gamepads.read().await;
 
-        let video_decoder = TrackSampleVideoDecoder::new(
+        let video_decoder = spawn_video_thread(
             self.clone(),
             self.settings.video_supported_formats,
-            self.settings.video_sample_queue_size as usize,
+            self.settings.video_frame_queue_size as usize,
         );
 
         let audio_decoder = OpusTrackSampleAudioDecoder::new(
@@ -701,13 +723,12 @@ impl StreamConnection {
             touch: host_features.contains(HostFeatures::PEN_TOUCH_EVENTS),
         };
 
-        let (width, height) = {
-            let video_size = self.video_size.lock().await;
-            if *video_size == (0, 0) {
-                (self.settings.width, self.settings.height)
-            } else {
-                *video_size
-            }
+        let video_setup = {
+            let video_setup = self.stream_info.lock().await;
+            video_setup.unwrap_or_else(|| {
+                warn!("failed to query video setup information. Giving the browser guessed information");
+                VideoSetup { format: VideoFormat::H264, width: self.settings.width, height: self.settings.height, redraw_rate: self.settings.fps, flags: 0 }
+            })
         };
 
         spawn(async move {
@@ -715,8 +736,10 @@ impl StreamConnection {
                 .send(StreamerIpcMessage::WebSocket(
                     StreamServerMessage::ConnectionComplete {
                         capabilities,
-                        width,
-                        height,
+                        format: video_setup.format as u32,
+                        width: video_setup.width,
+                        height: video_setup.height,
+                        fps: video_setup.redraw_rate,
                     },
                 ))
                 .await;
@@ -730,25 +753,75 @@ impl StreamConnection {
         Ok(())
     }
 
-    async fn stop(&self) {
-        debug!("[Stream]: Stopping...");
+    async fn send_stats(&self, stats: StreamerStatsUpdate) {
+        let stats_channel = self.stats_channel.read().await;
+        let Some(stats_channel) = stats_channel.as_ref() else {
+            return;
+        };
 
-        let mut ipc_sender = self.ipc_sender.clone();
-        spawn(async move {
-            ipc_sender
-                .send(StreamerIpcMessage::WebSocket(
-                    StreamServerMessage::PeerDisconnect,
-                ))
-                .await;
-        });
+        let json = match serde_json::to_string(&stats) {
+            Ok(value) => value,
+            Err(err) => {
+                warn!("failed to serialize stats: {err:?}");
+                return;
+            }
+        };
 
-        let general_channel = self.general_channel.clone();
+        let mut raw_buffer = vec![0u8; json.len() + 2];
+
+        let mut buffer = ByteBuffer::new(&mut raw_buffer);
+        buffer.put_u16(json.len() as u16);
+        buffer.put_utf8_raw(&json);
+
+        let raw_buffer = Bytes::from(raw_buffer);
+
+        if let Err(err) = stats_channel.send(&raw_buffer).await {
+            if let webrtc::Error::ErrClosedPipe = err {
+                let mut stats_channel = self.stats_channel.write().await;
+                stats_channel.take();
+            }
+            warn!("failed to send stats: {err:?}");
+        }
+    }
+
+    async fn request_terminate(self: &Arc<Self>) {
+        let this = self.clone();
+
+        let mut terminate_request = self.timeout_terminate_request.lock().await;
+        *terminate_request = Some(Instant::now());
+        drop(terminate_request);
+
         spawn(async move {
-            if let Some(message) = serialize_json(&StreamServerGeneralMessage::ConnectionTerminated)
+            sleep(TIMEOUT_DURATION + Duration::from_millis(200)).await;
+
+            let now = Instant::now();
+
+            let terminate_request = this.timeout_terminate_request.lock().await;
+            if let Some(terminate_request) = *terminate_request
+                && (now - terminate_request) > TIMEOUT_DURATION
             {
-                let _ = general_channel.send_text(message).await;
+                info!("Stopping because of timeout");
+                this.stop().await;
             }
         });
+    }
+    async fn clear_terminate_request(&self) {
+        let mut request = self.timeout_terminate_request.lock().await;
+
+        *request = None;
+    }
+
+    async fn stop(&self) {
+        if self
+            .is_terminating
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            debug!("[Stream]: stream is already terminating, won't stop twice");
+            return;
+        }
+
+        debug!("[Stream]: Stopping...");
 
         let stream = {
             let mut stream = self.stream.write().await;
@@ -761,6 +834,10 @@ impl StreamConnection {
         {
             warn!("[Stream]: failed to stop stream: {err}");
         };
+
+        if let Err(err) = self.peer.close().await {
+            warn!("failed to close peer: {err}");
+        }
 
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;

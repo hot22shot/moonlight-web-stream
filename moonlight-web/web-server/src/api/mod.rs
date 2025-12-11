@@ -1,461 +1,326 @@
 use actix_web::{
-    Either, Error, HttpResponse, Responder, delete,
+    HttpResponse, delete,
     dev::HttpServiceFactory,
-    get, middleware, post, put, services,
+    get,
+    middleware::from_fn,
+    patch, post, services,
     web::{self, Bytes, Data, Json, Query},
 };
-use futures::future::join_all;
-use log::{info, warn};
-use moonlight_common::{
-    PairPin, PairStatus,
-    high::{HostError, broadcast_magic_packet},
-    network::{
-        ApiError,
-        reqwest::{ReqwestError, ReqwestMoonlightHost},
-    },
-    pair::generate_new_client,
-};
-use std::io::Write as _;
-use tokio::sync::Mutex;
+use futures::future::try_join_all;
+use log::warn;
+use moonlight_common::PairPin;
+use tokio::spawn;
 
 use crate::{
-    Config,
-    api::auth::auth_middleware,
-    data::{HostCache, RuntimeApiData, RuntimeApiHost},
+    api::{
+        admin::{add_user, delete_user, list_users, patch_user},
+        auth::auth_middleware,
+        response_streaming::StreamedResponse,
+    },
+    app::{
+        App, AppError,
+        host::{AppId, HostId},
+        storage::StorageHostModify,
+        user::{AuthenticatedUser, Role, UserId},
+    },
 };
 use common::api_bindings::{
-    DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery,
-    GetHostResponse, GetHostsResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
-    PostWakeUpRequest, PutHostRequest, PutHostResponse, UndetailedHost,
+    self, DeleteHostQuery, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
+    GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, PatchHostRequest,
+    PostHostRequest, PostHostResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
+    PostWakeUpRequest, UndetailedHost,
 };
 
+pub mod admin;
 pub mod auth;
-mod stream;
+pub mod stream;
 
-#[get("/authenticate")]
-async fn authenticate() -> impl Responder {
-    HttpResponse::Ok()
+pub mod response_streaming;
+
+#[get("/user")]
+async fn get_user(
+    app: Data<App>,
+    mut user: AuthenticatedUser,
+    Query(query): Query<GetUserQuery>,
+) -> Result<Json<DetailedUser>, AppError> {
+    match (query.name, query.user_id) {
+        (None, None) => {
+            let detailed_user = user.detailed_user().await?;
+
+            Ok(Json(detailed_user))
+        }
+        (None, Some(user_id)) => {
+            let target_user_id = UserId(user_id);
+
+            let mut target_user = app.user_by_id(target_user_id).await?;
+
+            let detailed_user = target_user.detailed_user(&mut user).await?;
+
+            Ok(Json(detailed_user))
+        }
+        (Some(name), None) => {
+            let mut target_user = app.user_by_name(&name).await?;
+
+            let detailed_user = target_user.detailed_user(&mut user).await?;
+
+            Ok(Json(detailed_user))
+        }
+        (Some(_), Some(_)) => Err(AppError::BadRequest),
+    }
 }
 
 #[get("/hosts")]
-async fn list_hosts(data: Data<RuntimeApiData>) -> Either<Json<GetHostsResponse>, HttpResponse> {
-    let hosts = data.hosts.read().await;
+async fn list_hosts(
+    mut user: AuthenticatedUser,
+) -> Result<StreamedResponse<GetHostsResponse, UndetailedHost>, AppError> {
+    let (mut stream_response, stream_sender) =
+        StreamedResponse::new(GetHostsResponse { hosts: Vec::new() });
 
-    let hosts = join_all(hosts.iter().map(|(host_id, host)| async move {
-        let mut host = host.lock().await;
-        let mut name = host.cache.name.clone();
+    let hosts = user.hosts().await?;
 
-        into_undetailed_host(
-            host_id,
-            || name.take().unwrap_or_else(|| String::from("offline")),
-            &mut host.moonlight,
-        )
-        .await
+    // Try join all because storage should always work, the actual host info will be send using response streaming
+    let undetailed_hosts = try_join_all(hosts.into_iter().map(move |mut host| {
+        let mut user = user.clone();
+        let stream_sender = stream_sender.clone();
+
+        async move {
+            // First query db
+            let undetailed_cache = host.undetailed_host_cached(&mut user).await;
+
+            // Then send http request now
+            let mut user = user.clone();
+
+            spawn(async move {
+                let undetailed = match host.undetailed_host(&mut user).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        warn!("Failed to get undetailed host of {host:?}: {err:?}");
+                        return;
+                    }
+                };
+
+                if let Err(err) = stream_sender.send(undetailed).await {
+                    warn!(
+                        "Failed to send back undetailed host data using response streaming: {err:?}"
+                    );
+                }
+            });
+
+            undetailed_cache
+        }
     }))
-    .await;
+    .await?;
 
-    Either::Left(Json(GetHostsResponse { hosts }))
+    stream_response.set_initial(GetHostsResponse {
+        hosts: undetailed_hosts,
+    });
+
+    Ok(stream_response)
 }
 
 #[get("/host")]
 async fn get_host(
-    data: Data<RuntimeApiData>,
+    mut user: AuthenticatedUser,
     Query(query): Query<GetHostQuery>,
-) -> Either<Json<GetHostResponse>, HttpResponse> {
-    let hosts = data.hosts.read().await;
+) -> Result<Json<GetHostResponse>, AppError> {
+    let host_id = HostId(query.host_id);
 
-    let host_id = query.host_id;
-    let Some(host) = hosts.get(host_id as usize) else {
-        return Either::Right(HttpResponse::NotFound().finish());
-    };
+    let mut host = user.host(host_id).await?;
 
-    let mut host = host.lock().await;
+    let detailed = host.detailed_host(&mut user).await?;
 
-    if query.force_refresh {
-        host.moonlight.clear_cache();
-    }
+    Ok(Json(GetHostResponse { host: detailed }))
+}
 
-    host.try_recache(&data).await;
+#[post("/host")]
+async fn post_host(
+    app: Data<App>,
+    mut user: AuthenticatedUser,
+    Json(request): Json<PostHostRequest>,
+) -> Result<Json<PostHostResponse>, AppError> {
+    let mut host = user
+        .host_add(
+            request.address,
+            request
+                .http_port
+                .unwrap_or(app.config().moonlight.default_http_port),
+        )
+        .await?;
 
-    let Ok(detailed_host) = into_detailed_host(host_id as usize, &mut host.moonlight).await else {
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
-
-    Either::Left(Json(GetHostResponse {
-        host: detailed_host,
+    Ok(Json(PostHostResponse {
+        host: host.detailed_host(&mut user).await?,
     }))
 }
 
-#[put("/host")]
-async fn put_host(
-    data: Data<RuntimeApiData>,
-    config: Data<Config>,
-    Json(query): Json<PutHostRequest>,
-) -> Either<Json<PutHostResponse>, HttpResponse> {
-    // Create and Try to connect to host
-    let mut host = match ReqwestMoonlightHost::new(
-        query.address,
-        query
-            .http_port
-            .unwrap_or(config.moonlight_default_http_port),
-        None,
-    ) {
-        Ok(value) => value,
-        Err(err) => {
-            warn!("[Api] failed to create new moonlight host: {err:?}");
-            return Either::Right(HttpResponse::InternalServerError().finish());
+#[patch("/host")]
+async fn patch_host(
+    mut user: AuthenticatedUser,
+    Json(request): Json<PatchHostRequest>,
+) -> Result<HttpResponse, AppError> {
+    let host_id = HostId(request.host_id);
+
+    let mut host = user.host(host_id).await?;
+
+    let mut modify = StorageHostModify::default();
+
+    let role = user.role().await?;
+    if request.change_owner {
+        match role {
+            Role::Admin => {
+                modify.owner = Some(request.owner.map(UserId));
+            }
+            Role::User => {
+                return Err(AppError::Forbidden);
+            }
         }
-    };
+    }
 
-    let mac = match host.mac().await {
-        Ok(value) => value,
-        Err(HostError::Api(ApiError::RequestClient(ReqwestError::Reqwest(err))))
-            if err.is_timeout() =>
-        {
-            return Either::Right(HttpResponse::NotFound().finish());
-        }
-        Err(HostError::Api(ApiError::RequestClient(ReqwestError::Reqwest(err))))
-            if err.is_connect() =>
-        {
-            return Either::Right(HttpResponse::NotFound().finish());
-        }
-        Err(_) => return Either::Right(HttpResponse::BadRequest().finish()),
-    };
-    let Ok(name) = host.host_name().await else {
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
+    host.modify(&mut user, modify).await?;
 
-    // Write host
-    let mut hosts = data.hosts.write().await;
-
-    let host_id = hosts.vacant_key();
-    hosts.insert(Mutex::new(RuntimeApiHost {
-        cache: HostCache {
-            name: Some(name.to_string()),
-            mac,
-        },
-        moonlight: host,
-        app_images_cache: Default::default(),
-    }));
-
-    drop(hosts);
-
-    // Read host and respond
-    let hosts = data.hosts.read().await;
-    let Some(host) = hosts.get(host_id) else {
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
-    let mut host = host.lock().await;
-
-    let _ = data.file_writer.try_send(());
-
-    let Ok(detailed_host) = into_detailed_host(host_id, &mut host.moonlight).await else {
-        return Either::Right(HttpResponse::InternalServerError().finish());
-    };
-
-    Either::Left(Json(PutHostResponse {
-        host: detailed_host,
-    }))
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[delete("/host")]
 async fn delete_host(
-    data: Data<RuntimeApiData>,
+    mut user: AuthenticatedUser,
     Query(query): Query<DeleteHostQuery>,
-) -> HttpResponse {
-    let mut hosts = data.hosts.write().await;
+) -> Result<HttpResponse, AppError> {
+    let host_id = HostId(query.host_id);
 
-    let host = hosts.try_remove(query.host_id as usize);
+    user.host_delete(host_id).await?;
 
-    drop(hosts);
-
-    if host.is_none() {
-        return HttpResponse::NotFound().finish();
-    } else {
-        let _ = data.file_writer.try_send(());
-    }
-
-    HttpResponse::Ok().finish()
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[post("/pair")]
 async fn pair_host(
-    data: Data<RuntimeApiData>,
-    config: Data<Config>,
+    mut user: AuthenticatedUser,
     Json(request): Json<PostPairRequest>,
-) -> HttpResponse {
-    let hosts = data.hosts.read().await;
+) -> Result<StreamedResponse<PostPairResponse1, PostPairResponse2>, AppError> {
+    let host_id = HostId(request.host_id);
 
-    let host_id = request.host_id;
-    let Some(host) = hosts.get(host_id as usize) else {
-        return HttpResponse::NotFound().finish();
-    };
+    let mut host = user.host(host_id).await?;
 
-    let host = host.lock().await;
+    let pin = PairPin::generate()?;
 
-    if matches!(host.moonlight.is_paired(), PairStatus::Paired) {
-        return HttpResponse::NotModified().finish();
-    }
+    let (stream_response, stream_sender) =
+        StreamedResponse::new(PostPairResponse1::Pin(pin.to_string()));
 
-    let data = data.clone();
+    spawn(async move {
+        let result = host.pair(&mut user, pin).await;
 
-    let stream = async_stream::stream! {
-        let hosts = data.hosts.read().await;
-        let Some(host) = hosts.get(host_id as usize) else {
-            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
-                unreachable!()
-            };
-
-            let bytes = Bytes::from_owner(text);
-            yield Ok::<_, Error>(bytes);
-
-            return;
-        };
-        let mut host = host.lock().await;
-
-        let Ok(client_auth) = generate_new_client() else {
-            warn!("[Api]: failed to generate new client to host authentication data");
-
-            let Ok(text) = serde_json::to_string(&PostPairResponse1::InternalServerError) else {
-                unreachable!()
-            };
-
-            let bytes = Bytes::from_owner(text);
-            yield Ok::<_, Error>(bytes);
-
-            return;
+        let result = match result {
+            Ok(()) => host.detailed_host(&mut user).await,
+            Err(err) => Err(err),
         };
 
-        let Ok(pin) = PairPin::generate() else {
-            warn!("[Api]: failed to generate pin!");
-
-            return
-        };
-
-            let Ok(text) = serde_json::to_string(&PostPairResponse1::Pin(pin.to_string())) else {
-                unreachable!()
-            };
-
-            let bytes = Bytes::from_owner(text);
-            yield Ok::<_, Error>(bytes);
-
-        if let Err(err) = host.moonlight
-            .pair(
-                &client_auth,
-                config.pair_device_name.to_string(),
-                pin,
-            )
-            .await
-        {
-            info!("[Api]: failed to pair host {}: {:?}", host.moonlight.address(), err);
-
-            let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
-                unreachable!()
-            };
-
-            let bytes = Bytes::from_owner(text);
-            yield Ok::<_, Error>(bytes);
-
-            return;
-        };
-
-        let _ = data.file_writer.try_send(());
-
-        let detailed_host = match into_detailed_host(host_id as usize, &mut host.moonlight).await {
-            Err(err) => {
-                warn!("[Api] failed to get host info after pairing for host {host_id}: {err:?}");
-
-                let Ok(text) = serde_json::to_string(&PostPairResponse2::PairError) else {
-                    unreachable!()
-                };
-
-                let bytes = Bytes::from_owner(text);
-                yield Ok::<_, Error>(bytes);
-
-                return
+        match result {
+            Ok(detailed_host) => {
+                if let Err(err) = stream_sender
+                    .send(PostPairResponse2::Paired(detailed_host))
+                    .await
+                {
+                    warn!("Failed to send pair success: {err:?}");
+                }
             }
-            Ok(value) => value,
-        };
+            Err(err) => {
+                warn!("Failed to pair host: {err}");
+                if let Err(err) = stream_sender.send(PostPairResponse2::PairError).await {
+                    warn!("Failed to send pair failure: {err:?}");
+                }
+            }
+        }
+    });
 
-        let mut text = Vec::new();
-        let _ = writeln!(&mut text);
-        if  serde_json::to_writer(&mut text, &PostPairResponse2::Paired(detailed_host)).is_err() {
-            unreachable!()
-        };
-
-        drop(host);
-        drop(hosts);
-
-        let bytes = Bytes::from_owner(text);
-        yield Ok::<_, Error>(bytes);
-    };
-
-    HttpResponse::Ok()
-        .insert_header(("Content-Type", "application/x-ndjson"))
-        .streaming(stream)
+    Ok(stream_response)
 }
 
 #[post("/host/wake")]
 async fn wake_host(
-    data: Data<RuntimeApiData>,
+    mut user: AuthenticatedUser,
     Json(request): Json<PostWakeUpRequest>,
-) -> HttpResponse {
-    let hosts = data.hosts.read().await;
+) -> Result<HttpResponse, AppError> {
+    let host_id = HostId(request.host_id);
 
-    let host_id = request.host_id;
-    let Some(host) = hosts.get(host_id as usize) else {
-        return HttpResponse::NotFound().finish();
-    };
-    let host = host.lock().await;
+    let host = user.host(host_id).await?;
 
-    let mac = host.cache.mac;
+    host.wake(&mut user).await?;
 
-    if let Some(mac) = mac {
-        if let Err(err) = broadcast_magic_packet(mac).await {
-            warn!("failed to send magic(wake on lan) packet: {err:?}");
-            return HttpResponse::InternalServerError().finish();
-        }
-    } else {
-        return HttpResponse::InternalServerError().finish();
-    }
-
-    HttpResponse::Ok().finish()
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[get("/apps")]
 async fn get_apps(
-    data: Data<RuntimeApiData>,
+    mut user: AuthenticatedUser,
     Query(query): Query<GetAppsQuery>,
-) -> Either<Json<GetAppsResponse>, HttpResponse> {
-    let hosts = data.hosts.read().await;
+) -> Result<Json<GetAppsResponse>, AppError> {
+    let host_id = HostId(query.host_id);
 
-    let host_id = query.host_id;
-    let Some(host) = hosts.get(host_id as usize) else {
-        return Either::Right(HttpResponse::NotFound().finish());
-    };
-    let mut host = host.lock().await;
+    let mut host = user.host(host_id).await?;
 
-    if query.force_refresh {
-        host.moonlight.clear_cache();
-    }
+    let apps = host.list_apps(&mut user).await?;
 
-    let app_list = match host.moonlight.app_list().await {
-        Err(err) => {
-            warn!("[Api]: failed to get app list for host {host_id}: {err:?}");
-
-            return Either::Right(HttpResponse::InternalServerError().finish());
-        }
-        Ok(value) => value,
-    };
-
-    Either::Left(Json(GetAppsResponse {
-        apps: app_list.iter().map(|x| x.to_owned().into()).collect(),
+    Ok(Json(GetAppsResponse {
+        apps: apps
+            .into_iter()
+            .map(|app| api_bindings::App {
+                app_id: app.id.0,
+                title: app.title,
+                is_hdr_supported: app.is_hdr_supported,
+            })
+            .collect(),
     }))
 }
 
 #[get("/app/image")]
 async fn get_app_image(
-    data: Data<RuntimeApiData>,
+    mut user: AuthenticatedUser,
     Query(query): Query<GetAppImageQuery>,
-) -> Either<Bytes, HttpResponse> {
-    let hosts = data.hosts.read().await;
+) -> Result<Bytes, AppError> {
+    let host_id = HostId(query.host_id);
+    let app_id = AppId(query.app_id);
 
-    let host_id = query.host_id;
-    let Some(host) = hosts.get(host_id as usize) else {
-        return Either::Right(HttpResponse::NotFound().finish());
-    };
-    let mut host = host.lock().await;
+    let mut host = user.host(host_id).await?;
 
-    if query.force_refresh {
-        host.app_images_cache.clear();
-        host.moonlight.clear_cache();
-    }
+    let image = host
+        .app_image(&mut user, app_id, query.force_refresh)
+        .await?;
 
-    let app_id = query.app_id;
-    if let Some(cache) = host.app_images_cache.get(&app_id) {
-        return Either::Left(cache.clone());
-    }
-
-    let image = host.moonlight.request_app_image(app_id).await;
-    match image {
-        Err(err) => {
-            warn!("[Api]: failed to get host {host_id} app image {app_id}: {err:?}");
-
-            Either::Right(HttpResponse::InternalServerError().finish())
-        }
-        Ok(image) => {
-            host.app_images_cache.insert(app_id, image.clone());
-
-            Either::Left(image)
-        }
-    }
+    Ok(image)
 }
 
-pub fn api_service(data: Data<RuntimeApiData>) -> impl HttpServiceFactory {
+pub fn api_service() -> impl HttpServiceFactory {
     web::scope("/api")
-        .wrap(middleware::from_fn(auth_middleware))
-        .app_data(data)
+        .wrap(from_fn(auth_middleware))
         .service(services![
-            authenticate,
-            stream::start_host,
-            stream::cancel_host,
+            // -- Auth
+            auth::login,
+            auth::logout,
+            auth::authenticate
+        ])
+        .service(services![
+            // -- Host
+            get_user,
             list_hosts,
             get_host,
-            put_host,
+            post_host,
+            patch_host,
             wake_host,
             delete_host,
             pair_host,
             get_apps,
             get_app_image,
         ])
-}
-
-async fn into_undetailed_host(
-    id: usize,
-    name: impl FnOnce() -> String,
-    host: &mut ReqwestMoonlightHost,
-) -> UndetailedHost {
-    let name = host
-        .host_name()
-        .await
-        .map(str::to_string)
-        .unwrap_or_else(|_| name());
-
-    let paired = host.is_paired();
-
-    let server_state = host
-        .state()
-        .await
-        .map(|(_, state)| Option::Some(state))
-        .unwrap_or(None);
-
-    UndetailedHost {
-        host_id: id as u32,
-        name,
-        paired: paired.into(),
-        server_state: server_state.map(Into::into),
-    }
-}
-async fn into_detailed_host(
-    id: usize,
-    host: &mut ReqwestMoonlightHost,
-) -> Result<DetailedHost, HostError<ReqwestError>> {
-    Ok(DetailedHost {
-        host_id: id as u32,
-        name: host.host_name().await?.to_string(),
-        paired: host.is_paired().into(),
-        server_state: host.state().await?.1.into(),
-        address: host.address().to_string(),
-        http_port: host.http_port(),
-        https_port: host.https_port().await?,
-        external_port: host.external_port().await?,
-        version: host.version().await?.to_string(),
-        gfe_version: host.gfe_version().await?.to_string(),
-        unique_id: host.unique_id().await?.to_string(),
-        mac: host.mac().await?.map(|mac| mac.to_string()),
-        local_ip: host.local_ip().await?.to_string(),
-        current_game: host.current_game().await?,
-        max_luma_pixels_hevc: host.max_luma_pixels_hevc().await?,
-        server_codec_mode_support: host.server_codec_mode_support_raw().await?,
-    })
+        .service(services![
+            // -- Stream
+            stream::start_host,
+            stream::cancel_host,
+        ])
+        .service(services![
+            // -- Admin
+            add_user,
+            patch_user,
+            delete_user,
+            list_users
+        ])
 }

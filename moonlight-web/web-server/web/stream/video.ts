@@ -147,3 +147,28 @@ export function createSupportedVideoFormatsBits(support: VideoCodecSupport): num
 
     return mask
 }
+export function getSelectedVideoFormat(videoFormat: number): keyof typeof StreamSupportedVideoFormats | null {
+    if (videoFormat == StreamSupportedVideoFormats.H264) {
+        return "H264"
+    } else if (videoFormat == StreamSupportedVideoFormats.H264_HIGH8_444) {
+        return "H264_HIGH8_444"
+    } else if (videoFormat == StreamSupportedVideoFormats.H265) {
+        return "H265"
+    } else if (videoFormat == StreamSupportedVideoFormats.H265_MAIN10) {
+        return "H265_MAIN10"
+    } else if (videoFormat == StreamSupportedVideoFormats.H265_REXT8_444) {
+        return "H265_REXT8_444"
+    } else if (videoFormat == StreamSupportedVideoFormats.H265_REXT10_444) {
+        return "H265_REXT10_444"
+    } else if (videoFormat == StreamSupportedVideoFormats.AV1_MAIN8) {
+        return "AV1_MAIN8"
+    } else if (videoFormat == StreamSupportedVideoFormats.AV1_MAIN10) {
+        return "AV1_MAIN10"
+    } else if (videoFormat == StreamSupportedVideoFormats.AV1_HIGH8_444) {
+        return "AV1_HIGH8_444"
+    } else if (videoFormat == StreamSupportedVideoFormats.AV1_HIGH10_444) {
+        return "AV1_HIGH10_444"
+    } else {
+        return null
+    }
+}

@@ -12,7 +12,7 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
     constructor(api: Api) {
         super({
             listClasses: ["host-list"],
-            elementDivClasses: ["animated-list-element", "host-element"]
+            elementLiClasses: ["animated-list-element", "host-element"]
         })
 
         this.api = api
@@ -21,11 +21,19 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
     async forceFetch() {
         const hosts = await apiGetHosts(this.api)
 
-        this.updateCache(hosts)
+        this.updateCache(hosts.response.hosts)
+
+        let update
+        while (update = await hosts.next()) {
+            const host = this.getHost(update.host_id)
+            if (host) {
+                this.updateComponentData(host, update)
+            }
+        }
     }
 
     protected updateComponentData(component: Host, data: DetailedHost | UndetailedHost): void {
-        component.updateCache(data)
+        component.updateCache(data, null)
     }
     protected getComponentDataId(component: Host): number {
         return component.getHostId()

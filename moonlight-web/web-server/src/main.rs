@@ -1,92 +1,153 @@
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-use std::{io::ErrorKind, path::Path};
-use tokio::{
-    fs,
-    io::{AsyncBufReadExt, BufReader, stdin},
-};
+use std::{io::ErrorKind, path::PathBuf, str::FromStr};
+use tokio::fs::{self, File};
 
-use actix_web::{App, HttpServer, web::Data};
-use log::{LevelFilter, info};
-use serde::{Serialize, de::DeserializeOwned};
-use simplelog::{ColorChoice, TermLogger, TerminalMode};
+use actix_web::{
+    App as ActixApp, HttpServer,
+    middleware::{self, Logger},
+    web::{Data, scope},
+};
+use log::{Level, error, info};
+use simplelog::{ColorChoice, CombinedLogger, SharedLogger, TermLogger, TerminalMode, WriteLogger};
 
 use crate::{
-    api::{api_service, auth::ApiCredentials},
-    data::{ApiData, RuntimeApiData},
+    api::api_service,
+    app::App,
+    cli::{Cli, Command},
+    human_json::preprocess_human_json,
     web::{web_config_js_service, web_service},
 };
 
 mod api;
-mod data;
+mod app;
 mod web;
+
+mod cli;
+mod human_json;
 
 #[actix_web::main]
 async fn main() {
-    #[cfg(debug_assertions)]
-    let log_level = LevelFilter::Debug;
-    #[cfg(not(debug_assertions))]
-    let log_level = LevelFilter::Info;
+    let cli = Cli::load();
 
-    TermLogger::init(
-        log_level,
-        simplelog::Config::default(),
+    // Load Config
+    let config_path = PathBuf::from_str(&cli.config_path).expect("invalid config file path");
+    let config = match fs::read_to_string(&config_path).await {
+        Ok(mut value) => {
+            value = preprocess_human_json(value);
+
+            let mut config = serde_json::from_str(&value).expect("invalid file");
+            cli.options.apply(&mut config);
+            config
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            let mut new_config = Config::default();
+            cli.options.apply(&mut new_config);
+
+            let value_str =
+                serde_json::to_string_pretty(&new_config).expect("failed to serialize file");
+
+            if let Some(parent) = config_path.parent() {
+                fs::create_dir_all(parent)
+                    .await
+                    .expect("failed to create directories to file");
+            }
+            fs::write(config_path, value_str)
+                .await
+                .expect("failed to write default file");
+
+            new_config
+        }
+        Err(err) => panic!("failed to read file: {err}"),
+    };
+
+    match cli.command {
+        Some(Command::PrintConfig) => {
+            let json =
+                serde_json::to_string_pretty(&config).expect("failed to serialize config to json");
+            println!("{json}");
+            return;
+        }
+        None | Some(Command::Run) => {
+            // Fallthrough
+        }
+    }
+
+    // TODO: log config: anonymize ips when enabled in file
+    // TODO: https://www.reddit.com/r/csharp/comments/166xgcl/comment/jynybpe/
+
+    let mut log_config = simplelog::ConfigBuilder::default();
+
+    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![TermLogger::new(
+        config.log.level_filter,
+        log_config.build(),
         TerminalMode::Mixed,
         ColorChoice::Auto,
-    )
-    .expect("failed to init logger");
+    )];
 
-    if let Err(err) = main2().await {
-        info!("Error: {err:?}");
+    if let Some(file_path) = &config.log.file_path {
+        if fs::try_exists(file_path)
+            .await
+            .expect("failed to check if log file exists")
+        {
+            // TODO: should we rename?
+        }
+
+        let file = File::create(file_path)
+            .await
+            .expect("failed to open log file");
+
+        loggers.push(WriteLogger::new(
+            config.log.level_filter,
+            log_config.build(),
+            file.try_into_std()
+                .expect("failed to cast tokio file into std file"),
+        ));
     }
 
-    exit().await.expect("exit failed")
-}
+    CombinedLogger::init(loggers).expect("failed to init combined logger");
 
-async fn exit() -> Result<(), anyhow::Error> {
-    info!("Press Enter to close this window");
-
-    let mut line = String::new();
-    let mut reader = BufReader::new(stdin());
-
-    reader.read_line(&mut line).await?;
-
-    Ok(())
-}
-
-async fn main2() -> Result<(), anyhow::Error> {
-    // Load Config
-    let config = read_or_default::<Config>("./server/config.json").await;
-    if config.credentials.as_deref() == Some("default") {
-        info!("Enter your credentials in the config (server/config.json)");
-
-        return Ok(());
+    if let Err(err) = start(config).await {
+        error!("{err:?}");
     }
-    let credentials = Data::new(ApiCredentials {
-        credentials: config.credentials.clone(),
-    });
+}
 
-    let config = Data::new(config);
+async fn start(config: Config) -> Result<(), anyhow::Error> {
+    let app = App::new(config.clone()).await?;
+    let app = Data::new(app);
 
-    // Load Data
-    let data = read_or_default::<ApiData>(&config.data_path).await;
-    let data = RuntimeApiData::load(&config, data).await;
-
-    let bind_address = config.bind_address;
+    let bind_address = app.config().web_server.bind_address;
     let server = HttpServer::new({
-        let config = config.clone();
+        let url_path_prefix = config.web_server.url_path_prefix.clone();
+        let app = app.clone();
 
         move || {
-            App::new()
-                .app_data(config.clone())
-                .app_data(credentials.clone())
-                .service(api_service(data.clone()))
-                .service(web_config_js_service())
-                .service(web_service())
+            ActixApp::new().service(
+                scope(&url_path_prefix)
+                    .app_data(app.clone())
+                    .wrap(
+                        Logger::new("%r took %D ms")
+                            .log_target("http_server")
+                            .log_level(Level::Debug),
+                    )
+                    .wrap(
+                        // TODO: maybe only re cache when required?
+                        middleware::DefaultHeaders::new()
+                            .add((
+                                "Cache-Control",
+                                "no-store, no-cache, must-revalidate, private",
+                            ))
+                            .add(("Pragma", "no-cache"))
+                            .add(("Expires", "0")),
+                    )
+                    .service(api_service())
+                    .service(web_config_js_service())
+                    .service(web_service()),
+            )
         }
     });
 
-    if let Some(certificate) = config.certificate.as_ref() {
+    if let Some(certificate) = app.config().web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
@@ -104,30 +165,4 @@ async fn main2() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
-}
-
-async fn read_or_default<T>(path: impl AsRef<Path>) -> T
-where
-    T: DeserializeOwned + Serialize + Default,
-{
-    match fs::read_to_string(path.as_ref()).await {
-        Ok(value) => serde_json::from_str(&value).expect("invalid file"),
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            let value = T::default();
-
-            let value_str = serde_json::to_string_pretty(&value).expect("failed to serialize file");
-
-            if let Some(parent) = path.as_ref().parent() {
-                fs::create_dir_all(parent)
-                    .await
-                    .expect("failed to create directories to file");
-            }
-            fs::write(path.as_ref(), value_str)
-                .await
-                .expect("failed to write default file");
-
-            value
-        }
-        Err(err) => panic!("failed to read file: {err}"),
-    }
 }

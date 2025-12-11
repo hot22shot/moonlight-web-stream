@@ -581,8 +581,8 @@ mod stream {
             packet_size: u32,
             encryption_flags: EncryptionFlags,
             connection_listener: impl ConnectionListener + Send + Sync + 'static,
-            video_decoder: impl VideoDecoder + Send + Sync + 'static,
-            audio_decoder: impl AudioDecoder + Send + Sync + 'static,
+            video_decoder: impl VideoDecoder + Send + 'static,
+            audio_decoder: impl AudioDecoder + Send + 'static,
         ) -> Result<MoonlightStream, HostError<C::Error>> {
             // Change streaming options if required
 

@@ -20,7 +20,7 @@ export function getModalBackground(): HTMLElement | null {
     return modalBackground
 }
 
-export async function showModal<Output>(modal: Modal<Output>): Promise<Output | null> {
+export async function showModal<Output>(modal: Modal<Output> | null): Promise<Output | null> {
     if (modalParent == null) {
         showErrorPopup("cannot find modal parent")
         return null
@@ -30,9 +30,12 @@ export async function showModal<Output>(modal: Modal<Output>): Promise<Output | 
     }
 
     if (modalAbort != null) {
-        showErrorPopup("cannot mount 2 modals at the same time")
-
+        modalBackground?.classList.add("modal-disabled")
         modalAbort.abort()
+        modalAbort = null
+    }
+
+    if (!modal) {
         return null
     }
 

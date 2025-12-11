@@ -1,9 +1,9 @@
 use actix_files::Files;
 use actix_web::{HttpResponse, dev::HttpServiceFactory, get, services, web::Data};
-use common::{api_bindings::ConfigJs, config::Config};
+use common::api_bindings::ConfigJs;
 use log::warn;
 
-use crate::api::auth::ApiCredentials;
+use crate::app::App;
 
 pub fn web_service() -> impl HttpServiceFactory {
     #[cfg(debug_assertions)]
@@ -19,10 +19,9 @@ pub fn web_config_js_service() -> impl HttpServiceFactory {
     services![config_js]
 }
 #[get("/config.js")]
-async fn config_js(credentials: Data<ApiCredentials>, config: Data<Config>) -> HttpResponse {
+async fn config_js(app: Data<App>) -> HttpResponse {
     let config_json = match serde_json::to_string(&ConfigJs {
-        enable_credential_authentication: credentials.enable_credential_authentication(),
-        path_prefix: config.web_path_prefix.clone(),
+        path_prefix: app.config().web_server.url_path_prefix.clone(),
     }) {
         Ok(value) => value,
         Err(err) => {

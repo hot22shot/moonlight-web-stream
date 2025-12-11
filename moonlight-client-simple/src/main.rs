@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use moonlight_common::{
     PairPin, PairStatus,
-    network::reqwest::ReqwestMoonlightHost,
+    network::backend::reqwest::ReqwestMoonlightHost,
     pair::{ClientAuth, generate_new_client},
     stream::{
         MoonlightInstance,
@@ -11,6 +11,7 @@ use moonlight_common::{
     },
 };
 
+use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
 use tokio::{
     fs::{self, File, read_to_string, try_exists, write},
     io::AsyncWriteExt,
@@ -24,6 +25,14 @@ mod gstreamer;
 
 #[tokio::main]
 async fn main() {
+    TermLogger::init(
+        LevelFilter::Debug,
+        simplelog::Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )
+    .expect("failed to init logger");
+
     // Configuration
     let host_ip = "127.0.0.1";
     let host_http_port = 47989;
@@ -51,14 +60,19 @@ async fn main() {
         let crt_contents = read_to_string(crt_file).await.unwrap();
         let server_crt_contents = read_to_string(server_crt_file).await.unwrap();
 
-        let auth = ClientAuth {
-            private_key: pem::parse(key_contents).unwrap(),
-            certificate: pem::parse(crt_contents).unwrap(),
-        };
+        let client_private_key = pem::parse(key_contents).unwrap();
+        let client_certificate = pem::parse(crt_contents).unwrap();
         let server_certificate = pem::parse(server_crt_contents).unwrap();
 
         // Get the current pair state
-        host.set_pairing_info(&auth, &server_certificate).unwrap();
+        host.set_pairing_info(
+            &ClientAuth {
+                private_key: client_private_key,
+                certificate: client_certificate,
+            },
+            &server_certificate,
+        )
+        .unwrap();
 
         assert_eq!(host.verify_paired().await.unwrap(), PairStatus::Paired);
     } else {
@@ -75,13 +89,23 @@ async fn main() {
             .await
             .unwrap();
 
+        let Some(client_certificate) = host.client_certificate() else {
+            panic!("failed to get client certificate on paired host");
+        };
+        let Some(client_private_key) = host.client_private_key() else {
+            panic!("failed to get client private keyon paired host");
+        };
         let Some(server_certificate) = host.server_certificate() else {
             panic!("failed to get server certificate on paired host");
         };
 
         // Save the pair information
-        write(key_file, auth.private_key.to_string()).await.unwrap();
-        write(crt_file, auth.certificate.to_string()).await.unwrap();
+        write(key_file, client_private_key.to_string())
+            .await
+            .unwrap();
+        write(crt_file, client_certificate.to_string())
+            .await
+            .unwrap();
         write(server_crt_file, server_certificate.to_string())
             .await
             .unwrap();

@@ -8,7 +8,7 @@ export type StreamSettings = {
     sidebarEdge: SidebarEdge,
     bitrate: number
     packetSize: number
-    videoSampleQueueSize: number
+    videoFrameQueueSize: number
     videoSize: "720p" | "1080p" | "1440p" | "4k" | "native" | "custom"
     videoSizeCustom: {
         width: number
@@ -28,10 +28,10 @@ export function defaultStreamSettings(): StreamSettings {
     return {
         sidebarEdge: "left",
         bitrate: 10000,
-        packetSize: 256,
+        packetSize: 2048,
         fps: 60,
-        videoSampleQueueSize: 6,
-        videoSize: "custom", // Cannot change dropdownlist in Tesla browser
+        videoFrameQueueSize: 3,
+        videoSize: "custom",
         videoSizeCustom: {
             width: 1920,
             height: 1080,
@@ -43,7 +43,8 @@ export function defaultStreamSettings(): StreamSettings {
         mouseScrollMode: "highres",
         controllerConfig: {
             invertAB: false,
-            invertXY: false
+            invertXY: false,
+            sendIntervalOverride: null,
         },
         toggleFullscreenWithKeybind: false
     }
@@ -102,6 +103,7 @@ export class StreamSettingsComponent implements Component {
     private controllerHeader: HTMLHeadingElement = document.createElement("h2")
     private controllerInvertAB: InputComponent
     private controllerInvertXY: InputComponent
+    private controllerSendIntervalOverride: InputComponent
 
     private otherHeader: HTMLHeadingElement = document.createElement("h2")
     private toggleFullscreenWithKeybind: InputComponent
@@ -137,6 +139,11 @@ export class StreamSettingsComponent implements Component {
             defaultValue: defaultSettings.bitrate.toString(),
             value: settings?.bitrate?.toString(),
             step: "100",
+            numberSlider: {
+                // TODO: values?
+                range_min: 1000,
+                range_max: 10000,
+            }
         })
         this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
         this.bitrate.mount(this.divElement)
@@ -192,9 +199,9 @@ export class StreamSettingsComponent implements Component {
         this.videoSizeHeight.mount(this.divElement)
 
         // Video Sample Queue Size
-        this.videoSampleQueueSize = new InputComponent("videoSampleQueueSize", "number", "Video Sample Queue Size", {
-            defaultValue: defaultSettings.videoSampleQueueSize.toString(),
-            value: settings?.videoSampleQueueSize?.toString()
+        this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", "Video Frame Queue Size", {
+            defaultValue: defaultSettings.videoFrameQueueSize.toString(),
+            value: settings?.videoFrameQueueSize?.toString()
         })
         this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSampleQueueSize.mount(this.divElement)
@@ -270,6 +277,20 @@ export class StreamSettingsComponent implements Component {
         this.controllerInvertXY.addChangeListener(this.onSettingsChange.bind(this))
         this.controllerInvertXY.mount(this.divElement)
 
+        // Controller Send Interval
+        this.controllerSendIntervalOverride = new InputComponent("controllerSendIntervalOverride", "number", "Override Controller State Send Interval", {
+            hasEnableCheckbox: true,
+            defaultValue: "20",
+            value: settings?.controllerConfig.sendIntervalOverride?.toString(),
+            numberSlider: {
+                range_min: 10,
+                range_max: 120
+            }
+        })
+        this.controllerSendIntervalOverride.setEnabled(settings?.controllerConfig.sendIntervalOverride != null)
+        this.controllerSendIntervalOverride.addChangeListener(this.onSettingsChange.bind(this))
+        this.controllerSendIntervalOverride.mount(this.divElement)
+
         if (!window.isSecureContext) {
             this.controllerInvertAB.setEnabled(false)
             this.controllerInvertXY.setEnabled(false)
@@ -319,7 +340,7 @@ export class StreamSettingsComponent implements Component {
             width: parseInt(this.videoSizeWidth.getValue()),
             height: parseInt(this.videoSizeHeight.getValue())
         }
-        settings.videoSampleQueueSize = parseInt(this.videoSampleQueueSize.getValue())
+        settings.videoFrameQueueSize = parseInt(this.videoSampleQueueSize.getValue())
         settings.dontForceH264 = this.forceH264.isChecked()
         settings.canvasRenderer = this.canvasRenderer.isChecked()
 
@@ -330,6 +351,11 @@ export class StreamSettingsComponent implements Component {
 
         settings.controllerConfig.invertAB = this.controllerInvertAB.isChecked()
         settings.controllerConfig.invertXY = this.controllerInvertXY.isChecked()
+        if (this.controllerSendIntervalOverride.isEnabled()) {
+            settings.controllerConfig.sendIntervalOverride = parseInt(this.controllerSendIntervalOverride.getValue())
+        } else {
+            settings.controllerConfig.sendIntervalOverride = null
+        }
 
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
 

@@ -1,19 +1,27 @@
 import { Api } from "../api.js"
-import { App, ConnectionStatus, RtcIceCandidate, StreamCapabilities, StreamClientMessage, StreamServerGeneralMessage, StreamServerMessage } from "../api_bindings.js"
+import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamServerGeneralMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
+import { Component } from "../component/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
+import { AudioElementPlayer } from "./audio/audio_element.js"
+import { AudioPlayer } from "./audio/index.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
-import { createSupportedVideoFormatsBits, VideoCodecSupport } from "./video.js"
+import { Logger } from "./log.js"
+import { StreamStats } from "./stats.js"
+import { Transport } from "./transport/index.js"
+import { WebRTCTransport } from "./transport/webrtc.js"
+import { createSupportedVideoFormatsBits, getSelectedVideoFormat, VideoCodecSupport } from "./video.js"
+import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
+import { buildVideoPipeline } from "./video/pipeline.js"
 
 export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
-    { type: "error", message: string } |
+    { type: "serverMessage", message: string } |
     { type: "stageStarting" | "stageComplete", stage: string } |
     { type: "stageFailed", stage: string, errorCode: number } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "connectionStatus", status: ConnectionStatus } |
     { type: "connectionTerminated", errorCode: number } |
-    { type: "addDebugLine", line: string } |
-    { type: "videoTrack", track: MediaStreamTrack}
+    { type: "addDebugLine", line: string, additional?: "fatal" | "recover" }
 >
 export type InfoEventListener = (event: InfoEvent) => void
 
@@ -41,26 +49,37 @@ export function getStreamerSize(settings: StreamSettings, viewerScreenSize: [num
     return [width, height]
 }
 
-export class Stream {
+export class Stream implements Component {
+    private logger: Logger = new Logger()
+
     private api: Api
+
     private hostId: number
     private appId: number
 
     private settings: StreamSettings
 
+    private divElement = document.createElement("div")
     private eventTarget = new EventTarget()
 
-    private mediaStream: MediaStream = new MediaStream()
-
     private ws: WebSocket
+    private iceServers: Array<RTCIceServer> | null = null
 
-    private peer: RTCPeerConnection | null = null
+    private videoRenderer: VideoRenderer | null = null
+    private audioPlayer: AudioPlayer | null = null
+
     private input: StreamInput
+    private stats: StreamStats
 
     private streamerSize: [number, number]
 
     constructor(api: Api, hostId: number, appId: number, settings: StreamSettings, supportedVideoFormats: VideoCodecSupport, viewerScreenSize: [number, number]) {
+        this.logger.addInfoListener((info, type) => {
+            this.debugLog(info, type ?? undefined)
+        })
+
         this.api = api
+
         this.hostId = hostId
         this.appId = appId
 
@@ -69,7 +88,9 @@ export class Stream {
         this.streamerSize = getStreamerSize(settings, viewerScreenSize)
 
         // Configure web socket
-        this.ws = new WebSocket(`${api.host_url}/host/stream`)
+        const wsApiHost = api.host_url.replace(/^http(s)?:/, "ws$1:")
+        // TODO: firstly try out WebTransport
+        this.ws = new WebSocket(`${wsApiHost}/host/stream`)
         this.ws.addEventListener("error", this.onError.bind(this))
         this.ws.addEventListener("open", this.onWsOpen.bind(this))
         this.ws.addEventListener("close", this.onWsClose.bind(this))
@@ -78,8 +99,7 @@ export class Stream {
         const fps = this.settings.fps
 
         this.sendWsMessage({
-            AuthenticateAndInit: {
-                credentials: this.api.credentials,
+            Init: {
                 host_id: this.hostId,
                 app_id: this.appId,
                 bitrate: this.settings.bitrate,
@@ -87,7 +107,7 @@ export class Stream {
                 fps,
                 width: this.streamerSize[0],
                 height: this.streamerSize[1],
-                video_sample_queue_size: this.settings.videoSampleQueueSize,
+                video_frame_queue_size: this.settings.videoFrameQueueSize,
                 play_audio_local: this.settings.playAudioLocal,
                 audio_sample_queue_size: this.settings.audioSampleQueueSize,
                 video_supported_formats: createSupportedVideoFormatsBits(supportedVideoFormats),
@@ -103,6 +123,9 @@ export class Stream {
             controllerConfig: this.settings.controllerConfig
         })
         this.input = new StreamInput(streamInputConfig)
+
+        // Stream Stats
+        this.stats = new StreamStats()
 
         // Dispatch info for next frame so that listeners can be registers
         setTimeout(() => {
@@ -125,52 +148,20 @@ export class Stream {
         })
     }
 
-    private debugLog(message: string) {
+    private debugLog(message: string, type?: "fatal" | "recover") {
         for (const line of message.split("\n")) {
             const event: InfoEvent = new CustomEvent("stream-info", {
-                detail: { type: "addDebugLine", line }
+                detail: { type: "addDebugLine", line, additional: type }
             })
 
             this.eventTarget.dispatchEvent(event)
         }
     }
 
-    private async createPeer(configuration: RTCConfiguration) {
-        this.debugLog(`Creating Client Peer`)
-
-        if (this.peer) {
-            this.debugLog(`Cannot create Peer because a Peer already exists`)
-            return
-        }
-
-        // Configure web rtc
-        this.peer = new RTCPeerConnection(configuration)
-        this.peer.addEventListener("error", this.onError.bind(this))
-
-        this.peer.addEventListener("negotiationneeded", this.onNegotiationNeeded.bind(this))
-        this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
-
-        this.peer.addEventListener("track", this.onTrack.bind(this))
-        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
-
-        this.peer.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this))
-        this.peer.addEventListener("iceconnectionstatechange", this.onIceConnectionStateChange.bind(this))
-
-        this.input.setPeer(this.peer)
-
-        // Maybe we already received data
-        if (this.remoteDescription) {
-            await this.handleRemoteDescription(this.remoteDescription)
-        } else {
-            await this.onNegotiationNeeded()
-        }
-        await this.tryDequeueIceCandidates()
-    }
-
     private async onMessage(message: StreamServerMessage | StreamServerGeneralMessage) {
         if (typeof message == "string") {
             const event: InfoEvent = new CustomEvent("stream-info", {
-                detail: { type: "error", message }
+                detail: { type: "serverMessage", message }
             })
 
             this.eventTarget.dispatchEvent(event)
@@ -212,8 +203,16 @@ export class Stream {
             this.eventTarget.dispatchEvent(event)
         } else if ("ConnectionComplete" in message) {
             const capabilities = message.ConnectionComplete.capabilities
+            const formatRaw = message.ConnectionComplete.format
             const width = message.ConnectionComplete.width
             const height = message.ConnectionComplete.height
+            const fps = message.ConnectionComplete.fps
+
+            const format = getSelectedVideoFormat(formatRaw)
+            if (format == null) {
+                this.debugLog(`Video Format ${formatRaw} was not found! Couldn't start stream!`, "fatal")
+                return
+            }
 
             const event: InfoEvent = new CustomEvent("stream-info", {
                 detail: { type: "connectionComplete", capabilities }
@@ -222,229 +221,164 @@ export class Stream {
             this.eventTarget.dispatchEvent(event)
 
             this.input.onStreamStart(capabilities, [width, height])
+
+            this.stats.setVideoInfo(format ?? "Unknown", width, height, fps)
+
+            await Promise.all([
+                this.setupVideo({
+                    format,
+                    fps,
+                    width,
+                    height,
+                }),
+                // TODO: more audio info?
+                this.setupAudio()
+            ])
+
+            this.debugLog(`Using video pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`)
+            this.debugLog(`Using audio pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`)
         }
         // -- WebRTC Config
-        else if ("WebRtcConfig" in message) {
-            const iceServers = message.WebRtcConfig.ice_servers
+        else if ("Setup" in message) {
+            const iceServers = message.Setup.ice_servers
 
-            this.createPeer({
-                iceServers: iceServers
-            })
+            this.iceServers = iceServers
 
             this.debugLog(`Using WebRTC Ice Servers: ${createPrettyList(
                 iceServers.map(server => server.urls).reduce((list, url) => list.concat(url), [])
             )}`)
+
+            await this.startConnection()
         }
-        // -- Signaling
-        else if ("Signaling" in message) {
-            if ("Description" in message.Signaling) {
-                const descriptionRaw = message.Signaling.Description
-                const description = {
-                    type: descriptionRaw.ty as RTCSdpType,
-                    sdp: descriptionRaw.sdp,
-                }
-
-                await this.handleRemoteDescription(description)
-            } else if ("AddIceCandidate" in message.Signaling) {
-                const candidateRaw = message.Signaling.AddIceCandidate;
-                const candidate: RTCIceCandidateInit = {
-                    candidate: candidateRaw.candidate,
-                    sdpMid: candidateRaw.sdp_mid,
-                    sdpMLineIndex: candidateRaw.sdp_mline_index,
-                    usernameFragment: candidateRaw.username_fragment
-                }
-
-                await this.handleIceCandidate(candidate)
-            }
-        }
-    }
-
-    // -- Signaling
-    private async onNegotiationNeeded() {
-        if (!this.peer) {
-            this.debugLog("OnNegotiationNeeded without a peer")
-            return
-        }
-
-        await this.peer.setLocalDescription()
-
-        await this.sendLocalDescription()
-    }
-
-
-    private remoteDescription: RTCSessionDescriptionInit | null = null
-    private async handleRemoteDescription(description: RTCSessionDescriptionInit) {
-        this.debugLog(`Received Remote Description of type ${description.type}`)
-
-        this.remoteDescription = description
-        if (!this.peer) {
-            this.debugLog(`Saving Remote Description for Peer creation`)
-            return
-        }
-
-        await this.peer.setRemoteDescription(description)
-
-        if (description.type === "offer") {
-            await this.peer.setLocalDescription()
-
-            await this.sendLocalDescription()
-        }
-
-        await this.tryDequeueIceCandidates()
-    }
-
-    private iceCandidateQueue: Array<RTCIceCandidateInit> = []
-    private async tryDequeueIceCandidates() {
-        for (const candidate of this.iceCandidateQueue.splice(0)) {
-            await this.handleIceCandidate(candidate)
-        }
-    }
-    private async handleIceCandidate(candidate: RTCIceCandidateInit) {
-        if (!this.peer || !this.remoteDescription) {
-            this.debugLog(`Received Ice Candidate and queuing it: ${candidate.candidate}`)
-            this.iceCandidateQueue.push(candidate)
-            return
-        }
-
-        this.debugLog(`Adding Ice Candidate: ${candidate.candidate}`)
-
-        this.peer.addIceCandidate(candidate)
-    }
-
-    private sendLocalDescription() {
-        if (!this.peer) {
-            this.debugLog("Send Local Description without a peer")
-            return
-        }
-
-        const description = this.peer.localDescription as RTCSessionDescription;
-        this.debugLog(`Sending Local Description of type ${description.type}`)
-
-        this.sendWsMessage({
-            Signaling: {
-                Description: {
-                    ty: description.type,
-                    sdp: description.sdp
-                }
-            }
-        })
-    }
-    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
-        const candidateJson = event.candidate?.toJSON()
-        if (!candidateJson || !candidateJson?.candidate) {
-            return;
-        }
-        this.debugLog(`Sending Ice Candidate: ${candidateJson.candidate}`)
-
-        const candidate: RtcIceCandidate = {
-            candidate: candidateJson?.candidate,
-            sdp_mid: candidateJson?.sdpMid ?? null,
-            sdp_mline_index: candidateJson?.sdpMLineIndex ?? null,
-            username_fragment: candidateJson?.usernameFragment ?? null
-        }
-
-        this.sendWsMessage({
-            Signaling: {
-                AddIceCandidate: candidate
-            }
-        })
-    }
-
-    // -- Track and Data Channels
-    private onTrack(event: RTCTrackEvent) {
-        event.receiver.jitterBufferTarget = 0
-
-        if ("playoutDelayHint" in event.receiver) {
-            event.receiver.playoutDelayHint = 0
-        } else {
-            this.debugLog(`playoutDelayHint not supported in receiver: ${event.receiver.track.label}`)
-        }
-
-        if(!this.settings?.canvasRenderer) {
-            const stream = event.streams[0]
-            if (stream) {
-                stream.getTracks().forEach(track => {
-                    this.debugLog(`Adding Media Track ${track.label}`)
-
-                    if (track.kind == "video" && "contentHint" in track) {
-                        track.contentHint = "motion"
-                    }
-
-                    this.mediaStream.addTrack(track)
-                })
-            }
-        }
-        else {
-            const track = event.track
-            this.debugLog(`Received Media Track ${track.label} (${track.kind})`)
-
-            if (track.kind === "video") {
-                if ("contentHint" in track) {
-                    track.contentHint = "motion"
-                }
-                const customEvent = new CustomEvent("stream-info", {
-                    detail: {
-                        type: "videoTrack",
-                        track: track
-                    }
-                })
-                this.eventTarget.dispatchEvent(customEvent)
-            } else if (track.kind === "audio") {
-                this.mediaStream.addTrack(track)
-                const customEvent = new CustomEvent("stream-info", {
-                    detail: {
-                        type: "audioTrackAdded",
-                        track: track
-                    }
-                })
-                this.eventTarget.dispatchEvent(customEvent)
+        // -- WebRTC
+        else if ("WebRtc" in message) {
+            const webrtcMessage = message.WebRtc
+            if (this.transport instanceof WebRTCTransport) {
+                this.transport.onReceiveMessage(webrtcMessage)
             } else {
-                this.mediaStream.addTrack(track)
+                this.debugLog(`Received WebRTC message but transport is currently ${this.transport?.implementationName}`)
             }
         }
     }
-    private onConnectionStateChange() {
-        if (!this.peer) {
-            this.debugLog("OnConnectionStateChange without a peer")
-            return
-        }
-        this.debugLog(`Changing Peer State to ${this.peer.connectionState}`)
 
-        if (this.peer.connectionState == "failed" || this.peer.connectionState == "disconnected" || this.peer.connectionState == "closed") {
-            const customEvent: InfoEvent = new CustomEvent("stream-info", {
-                detail: {
-                    type: "error",
-                    message: `Connection state is ${this.peer.connectionState}`
-                }
-            })
-
-            this.eventTarget.dispatchEvent(customEvent)
-        }
-    }
-    private onIceConnectionStateChange() {
-        if (!this.peer) {
-            this.debugLog("OnIceConnectionStateChange without a peer")
-            return
-        }
-        this.debugLog(`Changing Peer Ice State to ${this.peer.iceConnectionState}`)
+    async startConnection() {
+        await this.tryWebRTCTransport()
     }
 
-    private onDataChannel(event: RTCDataChannelEvent) {
-        this.debugLog(`Received Data Channel ${event.channel.label}`)
+    private transport: Transport | null = null
 
-        if (event.channel.label == "general") {
-            event.channel.addEventListener("message", this.onGeneralDataChannelMessage.bind(this))
+    private setTransport(transport: Transport) {
+        if (this.transport) {
+            this.transport.close()
         }
-    }
-    private async onGeneralDataChannelMessage(event: MessageEvent) {
-        const data = event.data
 
-        if (typeof data != "string") {
+        this.transport = transport
+
+        this.input.setTransport(this.transport)
+        this.stats.setTransport(this.transport)
+    }
+    private async tryWebRTCTransport() {
+        if (!this.iceServers) {
+            this.debugLog(`Failed to try WebRTC Transport: no ice servers available`)
             return
         }
 
-        let message = JSON.parse(data)
-        await this.onMessage(message)
+        const transport = new WebRTCTransport(this.logger)
+        transport.onsendmessage = (message) => this.sendWsMessage({ WebRtc: message })
+
+        transport.initPeer({
+            iceServers: this.iceServers
+        })
+        this.setTransport(transport)
+    }
+
+    private async setupVideo(setup: VideoRendererSetup) {
+        if (this.videoRenderer) {
+            this.debugLog("Found an old video renderer -> cleaning it up")
+
+            this.videoRenderer.unmount(this.divElement)
+            this.videoRenderer.cleanup()
+            this.videoRenderer = null
+        }
+        if (!this.transport) {
+            this.debugLog("Failed to setup video without transport")
+            return
+        }
+
+        await this.transport.setupHostVideo({
+            type: ["videotrack"]
+        })
+
+        const video = this.transport.getChannel(TransportChannelId.HOST_VIDEO)
+        if (video.type == "videotrack") {
+            const { videoRenderer, log, error } = buildVideoPipeline("videotrack", this.settings)
+            this.debugLog(log)
+
+            if (error != null) {
+                this.debugLog(error, "fatal")
+                return
+            }
+
+            videoRenderer.mount(this.divElement)
+
+            videoRenderer.setup(setup)
+            video.addTrackListener((track) => videoRenderer.setTrack(track))
+
+            this.videoRenderer = videoRenderer
+        } else {
+            this.debugLog(`Failed to create video pipeline with transport channel of type ${video.type} (${this.transport.implementationName})`)
+            return
+        }
+    }
+    private async setupAudio() {
+        if (this.audioPlayer) {
+            this.debugLog("Found an old audio player -> cleaning it up")
+
+            this.audioPlayer.unmount(this.divElement)
+            this.audioPlayer.cleanup()
+            this.audioPlayer = null
+        }
+        if (!this.transport) {
+            this.debugLog("Failed to setup audio without transport")
+            return
+        }
+
+        this.transport.setupHostAudio({
+            type: ["audiotrack"]
+        })
+
+        const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
+        if (audio.type == "audiotrack") {
+            // TODO: create build audio pipeline fn
+            if (AudioElementPlayer.isBrowserSupported()) {
+                const audioPlayer = new AudioElementPlayer()
+                audioPlayer.mount(this.divElement)
+
+                audioPlayer.setup({})
+                audio.addTrackListener((track) => audioPlayer.setTrack(track))
+
+                this.audioPlayer = audioPlayer
+            } else {
+                this.debugLog("No supported video renderer found!", "fatal")
+                return
+            }
+        } else {
+            throw "TODO"
+        }
+    }
+
+    mount(parent: HTMLElement): void {
+        parent.appendChild(this.divElement)
+    }
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.divElement)
+    }
+
+    getVideoRenderer(): VideoRenderer | null {
+        return this.videoRenderer
+    }
+    getAudioPlayer(): AudioPlayer | null {
+        return this.audioPlayer
     }
 
     // -- Raw Web Socket stuff
@@ -460,6 +394,11 @@ export class Stream {
     private onWsClose() {
         this.debugLog(`Web Socket Closed`)
     }
+    private onError(event: Event) {
+        this.debugLog(`Web Socket or WebRtcPeer Error`)
+
+        console.error(`Web Socket or WebRtcPeer Error`, event)
+    }
 
     private sendWsMessage(message: StreamClientMessage) {
         const raw = JSON.stringify(message)
@@ -469,21 +408,15 @@ export class Stream {
             this.wsSendBuffer.push(raw)
         }
     }
+    private onRawWsMessage(event: MessageEvent) {
+        const message = event.data
+        if (typeof message == "string") {
+            const json = JSON.parse(message)
 
-    private async onRawWsMessage(event: MessageEvent) {
-        const data = event.data
-        if (typeof data != "string") {
-            return
+            this.onMessage(json)
+        } else if (message instanceof ArrayBuffer) {
+            // TODO
         }
-
-        let message = JSON.parse(data)
-        await this.onMessage(message)
-    }
-
-    private onError(event: Event) {
-        this.debugLog(`Web Socket or WebRtcPeer Error`)
-
-        console.error("Stream Error", event)
     }
 
     // -- Class Api
@@ -494,12 +427,11 @@ export class Stream {
         this.eventTarget.removeEventListener("stream-info", listener as EventListenerOrEventListenerObject)
     }
 
-    getMediaStream(): MediaStream {
-        return this.mediaStream
-    }
-
     getInput(): StreamInput {
         return this.input
+    }
+    getStats(): StreamStats {
+        return this.stats
     }
 
     getStreamerSize(): [number, number] {
