@@ -4,6 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use anyhow::anyhow;
 use log::{debug, warn};
 use tokio::sync::{Mutex, Notify};
 use webrtc::{
@@ -22,14 +23,14 @@ use webrtc::{
     },
 };
 
-use crate::StreamConnection;
+use crate::transport::webrtc::WebRtcInner;
 
 pub struct TrackLocalSender<Track>
 where
     Track: TrackLike,
 {
     channel_queue_size: usize,
-    pub(crate) stream: Arc<StreamConnection>,
+    pub(crate) inner: Weak<WebRtcInner>,
     new_samples_notify: Arc<Notify>,
     queue: Arc<Mutex<VecDeque<FrameSamples<Track>>>>,
 }
@@ -46,10 +47,10 @@ impl<Track> TrackLocalSender<Track>
 where
     Track: TrackLike,
 {
-    pub fn new(stream: Arc<StreamConnection>, channel_queue_size: usize) -> Self {
+    pub fn new(inner: Weak<WebRtcInner>, channel_queue_size: usize) -> Self {
         Self {
             channel_queue_size,
-            stream,
+            inner,
             new_samples_notify: Default::default(),
             queue: Default::default(),
         }
@@ -60,28 +61,33 @@ where
         track: Track,
         mut on_packet: impl FnMut(Box<dyn Packet + Send + Sync>) + Send + 'static,
     ) -> Result<(), anyhow::Error> {
-        let stream = self.stream.clone();
+        let Some(inner) = self.inner.upgrade() else {
+            return Err(anyhow!(
+                "Failed to create track because of missing webrtc transport!"
+            ));
+        };
 
         let track = Arc::new(track);
 
         let new_samples_notify = self.new_samples_notify.clone();
         let queue = Arc::downgrade(&self.queue);
-        self.stream.runtime.spawn({
+        inner.runtime.spawn({
             let track = track.clone();
             async move {
                 sample_sender(track, &new_samples_notify, queue).await;
             }
         });
 
-        let track_sender = self.stream.runtime.block_on({
+        let track_sender = inner.runtime.block_on({
+            let inner = inner.clone();
             let track = track.clone();
-            async move { stream.peer.add_track(track.track()).await }
+            async move { inner.peer.add_track(track.track()).await }
         })?;
 
         // Read incoming RTCP packets
         // Before these packets are returned they are processed by interceptors. For things
         // like NACK this needs to be called.
-        self.stream.runtime.spawn(async move {
+        inner.runtime.spawn(async move {
             let mut rtcp_buf = vec![0u8; 1500];
             while let Ok((packets, _)) = track_sender.read(&mut rtcp_buf).await {
                 for packet in packets {

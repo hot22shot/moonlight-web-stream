@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-use crate::video::{
+use crate::transport::webrtc::video::{
     annexb::AnnexBSplitter,
     h264::{Nal, NalHeader, NalUnitType},
 };

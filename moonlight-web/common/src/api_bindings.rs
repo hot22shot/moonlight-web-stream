@@ -293,31 +293,32 @@ pub enum TransportChannelMethod {
 ts_consts!(
     pub TransportChannelId(export_bindings_transport_channel_id: EXPORT_PATH) as u8:
 
-    pub const STATS: u8 = 0;
-    pub const HOST_VIDEO: u8 = 1;
-    pub const HOST_AUDIO: u8 = 2;
-    pub const MOUSE_RELIABLE: u8 = 3;
-    pub const MOUSE_ABSOLUTE: u8 = 4;
-    pub const MOUSE_RELATIVE: u8 = 5;
-    pub const KEYBOARD: u8 = 6;
-    pub const TOUCH: u8 = 7;
-    pub const CONTROLLERS: u8 = 8;
-    pub const CONTROLLER0: u8 = 9;
-    pub const CONTROLLER1: u8 = 10;
-    pub const CONTROLLER2: u8 = 11;
-    pub const CONTROLLER3: u8 = 12;
-    pub const CONTROLLER4: u8 = 13;
-    pub const CONTROLLER5: u8 = 14;
-    pub const CONTROLLER6: u8 = 15;
-    pub const CONTROLLER7: u8 = 16;
-    pub const CONTROLLER8: u8 = 17;
-    pub const CONTROLLER9: u8 = 18;
-    pub const CONTROLLER10: u8 = 19;
-    pub const CONTROLLER11: u8 = 20;
-    pub const CONTROLLER12: u8 = 21;
-    pub const CONTROLLER13: u8 = 22;
-    pub const CONTROLLER14: u8 = 23;
-    pub const CONTROLLER15: u8 = 24;
+    pub const GENERAL: u8 = 0;
+    pub const STATS: u8 = 1;
+    pub const HOST_VIDEO: u8 = 2;
+    pub const HOST_AUDIO: u8 = 3;
+    pub const MOUSE_RELIABLE: u8 = 4;
+    pub const MOUSE_ABSOLUTE: u8 = 5;
+    pub const MOUSE_RELATIVE: u8 = 6;
+    pub const KEYBOARD: u8 = 7;
+    pub const TOUCH: u8 = 8;
+    pub const CONTROLLERS: u8 = 9;
+    pub const CONTROLLER0: u8 = 10;
+    pub const CONTROLLER1: u8 = 11;
+    pub const CONTROLLER2: u8 = 12;
+    pub const CONTROLLER3: u8 = 13;
+    pub const CONTROLLER4: u8 = 14;
+    pub const CONTROLLER5: u8 = 15;
+    pub const CONTROLLER6: u8 = 16;
+    pub const CONTROLLER7: u8 = 17;
+    pub const CONTROLLER8: u8 = 18;
+    pub const CONTROLLER9: u8 = 19;
+    pub const CONTROLLER10: u8 = 20;
+    pub const CONTROLLER11: u8 = 21;
+    pub const CONTROLLER12: u8 = 22;
+    pub const CONTROLLER13: u8 = 23;
+    pub const CONTROLLER14: u8 = 24;
+    pub const CONTROLLER15: u8 = 25;
 );
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
@@ -442,6 +443,9 @@ pub enum StreamServerMessage {
     ConnectionTerminated {
         error_code: i32,
     },
+    ConnectionStatusUpdate {
+        status: ConnectionStatus,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -459,12 +463,6 @@ impl From<moonlight_common::stream::bindings::ConnectionStatus> for ConnectionSt
             ConnectionStatus::Poor => Self::Poor,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub enum StreamServerGeneralMessage {
-    ConnectionStatusUpdate { status: ConnectionStatus },
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

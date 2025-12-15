@@ -1,0 +1,464 @@
+use common::{
+    StreamSettings,
+    api_bindings::{StreamClientMessage, StreamServerMessage, TransportChannelId},
+    ipc::{ServerIpcMessage, StreamerIpcMessage},
+};
+use log::warn;
+use moonlight_common::stream::{
+    bindings::{
+        AudioConfig, ControllerButtons, ControllerCapabilities, ControllerType, DecodeResult,
+        KeyAction, KeyFlags, KeyModifiers, MouseButton, MouseButtonAction, OpusMultistreamConfig,
+        TouchEventType, VideoDecodeUnit,
+    },
+    video::VideoSetup,
+};
+use num::FromPrimitive;
+use thiserror::Error;
+
+use crate::buffer::ByteBuffer;
+
+pub mod webrtc;
+
+/// Look at TransportChannelId
+#[derive(Debug, Clone, Copy)]
+pub struct TransportChannel(pub u8);
+
+#[derive(Debug, Error)]
+pub enum TransportError {
+    #[error("the transport was closed")]
+    Closed,
+}
+
+pub enum InboundPacket {
+    General {
+        message: StreamClientMessage,
+    },
+    MouseMove {
+        delta_x: i16,
+        delta_y: i16,
+    },
+    MousePosition {
+        x: i16,
+        y: i16,
+        reference_width: i16,
+        reference_height: i16,
+    },
+    MouseButton {
+        action: MouseButtonAction,
+        button: MouseButton,
+    },
+    HighResScroll {
+        delta_x: i16,
+        delta_y: i16,
+    },
+    Scroll {
+        delta_x: i8,
+        delta_y: i8,
+    },
+    Key {
+        action: KeyAction,
+        modifiers: KeyModifiers,
+        key: u16,
+        flags: KeyFlags,
+    },
+    Text {
+        text: String,
+    },
+    ControllerConnected {
+        id: u8,
+        ty: ControllerType,
+        supported_buttons: ControllerButtons,
+        capabilities: ControllerCapabilities,
+    },
+    ControllerDisconnected {
+        id: u8,
+    },
+    ControllerState {
+        id: u8,
+        buttons: ControllerButtons,
+        left_trigger: u8,
+        right_trigger: u8,
+        left_stick_x: i16,
+        left_stick_y: i16,
+        right_stick_x: i16,
+        right_stick_y: i16,
+    },
+    Touch {
+        pointer_id: u32,
+        x: f32,
+        y: f32,
+        pressure_or_distance: f32,
+        contact_area_major: f32,
+        contact_area_minor: f32,
+        rotation: Option<u16>,
+        event_type: TouchEventType,
+    },
+}
+
+impl InboundPacket {
+    const DEFAULT_CONTROLLER_BUTTONS: ControllerButtons = ControllerButtons::all();
+    const DEFAULT_CONTROLLER_CAPABILITIES: ControllerCapabilities = ControllerCapabilities::empty();
+
+    pub const CONTROLLER_CHANNELS: [u8; 16] = [
+        TransportChannelId::CONTROLLER0,
+        TransportChannelId::CONTROLLER1,
+        TransportChannelId::CONTROLLER2,
+        TransportChannelId::CONTROLLER3,
+        TransportChannelId::CONTROLLER4,
+        TransportChannelId::CONTROLLER5,
+        TransportChannelId::CONTROLLER6,
+        TransportChannelId::CONTROLLER7,
+        TransportChannelId::CONTROLLER8,
+        TransportChannelId::CONTROLLER9,
+        TransportChannelId::CONTROLLER10,
+        TransportChannelId::CONTROLLER11,
+        TransportChannelId::CONTROLLER12,
+        TransportChannelId::CONTROLLER13,
+        TransportChannelId::CONTROLLER14,
+        TransportChannelId::CONTROLLER15,
+    ];
+
+    pub fn deserialize(channel: TransportChannel, bytes: &[u8]) -> Option<Self> {
+        let mut buffer = ByteBuffer::new(bytes);
+
+        match channel {
+            TransportChannel(TransportChannelId::GENERAL) => {
+                let len = buffer.get_u16();
+                let text = match buffer.get_utf8_raw(len as usize) {
+                    Ok(text) => text,
+                    Err(err) => {
+                        warn!("[InboudPacket]: failed to read a general message: {err}");
+                        return None;
+                    }
+                };
+                let message = match serde_json::from_str(text) {
+                    Ok(message) => message,
+                    Err(err) => {
+                        warn!("[InboudPacket]: failed to deserialize general message: {err}");
+                        return None;
+                    }
+                };
+
+                Some(Self::General { message })
+            }
+            TransportChannel(TransportChannelId::STATS) => {
+                warn!("[InboundPacket]: tried to deserialize stats packet, this shouldn't happen");
+                None
+            }
+            TransportChannel(TransportChannelId::HOST_VIDEO) => {
+                warn!(
+                    "[InboundPacket]: tried to deserialize host video packet, this shouldn't happen"
+                );
+                None
+            }
+            TransportChannel(TransportChannelId::HOST_AUDIO) => {
+                warn!(
+                    "[InboundPacket]: tried to deserialize host audio packet, this shouldn't happen"
+                );
+                None
+            }
+            TransportChannel(
+                TransportChannelId::MOUSE_ABSOLUTE
+                | TransportChannelId::MOUSE_RELIABLE
+                | TransportChannelId::MOUSE_RELATIVE,
+            ) => {
+                let ty = buffer.get_u8();
+                if ty == 0 {
+                    // Move
+                    let delta_x = buffer.get_i16();
+                    let delta_y = buffer.get_i16();
+
+                    Some(InboundPacket::MouseMove { delta_x, delta_y })
+                } else if ty == 1 {
+                    // Position
+                    let x = buffer.get_i16();
+                    let y = buffer.get_i16();
+                    let reference_width = buffer.get_i16();
+                    let reference_height = buffer.get_i16();
+
+                    Some(InboundPacket::MousePosition {
+                        x,
+                        y,
+                        reference_width,
+                        reference_height,
+                    })
+                } else if ty == 2 {
+                    // Button Press / Release
+                    let action = if buffer.get_bool() {
+                        MouseButtonAction::Press
+                    } else {
+                        MouseButtonAction::Release
+                    };
+                    let Some(button) = MouseButton::from_u8(buffer.get_u8()) else {
+                        warn!("[InboundPacket]: received invalid mouse button");
+                        return None;
+                    };
+
+                    Some(InboundPacket::MouseButton { action, button })
+                } else if ty == 3 {
+                    // Mouse Wheel High Res
+                    let delta_x = buffer.get_i16();
+                    let delta_y = buffer.get_i16();
+
+                    Some(InboundPacket::HighResScroll { delta_x, delta_y })
+                } else if ty == 4 {
+                    // Mouse Wheel Normal
+                    let delta_x = buffer.get_i8();
+                    let delta_y = buffer.get_i8();
+
+                    Some(InboundPacket::Scroll { delta_x, delta_y })
+                } else {
+                    warn!(
+                        "[InboundPacket]: tried to deserialize mouse packet with type {ty}, this shouldn't happen"
+                    );
+                    None
+                }
+            }
+            TransportChannel(TransportChannelId::KEYBOARD) => {
+                let ty = buffer.get_u8();
+                if ty == 0 {
+                    let action = if buffer.get_bool() {
+                        KeyAction::Down
+                    } else {
+                        KeyAction::Up
+                    };
+                    let modifiers =
+                        KeyModifiers::from_bits(buffer.get_u8() as i8).unwrap_or_else(|| {
+                            warn!("[InboundPacket]: received invalid key modifiers");
+                            KeyModifiers::empty()
+                        });
+                    let key = buffer.get_u16();
+
+                    Some(InboundPacket::Key {
+                        action,
+                        modifiers,
+                        key,
+                        flags: KeyFlags::empty(),
+                    })
+                } else if ty == 1 {
+                    let len = buffer.get_u8();
+                    let Ok(key) = buffer.get_utf8_raw(len as usize) else {
+                        warn!("[InboundPacket]: received invalid keyboard text message");
+                        return None;
+                    };
+
+                    Some(InboundPacket::Text {
+                        text: key.to_owned(),
+                    })
+                } else {
+                    warn!(
+                        "[InboundPacket]: tried to deserialize keyboard packet with type {ty}, this shouldn't happen"
+                    );
+                    None
+                }
+            }
+            TransportChannel(TransportChannelId::TOUCH) => {
+                let event_type = match buffer.get_u8() {
+                    0 => TouchEventType::Down,
+                    1 => TouchEventType::Move,
+                    2 => TouchEventType::Cancel,
+                    _ => {
+                        warn!("[InboundPacket]: received invalid touch event type");
+                        return None;
+                    }
+                };
+                let pointer_id = buffer.get_u32();
+                let x = buffer.get_f32();
+                let y = buffer.get_f32();
+                let pressure_or_distance = buffer.get_f32();
+                let contact_area_major = buffer.get_f32();
+                let contact_area_minor = buffer.get_f32();
+                let rotation = buffer.get_u16();
+
+                Some(InboundPacket::Touch {
+                    pointer_id,
+                    x,
+                    y,
+                    pressure_or_distance,
+                    contact_area_major,
+                    contact_area_minor,
+                    rotation: Some(rotation),
+                    event_type,
+                })
+            }
+            TransportChannel(TransportChannelId::CONTROLLERS) => {
+                let ty = buffer.get_u8();
+                if ty == 0 {
+                    let id = buffer.get_u8();
+                    let supported_buttons = ControllerButtons::from_bits(buffer.get_u32())
+                        .unwrap_or_else(|| {
+                            warn!(
+                                "[InboundPacket]: received a controller with invalid button layout"
+                            );
+                            Self::DEFAULT_CONTROLLER_BUTTONS
+                        });
+                    let capabilities = ControllerCapabilities::from_bits(buffer.get_u16())
+                        .unwrap_or_else(|| {
+                            warn!(
+                                "[InboundPacket]: received a controller with invalid capabilities"
+                            );
+                            Self::DEFAULT_CONTROLLER_CAPABILITIES
+                        });
+
+                    Some(InboundPacket::ControllerConnected {
+                        id,
+                        ty: ControllerType::Unknown,
+                        supported_buttons,
+                        capabilities,
+                    })
+                } else if ty == 1 {
+                    let id = buffer.get_u8();
+
+                    Some(InboundPacket::ControllerDisconnected { id })
+                } else {
+                    warn!(
+                        "[InboundPacket]: tried to deserialize controllers packet with type {ty}, this shouldn't happen"
+                    );
+                    None
+                }
+            }
+            TransportChannel(channel_id)
+                if let Some(id) = Self::CONTROLLER_CHANNELS
+                    .iter()
+                    .find(|cmp_channel_id| **cmp_channel_id == channel_id) =>
+            {
+                let ty = buffer.get_u8();
+                if ty == 0 {
+                    let Some(buttons) = ControllerButtons::from_bits(buffer.get_u32()) else {
+                        warn!(
+                            "[InboundPacket]: received invalid controller buttons for controller {id}"
+                        );
+                        return None;
+                    };
+
+                    let left_trigger = buffer.get_u8();
+                    let right_trigger = buffer.get_u8();
+                    let left_stick_x = buffer.get_i16();
+                    let left_stick_y = buffer.get_i16();
+                    let right_stick_x = buffer.get_i16();
+                    let right_stick_y = buffer.get_i16();
+
+                    Some(InboundPacket::ControllerState {
+                        id: *id,
+                        buttons,
+                        left_trigger,
+                        right_trigger,
+                        left_stick_x,
+                        left_stick_y,
+                        right_stick_x,
+                        right_stick_y,
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+pub enum OutboundPacket {
+    General {
+        message: StreamServerMessage,
+    },
+    ControllerRumble {
+        controller_number: u8,
+        low_frequency_motor: u16,
+        high_frequency_motor: u16,
+    },
+    ControllerTriggerRumble {
+        controller_number: u8,
+        left_trigger_motor: u16,
+        right_trigger_motor: u16,
+    },
+}
+
+impl OutboundPacket {
+    pub fn serialize(self, raw_buffer: &mut Vec<u8>) -> Option<(TransportChannel, &[u8])> {
+        match self {
+            Self::General { message } => {
+                let Ok(text) = serde_json::to_string(&message) else {
+                    warn!("Failed to send general message: {message:?}");
+                    return None;
+                };
+                raw_buffer.resize(text.len() + 2, 0u8);
+                let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
+
+                buffer.put_u16(text.len() as u16);
+                buffer.put_utf8_raw(&text);
+
+                Some((
+                    TransportChannel(TransportChannelId::GENERAL),
+                    buffer.into_mut(),
+                ))
+            }
+            Self::ControllerRumble {
+                controller_number,
+                low_frequency_motor,
+                high_frequency_motor,
+            } => {
+                let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
+
+                // Requires 6 bytes
+                buffer.put_u8(0);
+                buffer.put_u8(controller_number);
+                buffer.put_u16(low_frequency_motor);
+                buffer.put_u16(high_frequency_motor);
+
+                Some((
+                    TransportChannel(TransportChannelId::CONTROLLER0 + controller_number),
+                    buffer.into_mut(),
+                ))
+            }
+            Self::ControllerTriggerRumble {
+                controller_number,
+                left_trigger_motor,
+                right_trigger_motor,
+            } => {
+                let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
+
+                // Requires 6 bytes
+                buffer.put_u8(0);
+                buffer.put_u8(controller_number);
+                buffer.put_u16(left_trigger_motor);
+                buffer.put_u16(right_trigger_motor);
+
+                Some((
+                    TransportChannel(TransportChannelId::CONTROLLER0 + controller_number),
+                    buffer.into_mut(),
+                ))
+            }
+        }
+    }
+}
+
+pub enum TransportEvent {
+    StartStream { settings: StreamSettings },
+    RecvPacket(InboundPacket),
+    SendIpc(StreamerIpcMessage),
+    Closed,
+}
+
+// Those are blocking functions in the traits!
+
+pub trait TransportEvents {
+    fn poll_event(&mut self) -> Result<TransportEvent, TransportError>;
+}
+pub trait TransportSender {
+    fn setup_video(&mut self, setup: VideoSetup) -> i32;
+    fn send_video_unit(&mut self, unit: VideoDecodeUnit) -> Result<DecodeResult, TransportError>;
+
+    fn setup_audio(
+        &mut self,
+        audio_config: AudioConfig,
+        stream_config: OpusMultistreamConfig,
+    ) -> i32;
+    fn send_audio_sample(&mut self, data: &[u8]) -> Result<(), TransportError>;
+
+    fn send(&mut self, packet: OutboundPacket) -> Result<(), TransportError>;
+
+    fn on_ipc_message(&mut self, message: ServerIpcMessage);
+
+    fn is_closed(&mut self) -> bool;
+    fn close(&mut self) -> Result<(), TransportError>;
+}

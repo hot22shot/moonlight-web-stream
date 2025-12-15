@@ -1,11 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::Weak, time::Duration};
 
 use bytes::Bytes;
-use log::{error, info, warn};
-use moonlight_common::stream::{
-    audio::AudioDecoder,
-    bindings::{AudioConfig, OpusMultistreamConfig},
-};
+use log::{error, warn};
+use moonlight_common::stream::bindings::{AudioConfig, OpusMultistreamConfig};
 use webrtc::{
     api::media_engine::{MIME_TYPE_OPUS, MediaEngine},
     media::Sample,
@@ -13,7 +10,7 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
 };
 
-use crate::{StreamConnection, sender::TrackLocalSender};
+use crate::transport::webrtc::{WebRtcInner, sender::TrackLocalSender};
 
 pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrtc::Error> {
     media_engine.register_codec(
@@ -34,29 +31,26 @@ pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrt
     Ok(())
 }
 
-pub struct OpusTrackSampleAudioDecoder {
-    decoder: TrackLocalSender<TrackLocalStaticSample>,
+pub struct WebRtcAudio {
+    sender: TrackLocalSender<TrackLocalStaticSample>,
     config: Option<OpusMultistreamConfig>,
 }
 
-impl OpusTrackSampleAudioDecoder {
-    pub fn new(stream: Arc<StreamConnection>, channel_queue_size: usize) -> Self {
+impl WebRtcAudio {
+    pub fn new(inner: Weak<WebRtcInner>, channel_queue_size: usize) -> Self {
         Self {
-            decoder: TrackLocalSender::new(stream, channel_queue_size),
+            sender: TrackLocalSender::new(inner, channel_queue_size),
             config: None,
         }
     }
 }
 
-impl AudioDecoder for OpusTrackSampleAudioDecoder {
-    fn setup(
+impl WebRtcAudio {
+    pub fn setup(
         &mut self,
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
-        _ar_flags: i32,
     ) -> i32 {
-        info!("[Stream] Audio setup: {audio_config:?}, {stream_config:?}");
-
         const SUPPORTED_SAMPLE_RATES: &[u32] = &[80000, 12000, 16000, 24000, 48000];
         if !SUPPORTED_SAMPLE_RATES.contains(&stream_config.sample_rate) {
             warn!(
@@ -71,7 +65,7 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
             );
         }
 
-        if let Err(err) = self.decoder.blocking_create_track(
+        if let Err(err) = self.sender.blocking_create_track(
             TrackLocalStaticSample::new(
                 RTCRtpCodecCapability {
                     mime_type: MIME_TYPE_OPUS.to_string(),
@@ -88,14 +82,17 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
 
         self.config = Some(stream_config);
 
+        // Renegotiate
+        let inner = self.sender.inner.upgrade().unwrap();
+        inner
+            .runtime
+            .clone()
+            .spawn(async move { inner.send_offer().await });
+
         0
     }
 
-    fn start(&mut self) {}
-
-    fn stop(&mut self) {}
-
-    fn decode_and_play_sample(&mut self, data: &[u8]) {
+    pub fn send_audio_sample(&mut self, data: &[u8]) {
         let Some(config) = self.config.as_ref() else {
             return;
         };
@@ -112,7 +109,7 @@ impl AudioDecoder for OpusTrackSampleAudioDecoder {
             ..Default::default()
         };
 
-        self.decoder.blocking_send_samples(vec![sample], false);
+        self.sender.blocking_send_samples(vec![sample], false);
     }
 
     fn config(&self) -> AudioConfig {

@@ -2,10 +2,9 @@ use std::{
     io::Cursor,
     ops::Range,
     sync::{
-        Arc,
+        Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    thread::spawn,
     time::{Duration, Instant},
 };
 
@@ -17,7 +16,7 @@ use moonlight_common::stream::{
         DecodeResult, EstimatedRttInfo, FrameType, SupportedVideoFormats, VideoDecodeUnit,
         VideoFormat,
     },
-    video::{PullVideoDecoder, PullVideoManager, VideoSetup},
+    video::{PullVideoManager, VideoSetup},
 };
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
@@ -26,7 +25,7 @@ use webrtc::{
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
     },
     rtp::{
-        codecs::{av1::Av1Payloader, h265::RTP_OUTBOUND_MTU},
+        codecs::{av1::Av1Payloader, h264::H264Payloader, h265::RTP_OUTBOUND_MTU},
         header::Header,
         packet::Packet,
         packetizer::Payloader,
@@ -40,17 +39,258 @@ use webrtc::{
 
 use crate::{
     StreamConnection,
-    sender::{SequencedTrackLocalStaticRTP, TrackLocalSender},
-    video::{
-        annexb::AnnexBSplitter,
-        h264::{payloader::H264Payloader, reader::H264Reader},
-        h265::{payloader::H265Payloader, reader::H265Reader},
+    transport::webrtc::{
+        WebRtcInner,
+        sender::{SequencedTrackLocalStaticRTP, TrackLocalSender},
+        video::{
+            annexb::AnnexBSplitter,
+            h264::reader::H264Reader,
+            h265::{payloader::H265Payloader, reader::H265Reader},
+        },
     },
 };
 
 mod annexb;
 mod h264;
 mod h265;
+
+enum VideoCodec {
+    H264 {
+        nal_reader: H264Reader<Cursor<Vec<u8>>>,
+        payloader: H264Payloader,
+    },
+    H265 {
+        nal_reader: H265Reader<Cursor<Vec<u8>>>,
+        payloader: H265Payloader,
+    },
+    Av1 {
+        annex_b: AnnexBSplitter<Cursor<Vec<u8>>>,
+        payloader: Av1Payloader,
+    },
+}
+
+pub struct WebRtcVideo {
+    supported_video_formats: SupportedVideoFormats,
+    sender: TrackLocalSender<SequencedTrackLocalStaticRTP>,
+    needs_idr: Arc<AtomicBool>,
+    clock_rate: u32,
+    codec: Option<VideoCodec>,
+    samples: Vec<BytesMut>,
+}
+
+impl WebRtcVideo {
+    pub fn new(
+        inner: Weak<WebRtcInner>,
+        supported_video_formats: SupportedVideoFormats,
+        frame_queue_size: usize,
+    ) -> Self {
+        Self {
+            clock_rate: 0,
+            needs_idr: Default::default(),
+            sender: TrackLocalSender::new(inner, frame_queue_size),
+            codec: None,
+            supported_video_formats,
+            samples: Default::default(),
+        }
+    }
+
+    pub fn setup(
+        &mut self,
+        VideoSetup {
+            format,
+            width,
+            height,
+            redraw_rate,
+            flags: _,
+        }: VideoSetup,
+    ) -> bool {
+        info!("[Stream] Stream setup: {width}x{height}x{redraw_rate} and {format:?}");
+
+        if !format.contained_in(self.supported_video_formats) {
+            error!(
+                "tried to setup a video stream with a non supported video format: {format:?}, supported formats: {:?}",
+                self.supported_video_formats
+                    .iter_names()
+                    .collect::<Vec<_>>()
+            );
+            return false;
+        }
+
+        let Some(codec) = video_format_to_codec(format) else {
+            error!("Failed to get video codec with format {:?}", format);
+            return false;
+        };
+
+        let needs_idr = self.needs_idr.clone();
+        if let Err(err) = self.sender.blocking_create_track(
+            TrackLocalStaticRTP::new(
+                codec.capability.clone(),
+                "video".to_string(),
+                "moonlight".to_string(),
+            )
+            .into(),
+            {
+                let needs_idr = needs_idr.clone();
+
+                move |packet| {
+                    let packet = packet.as_any();
+
+                    if packet.is::<PictureLossIndication>() {
+                        needs_idr.store(true, Ordering::Release);
+                    }
+                    if let Some(_max_bitrate) =
+                        packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
+                    {
+                        // Moonlight doesn't support dynamic bitrate changing :(
+                    }
+                }
+            },
+        ) {
+            error!(
+                "Failed to create video track with format {format:?} and codec \"{codec:?}\": {err:?}"
+            );
+            return false;
+        }
+
+        self.clock_rate = codec.capability.clock_rate;
+
+        self.codec = match format {
+            // -- H264
+            VideoFormat::H264 | VideoFormat::H264High8_444 => Some(VideoCodec::H264 {
+                nal_reader: H264Reader::new(Cursor::new(Vec::new()), 0),
+                payloader: Default::default(),
+            }),
+            // -- H265
+            VideoFormat::H265
+            | VideoFormat::H265Main10
+            | VideoFormat::H265Rext8_444
+            | VideoFormat::H265Rext10_444 => Some(VideoCodec::H265 {
+                nal_reader: H265Reader::new(Cursor::new(Vec::new()), 0),
+                payloader: Default::default(),
+            }),
+            // -- AV1
+            VideoFormat::Av1Main8
+            | VideoFormat::Av1Main10
+            | VideoFormat::Av1High8_444
+            | VideoFormat::Av1High10_444 => Some(VideoCodec::Av1 {
+                annex_b: AnnexBSplitter::new(Cursor::new(Vec::new()), 0),
+                payloader: Default::default(),
+            }),
+        };
+
+        // Renegotiate
+        let inner = self.sender.inner.upgrade().unwrap();
+        inner
+            .runtime
+            .clone()
+            .spawn(async move { inner.send_offer().await });
+
+        true
+    }
+
+    pub fn send_decode_unit(&mut self, unit: &VideoDecodeUnit) -> DecodeResult {
+        let start_frame = Instant::now();
+
+        let timestamp = (unit.presentation_time.as_secs_f64() * self.clock_rate as f64) as u32;
+
+        let mut full_frame = Vec::new();
+        for buffer in unit.buffers {
+            full_frame.extend_from_slice(buffer.data);
+        }
+
+        let important = matches!(unit.frame_type, FrameType::Idr);
+
+        match &mut self.codec {
+            // -- H264
+            Some(VideoCodec::H264 {
+                nal_reader,
+                payloader,
+            }) => {
+                nal_reader.reset(Cursor::new(full_frame));
+
+                while let Ok(Some(nal)) = nal_reader.next_nal() {
+                    let data = trim_bytes_to_range(
+                        nal.full,
+                        nal.header_range.start..nal.payload_range.end,
+                    );
+
+                    self.samples.push(data);
+                }
+
+                send_single_frame(
+                    &mut self.samples,
+                    &mut self.sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &self.needs_idr,
+                );
+            }
+            // -- H265
+            Some(VideoCodec::H265 {
+                nal_reader,
+                payloader,
+            }) => {
+                nal_reader.reset(Cursor::new(full_frame));
+
+                while let Ok(Some(nal)) = nal_reader.next_nal() {
+                    let data = trim_bytes_to_range(
+                        nal.full,
+                        nal.header_range.start..nal.payload_range.end,
+                    );
+
+                    self.samples.push(data);
+                }
+
+                send_single_frame(
+                    &mut self.samples,
+                    &mut self.sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &self.needs_idr,
+                );
+            }
+            // -- AV1
+            Some(VideoCodec::Av1 { annex_b, payloader }) => {
+                annex_b.reset(Cursor::new(full_frame));
+
+                while let Ok(Some(annex_b_payload)) = annex_b.next() {
+                    let data =
+                        trim_bytes_to_range(annex_b_payload.full, annex_b_payload.payload_range);
+
+                    self.samples.push(data);
+                }
+
+                send_single_frame(
+                    &mut self.samples,
+                    &mut self.sender,
+                    payloader,
+                    timestamp,
+                    important,
+                    &self.needs_idr,
+                );
+            }
+            None => {
+                warn!("Failed to send decode unit because of missing codec!");
+            }
+        }
+
+        if self
+            .needs_idr
+            .compare_exchange_weak(true, false, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            return DecodeResult::NeedIdr;
+        }
+
+        // TODO
+        let frame_processing_time = Instant::now() - start_frame;
+        // stats.analyze(stream.clone(), &unit, frame_processing_time);
+
+        DecodeResult::Ok
+    }
+}
 
 pub fn register_video_codecs(
     media_engine: &mut MediaEngine,
@@ -73,252 +313,6 @@ pub fn register_video_codecs(
     }
 
     Ok(())
-}
-
-enum VideoCodec {
-    H264 {
-        nal_reader: H264Reader<Cursor<Vec<u8>>>,
-        payloader: H264Payloader,
-    },
-    H265 {
-        nal_reader: H265Reader<Cursor<Vec<u8>>>,
-        payloader: H265Payloader,
-    },
-    Av1 {
-        annex_b: AnnexBSplitter<Cursor<Vec<u8>>>,
-        payloader: Av1Payloader,
-    },
-}
-
-pub fn spawn_video_thread(
-    stream: Arc<StreamConnection>,
-    supported_formats: SupportedVideoFormats,
-    frame_queue_size: usize,
-) -> PullVideoDecoder {
-    let (decoder, manager) = PullVideoManager::new(supported_formats);
-
-    spawn(move || {
-        video_thread(stream, manager, supported_formats, frame_queue_size);
-    });
-
-    decoder
-}
-
-fn video_thread(
-    stream: Arc<StreamConnection>,
-    mut manager: PullVideoManager,
-    supported_formats: SupportedVideoFormats,
-    frame_queue_size: usize,
-) {
-    let mut sender: TrackLocalSender<SequencedTrackLocalStaticRTP> =
-        TrackLocalSender::new(stream.clone(), frame_queue_size);
-    let needs_idr = Arc::new(AtomicBool::new(false));
-
-    let video_setup = manager
-        .wait_for_setup()
-        .expect("failed to setup video renderer");
-
-    let VideoSetup {
-        format,
-        width,
-        height,
-        redraw_rate,
-        flags: _,
-    } = video_setup;
-
-    info!("[Stream] Stream setup: {width}x{height}x{redraw_rate} and {format:?}");
-
-    {
-        let mut stream_info = stream.stream_info.blocking_lock();
-
-        *stream_info = Some(video_setup);
-    }
-
-    if !format.contained_in(supported_formats) {
-        error!(
-            "tried to setup a video stream with a non supported video format: {format:?}, supported formats: {:?}",
-            supported_formats.iter_names().collect::<Vec<_>>()
-        );
-
-        manager
-            .send_setup_result(-1)
-            .expect("failed to send video setup result");
-        return;
-    }
-
-    let Some(codec) = video_format_to_codec(format) else {
-        error!("Failed to get video codec with format {format:?}");
-
-        manager
-            .send_setup_result(-1)
-            .expect("failed to send video setup result");
-        return;
-    };
-
-    let clock_rate = codec.capability.clock_rate;
-
-    if let Err(err) = sender.blocking_create_track(
-        TrackLocalStaticRTP::new(
-            codec.capability.clone(),
-            "video".to_string(),
-            "moonlight".to_string(),
-        )
-        .into(),
-        {
-            let needs_idr = needs_idr.clone();
-
-            move |packet| {
-                let packet = packet.as_any();
-
-                if packet.is::<PictureLossIndication>() {
-                    needs_idr.store(true, Ordering::Release);
-                }
-                if let Some(_max_bitrate) = packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
-                {
-                    // Moonlight doesn't support dynamic bitrate changing :(
-                }
-            }
-        },
-    ) {
-        error!(
-            "Failed to create video track with format {format:?} and codec \"{codec:?}\": {err:?}"
-        );
-
-        manager
-            .send_setup_result(-1)
-            .expect("failed to send video setup result");
-        return;
-    }
-
-    let mut video_codec = match format {
-        // -- H264
-        VideoFormat::H264 | VideoFormat::H264High8_444 => VideoCodec::H264 {
-            nal_reader: H264Reader::new(Cursor::new(Vec::new()), 0),
-            payloader: Default::default(),
-        },
-        // -- H265
-        VideoFormat::H265
-        | VideoFormat::H265Main10
-        | VideoFormat::H265Rext8_444
-        | VideoFormat::H265Rext10_444 => VideoCodec::H265 {
-            nal_reader: H265Reader::new(Cursor::new(Vec::new()), 0),
-            payloader: Default::default(),
-        },
-        // -- AV1
-        VideoFormat::Av1Main8
-        | VideoFormat::Av1Main10
-        | VideoFormat::Av1High8_444
-        | VideoFormat::Av1High10_444 => VideoCodec::Av1 {
-            annex_b: AnnexBSplitter::new(Cursor::new(Vec::new()), 0),
-            payloader: Default::default(),
-        },
-    };
-
-    manager
-        .send_setup_result(0)
-        .expect("failed to send video setup result");
-
-    let mut stats = VideoStats::default();
-    let mut samples = Vec::new();
-
-    loop {
-        let Ok(mut unit) = manager.wait_for_next_video_frame() else {
-            continue;
-        };
-        let start_frame = Instant::now();
-
-        let timestamp = (unit.presentation_time.as_secs_f64() * clock_rate as f64) as u32;
-
-        let mut full_frame = Vec::new();
-        for buffer in unit.buffers {
-            full_frame.extend_from_slice(buffer.data);
-        }
-
-        let important = matches!(unit.frame_type, FrameType::Idr);
-
-        match &mut video_codec {
-            // -- H264
-            VideoCodec::H264 {
-                nal_reader,
-                payloader,
-            } => {
-                nal_reader.reset(Cursor::new(full_frame));
-
-                while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    let data = trim_bytes_to_range(
-                        nal.full,
-                        nal.header_range.start..nal.payload_range.end,
-                    );
-
-                    samples.push(data);
-                }
-
-                send_single_frame(
-                    &mut samples,
-                    &mut sender,
-                    payloader,
-                    timestamp,
-                    important,
-                    &needs_idr,
-                );
-            }
-            // -- H265
-            VideoCodec::H265 {
-                nal_reader,
-                payloader,
-            } => {
-                nal_reader.reset(Cursor::new(full_frame));
-
-                while let Ok(Some(nal)) = nal_reader.next_nal() {
-                    let data = trim_bytes_to_range(
-                        nal.full,
-                        nal.header_range.start..nal.payload_range.end,
-                    );
-
-                    samples.push(data);
-                }
-
-                send_single_frame(
-                    &mut samples,
-                    &mut sender,
-                    payloader,
-                    timestamp,
-                    important,
-                    &needs_idr,
-                );
-            }
-            // -- AV1
-            VideoCodec::Av1 { annex_b, payloader } => {
-                annex_b.reset(Cursor::new(full_frame));
-
-                while let Ok(Some(annex_b_payload)) = annex_b.next() {
-                    let data =
-                        trim_bytes_to_range(annex_b_payload.full, annex_b_payload.payload_range);
-
-                    samples.push(data);
-                }
-
-                send_single_frame(
-                    &mut samples,
-                    &mut sender,
-                    payloader,
-                    timestamp,
-                    important,
-                    &needs_idr,
-                );
-            }
-        }
-
-        if needs_idr
-            .compare_exchange_weak(true, false, Ordering::SeqCst, Ordering::Relaxed)
-            .is_ok()
-        {
-            unit.set_result(DecodeResult::NeedIdr);
-        }
-
-        let frame_processing_time = Instant::now() - start_frame;
-        stats.analyze(stream.clone(), &unit, frame_processing_time);
-    }
 }
 
 fn send_single_frame(
@@ -590,52 +584,53 @@ impl VideoStats {
                 .checked_div(self.streamer_processing_time_frame_count as u32)
                 .unwrap_or(Duration::ZERO);
 
+            // TODO
             // Send data
-            let runtime = stream.runtime.clone();
-            runtime.spawn(async move {
-                // Send Video info
-                stream
-                    .send_stats(StreamerStatsUpdate::Video {
-                        host_processing_latency: has_host_processing_latency.then_some(
-                            StatsHostProcessingLatency {
-                                min_host_processing_latency_ms: min_host_processing_latency
-                                    .as_secs_f64()
-                                    * 1000.0,
-                                max_host_processing_latency_ms: max_host_processing_latency
-                                    .as_secs_f64()
-                                    * 1000.0,
-                                avg_host_processing_latency_ms: avg_host_processing_latency
-                                    .as_secs_f64()
-                                    * 1000.0,
-                            },
-                        ),
-                        min_streamer_processing_time_ms: min_streamer_processing_time.as_secs_f64()
-                            * 1000.0,
-                        max_streamer_processing_time_ms: max_streamer_processing_time.as_secs_f64()
-                            * 1000.0,
-                        avg_streamer_processing_time_ms: avg_streamer_processing_time.as_secs_f64()
-                            * 1000.0,
-                    })
-                    .await;
+            // let runtime = stream.runtime.clone();
+            // runtime.spawn(async move {
+            //     // Send Video info
+            //     stream
+            //         .send_stats(StreamerStatsUpdate::Video {
+            //             host_processing_latency: has_host_processing_latency.then_some(
+            //                 StatsHostProcessingLatency {
+            //                     min_host_processing_latency_ms: min_host_processing_latency
+            //                         .as_secs_f64()
+            //                         * 1000.0,
+            //                     max_host_processing_latency_ms: max_host_processing_latency
+            //                         .as_secs_f64()
+            //                         * 1000.0,
+            //                     avg_host_processing_latency_ms: avg_host_processing_latency
+            //                         .as_secs_f64()
+            //                         * 1000.0,
+            //                 },
+            //             ),
+            //             min_streamer_processing_time_ms: min_streamer_processing_time.as_secs_f64()
+            //                 * 1000.0,
+            //             max_streamer_processing_time_ms: max_streamer_processing_time.as_secs_f64()
+            //                 * 1000.0,
+            //             avg_streamer_processing_time_ms: avg_streamer_processing_time.as_secs_f64()
+            //                 * 1000.0,
+            //         })
+            //         .await;
 
-                // Send RTT info
-                let ml_stream = stream.stream.read().await;
-                if let Some(ml_stream) = ml_stream.as_ref() {
-                    match ml_stream.estimated_rtt_info() {
-                        Ok(EstimatedRttInfo { rtt, rtt_variance }) => {
-                            stream
-                                .send_stats(StreamerStatsUpdate::Rtt {
-                                    rtt_ms: rtt.as_secs_f64() * 1000.0,
-                                    rtt_variance_ms: rtt_variance.as_secs_f64() * 1000.0,
-                                })
-                                .await;
-                        }
-                        Err(err) => {
-                            warn!("failed to get estimated rtt info: {err:?}");
-                        }
-                    };
-                }
-            });
+            //     // Send RTT info
+            //     let ml_stream = stream.stream.read().await;
+            //     if let Some(ml_stream) = ml_stream.as_ref() {
+            //         match ml_stream.estimated_rtt_info() {
+            //             Ok(EstimatedRttInfo { rtt, rtt_variance }) => {
+            //                 stream
+            //                     .send_stats(StreamerStatsUpdate::Rtt {
+            //                         rtt_ms: rtt.as_secs_f64() * 1000.0,
+            //                         rtt_variance_ms: rtt_variance.as_secs_f64() * 1000.0,
+            //                     })
+            //                     .await;
+            //             }
+            //             Err(err) => {
+            //                 warn!("failed to get estimated rtt info: {err:?}");
+            //             }
+            //         };
+            //     }
+            // });
 
             // Clear data
             self.min_host_processing_latency = Duration::MAX;
