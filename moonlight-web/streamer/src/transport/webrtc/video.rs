@@ -10,7 +10,7 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use common::api_bindings::{StatsHostProcessingLatency, StreamerStatsUpdate};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use moonlight_common::stream::{
     bindings::{
         DecodeResult, EstimatedRttInfo, FrameType, SupportedVideoFormats, VideoDecodeUnit,
@@ -213,6 +213,11 @@ impl WebRtcVideo {
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
+                    trace!(
+                        "H264, Start Code: {:?}, NAL: {:?}",
+                        nal.start_code, nal.header
+                    );
+
                     let data = trim_bytes_to_range(
                         nal.full,
                         nal.header_range.start..nal.payload_range.end,
@@ -239,6 +244,11 @@ impl WebRtcVideo {
                 nal_reader.reset(Cursor::new(full_frame));
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
+                    trace!(
+                        "H265, Start Code: {:?}, NAL: {:?}",
+                        nal.start_code, nal.header
+                    );
+
                     let data = trim_bytes_to_range(
                         nal.full,
                         nal.header_range.start..nal.payload_range.end,
@@ -530,6 +540,8 @@ fn trim_bytes_to_range(mut buf: BytesMut, range: Range<usize>) -> BytesMut {
 
     buf
 }
+
+// TODO: fix stats
 
 #[derive(Debug, Default)]
 struct VideoStats {
