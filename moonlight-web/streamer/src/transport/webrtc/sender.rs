@@ -7,7 +7,7 @@ use std::{
 use anyhow::anyhow;
 use log::{debug, warn};
 use tokio::{
-    runtime::{Handle, Runtime},
+    runtime::Handle,
     sync::{Mutex, Notify},
 };
 use webrtc::{
@@ -130,9 +130,6 @@ where
         } else {
             queue.retain(|frame| frame.important);
         }
-    }
-    pub fn blocking_clear_queue(&self, clear_important: bool) {
-        todo!()
     }
 }
 

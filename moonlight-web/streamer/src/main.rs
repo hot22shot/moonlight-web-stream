@@ -8,7 +8,6 @@ use std::{
         Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
 };
 
 use common::{
@@ -28,12 +27,12 @@ use moonlight_common::{
         MoonlightInstance, MoonlightStream,
         audio::AudioDecoder,
         bindings::{
-            ActiveGamepads, AudioConfig, Capabilities, ColorRange, ConnectionStatus, DecodeResult,
+            ActiveGamepads, AudioConfig, Capabilities, ColorRange, ConnectionStatus,
             EncryptionFlags, HostFeatures, OpusMultistreamConfig, Stage, SupportedVideoFormats,
-            VideoDecodeUnit, VideoFormat,
+            VideoFormat,
         },
         connection::ConnectionListener,
-        video::{VideoDecoder, VideoSetup},
+        video::VideoSetup,
     },
 };
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
@@ -42,14 +41,16 @@ use tokio::{
     runtime::Handle,
     spawn,
     sync::{Mutex, Notify, RwLock},
-    time::sleep,
 };
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
 
-use crate::transport::{
-    InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
-    TransportSender, webrtc,
+use crate::{
+    transport::{
+        InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
+        TransportSender, webrtc,
+    },
+    video::StreamVideoDecoder,
 };
 
 pub type RequestClient = ReqwestClient;
@@ -57,6 +58,7 @@ pub type RequestClient = ReqwestClient;
 mod buffer;
 mod convert;
 mod transport;
+mod video;
 
 #[tokio::main]
 async fn main() {
@@ -247,7 +249,6 @@ impl StreamConnection {
         });
 
         spawn({
-            let runtime = this.runtime.clone();
             let mut ipc_sender = this.ipc_sender.clone();
             let this = Arc::downgrade(&this);
 
@@ -270,6 +271,16 @@ impl StreamConnection {
                         }
                         Err(TransportError::Closed) | Ok(TransportEvent::Closed) => {
                             let this = this.upgrade().unwrap();
+
+                            this.stop().await;
+                            break;
+                        }
+                        Err(TransportError::Implementation(err)) => {
+                            let this = this.upgrade().unwrap();
+
+                            info!(
+                                "Stopping stream because of transport implementation error: {err}"
+                            );
 
                             this.stop().await;
                             break;
@@ -437,6 +448,7 @@ impl StreamConnection {
         let video_decoder = StreamVideoDecoder {
             stream: Arc::downgrade(self),
             supported_formats: SupportedVideoFormats::empty(),
+            stats: Default::default(),
         };
 
         let audio_decoder = StreamAudioDecoder {
@@ -693,7 +705,7 @@ impl ConnectionListener for StreamConnectionListener {
         };
 
         stream.runtime.clone().block_on(async move {
-            let mut sender = stream.transport_sender.blocking_lock();
+            let sender = stream.transport_sender.blocking_lock();
 
             if let Err(err) = sender
                 .send(OutboundPacket::ControllerTriggerRumble {
@@ -734,63 +746,6 @@ impl ConnectionListener for StreamConnectionListener {
     }
 }
 
-struct StreamVideoDecoder {
-    stream: Weak<StreamConnection>,
-    supported_formats: SupportedVideoFormats,
-}
-
-impl VideoDecoder for StreamVideoDecoder {
-    fn setup(&mut self, setup: VideoSetup) -> i32 {
-        let Some(stream) = self.stream.upgrade() else {
-            warn!("Failed to setup video because stream is deallocated");
-            return -1;
-        };
-
-        {
-            let mut stream_info = stream.stream_info.blocking_lock();
-            *stream_info = Some(setup);
-        }
-
-        {
-            stream.runtime.clone().block_on(async move {
-                let mut sender = stream.transport_sender.lock().await;
-
-                sender.setup_video(setup).await
-            })
-        }
-    }
-
-    fn start(&mut self) {}
-    fn stop(&mut self) {}
-
-    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let Some(stream) = self.stream.upgrade() else {
-            warn!("Failed to send video decode unit because stream is deallocated");
-            return DecodeResult::Ok;
-        };
-
-        stream.runtime.clone().block_on(async move {
-            let mut sender = stream.transport_sender.lock().await;
-
-            match sender.send_video_unit(unit).await {
-                Err(err) => {
-                    warn!("Failed to send video decode unit: {err}");
-                    DecodeResult::Ok
-                }
-                Ok(value) => value,
-            }
-        })
-    }
-
-    fn supported_formats(&self) -> SupportedVideoFormats {
-        self.supported_formats
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities::empty()
-    }
-}
-
 struct StreamAudioDecoder {
     stream: Weak<StreamConnection>,
 }
@@ -808,7 +763,7 @@ impl AudioDecoder for StreamAudioDecoder {
         };
 
         stream.runtime.clone().block_on(async move {
-            let mut sender = stream.transport_sender.lock().await;
+            let sender = stream.transport_sender.lock().await;
 
             sender.setup_audio(audio_config, stream_config).await
         })

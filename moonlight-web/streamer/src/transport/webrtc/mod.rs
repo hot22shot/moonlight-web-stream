@@ -6,6 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use common::{
     StreamSettings,
     api_bindings::{
@@ -75,6 +76,7 @@ struct WebRtcInner {
     stream_settings: StreamSettings,
     event_sender: Sender<TransportEvent>,
     general_channel: Arc<RTCDataChannel>,
+    stats_channel: Mutex<Option<Arc<RTCDataChannel>>>,
     // TODO: use negotiated channels -> no rwlock required
     video: Mutex<WebRtcVideo>,
     audio: Mutex<WebRtcAudio>,
@@ -169,6 +171,7 @@ pub async fn new(
         stream_settings: stream_settings.clone(),
         event_sender,
         general_channel,
+        stats_channel: Mutex::new(None),
         video: Mutex::new(WebRtcVideo::new(
             runtime.clone(),
             Arc::downgrade(&peer),
@@ -222,10 +225,7 @@ pub async fn new(
         WebRTCTransportSender {
             inner: this_owned.clone(),
         },
-        WebRTCTransportEvents {
-            inner: this_owned.clone(),
-            event_receiver,
-        },
+        WebRTCTransportEvents { event_receiver },
     ))
 }
 
@@ -385,21 +385,6 @@ impl WebRtcInner {
         true
     }
 
-    async fn on_ipc_message(&self, message: ServerIpcMessage) {
-        match message {
-            ServerIpcMessage::Init { .. } => {}
-            ServerIpcMessage::WebSocket(message) => {
-                self.on_ws_message(message).await;
-            }
-            ServerIpcMessage::Stop => {
-                // TODO: this shouldn't be handled here
-                self.event_sender
-                    .send(TransportEvent::Closed)
-                    .await
-                    .unwrap();
-            }
-        }
-    }
     async fn on_ws_message(&self, message: StreamClientMessage) {
         match message {
             StreamClientMessage::WebRtc(StreamSignalingMessage::Description(description)) => {
@@ -490,13 +475,30 @@ impl WebRtcInner {
         debug!("adding data channel: \"{label}\"");
 
         let inner = Arc::downgrade(&self);
-        if channel.label() == "stats" {
-            // TODO
-            // let mut stats = self.stats_channel.write().await;
-            // *stats = Some(channel);
-        }
 
         match label {
+            "stats" => {
+                let mut stats = self.stats_channel.lock().await;
+
+                channel.on_close({
+                    let this = Arc::downgrade(&self);
+
+                    Box::new(move ||{
+                        let this = this.clone();
+
+                        Box::pin(async move {
+                            let Some(this) = this.upgrade() else {
+                                warn!("Failed to close stats channel because the main type is already deallocated");
+                                return;
+                            };
+
+                            this.close_stats().await;
+                        })
+                    })
+                });
+
+                *stats = Some(channel);
+            }
             "mouse_reliable" | "mouse_absolute" | "mouse_relative" => {
                 channel.on_message(create_channel_message_handler(
                     inner,
@@ -534,6 +536,12 @@ impl WebRtcInner {
         };
     }
 
+    async fn close_stats(&self) {
+        let mut stats = self.stats_channel.lock().await;
+
+        *stats = None;
+    }
+
     // -- Termination
     async fn request_terminate(self: &Arc<Self>) {
         let this = self.clone();
@@ -567,7 +575,6 @@ impl WebRtcInner {
 }
 
 pub struct WebRTCTransportEvents {
-    inner: Arc<WebRtcInner>,
     event_receiver: Receiver<TransportEvent>,
 }
 
@@ -596,10 +603,10 @@ impl TransportSender for WebRTCTransportSender {
     }
     async fn send_video_unit<'a>(
         &'a self,
-        unit: VideoDecodeUnit<'a>,
+        unit: &'a VideoDecodeUnit<'a>,
     ) -> Result<DecodeResult, TransportError> {
         let mut video = self.inner.video.lock().await;
-        Ok(video.send_decode_unit(&unit).await)
+        Ok(video.send_decode_unit(unit).await)
     }
 
     async fn setup_audio(
@@ -622,14 +629,24 @@ impl TransportSender for WebRTCTransportSender {
     async fn send(&self, packet: OutboundPacket) -> Result<(), TransportError> {
         let mut buffer = Vec::new();
 
-        let Some((channel, data)) = packet.serialize(&mut buffer) else {
+        let Some((channel, range)) = packet.serialize(&mut buffer) else {
             warn!("Failed to serialize packet: {packet:?}");
             return Ok(());
         };
 
+        let bytes = Bytes::from(buffer);
+        let bytes = bytes.slice(range);
+
         match channel.0 {
             TransportChannelId::GENERAL => {
-                todo!()
+                self.inner.general_channel.send(&bytes).await.unwrap();
+            }
+            TransportChannelId::STATS => {
+                // TODO: this should return channel close instead of silent failure
+                let stats = self.inner.stats_channel.lock().await;
+                if let Some(stats) = stats.as_ref() {
+                    stats.send(&bytes).await.unwrap();
+                }
             }
             _ => {
                 warn!("Cannot send data on channel {channel:?}");
@@ -646,7 +663,11 @@ impl TransportSender for WebRTCTransportSender {
     }
 
     async fn close(&self) -> Result<(), TransportError> {
-        self.inner.peer.close().await.unwrap();
+        self.inner
+            .peer
+            .close()
+            .await
+            .map_err(|err| TransportError::Implementation(err.into()))?;
 
         Ok(())
     }

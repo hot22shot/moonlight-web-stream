@@ -19,6 +19,7 @@ pub struct ByteBuffer<T> {
 
 impl<T> ByteBuffer<T> {
     /// IMPORTANT: no limit checks are made
+    /// The limit is used, if this buffer was written before use flip to set it into read mode
     pub fn into_raw(self) -> (T, Range<usize>) {
         (self.buffer, 0..self.limit)
     }

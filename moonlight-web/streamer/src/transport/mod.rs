@@ -1,7 +1,11 @@
+use std::ops::Range;
+
 use async_trait::async_trait;
 use common::{
     StreamSettings,
-    api_bindings::{StreamClientMessage, StreamServerMessage, TransportChannelId},
+    api_bindings::{
+        StreamClientMessage, StreamServerMessage, StreamerStatsUpdate, TransportChannelId,
+    },
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
 use log::warn;
@@ -28,6 +32,8 @@ pub struct TransportChannel(pub u8);
 pub enum TransportError {
     #[error("the transport was closed")]
     Closed,
+    #[error("implementation: {0}")]
+    Implementation(anyhow::Error),
 }
 
 #[derive(Debug)]
@@ -364,6 +370,7 @@ pub enum OutboundPacket {
     General {
         message: StreamServerMessage,
     },
+    Stats(StreamerStatsUpdate),
     ControllerRumble {
         controller_number: u8,
         low_frequency_motor: u16,
@@ -377,10 +384,7 @@ pub enum OutboundPacket {
 }
 
 impl OutboundPacket {
-    pub fn serialize<'a>(
-        &self,
-        raw_buffer: &'a mut Vec<u8>,
-    ) -> Option<(TransportChannel, &'a [u8])> {
+    pub fn serialize(&self, raw_buffer: &mut Vec<u8>) -> Option<(TransportChannel, Range<usize>)> {
         match self {
             Self::General { message } => {
                 let Ok(text) = serde_json::to_string(&message) else {
@@ -393,9 +397,27 @@ impl OutboundPacket {
                 buffer.put_u16(text.len() as u16);
                 buffer.put_utf8_raw(&text);
 
+                buffer.flip();
                 Some((
                     TransportChannel(TransportChannelId::GENERAL),
-                    buffer.into_mut(),
+                    buffer.into_raw().1,
+                ))
+            }
+            Self::Stats(stats) => {
+                let Ok(text) = serde_json::to_string(&stats) else {
+                    warn!("Failed to send stats message: {stats:?}");
+                    return None;
+                };
+                raw_buffer.resize(text.len() + 2, 0u8);
+                let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
+
+                buffer.put_u16(text.len() as u16);
+                buffer.put_utf8_raw(&text);
+
+                buffer.flip();
+                Some((
+                    TransportChannel(TransportChannelId::STATS),
+                    buffer.into_raw().1,
                 ))
             }
             Self::ControllerRumble {
@@ -411,9 +433,10 @@ impl OutboundPacket {
                 buffer.put_u16(*low_frequency_motor);
                 buffer.put_u16(*high_frequency_motor);
 
+                buffer.flip();
                 Some((
                     TransportChannel(TransportChannelId::CONTROLLER0 + controller_number),
-                    buffer.into_mut(),
+                    buffer.into_raw().1,
                 ))
             }
             Self::ControllerTriggerRumble {
@@ -429,9 +452,10 @@ impl OutboundPacket {
                 buffer.put_u16(*left_trigger_motor);
                 buffer.put_u16(*right_trigger_motor);
 
+                buffer.flip();
                 Some((
                     TransportChannel(TransportChannelId::CONTROLLER0 + controller_number),
-                    buffer.into_mut(),
+                    buffer.into_raw().1,
                 ))
             }
         }
@@ -454,7 +478,7 @@ pub trait TransportSender {
     async fn setup_video(&self, setup: VideoSetup) -> i32;
     async fn send_video_unit<'a>(
         &'a self,
-        unit: VideoDecodeUnit<'a>,
+        unit: &'a VideoDecodeUnit<'a>,
     ) -> Result<DecodeResult, TransportError>;
 
     async fn setup_audio(

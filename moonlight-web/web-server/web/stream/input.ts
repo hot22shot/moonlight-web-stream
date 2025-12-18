@@ -738,6 +738,7 @@ export class StreamInput {
 
             const state = extractGamepadState(gamepad, this.config.controllerConfig)
 
+            // TODO: only send state on update
             this.sendController(gamepadId, state)
         }
     }
