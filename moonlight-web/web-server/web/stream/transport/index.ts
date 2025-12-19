@@ -60,9 +60,6 @@ export type TransportShutdown = "failednoconnect" | "failed" | "disconnect"
 export interface Transport {
     readonly implementationName: string
 
-    onconnected: (() => void) | null
-    ondisconnected: (() => void) | null
-
     getChannel(id: TransportChannelIdValue): TransportChannel
 
     setupHostVideo(setup: TransportVideoSetup): Promise<void>

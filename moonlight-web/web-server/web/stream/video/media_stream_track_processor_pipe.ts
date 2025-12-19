@@ -1,6 +1,12 @@
 import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererSetup } from "./index.js";
 
-export class MediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> extends TrackVideoRenderer {
+function wait(time: number): Promise<void> {
+    return new Promise((resolve, _reject) => {
+        setTimeout(resolve, time)
+    })
+}
+
+export class VideoMediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> extends TrackVideoRenderer {
     static isBrowserSupported(): boolean {
         return "MediaStreamTrackProcessor" in window
     }
@@ -37,7 +43,7 @@ export class MediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> extends
                 if (newReader) {
                     reader = newReader
                 }
-                await MediaStreamTrackProcessorPipe.wait(100)
+                await wait(100)
                 continue
             }
 
@@ -50,11 +56,6 @@ export class MediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> extends
 
             this.base.submitFrame(value)
         }
-    }
-    private static wait(time: number): Promise<void> {
-        return new Promise((resolve, _reject) => {
-            setTimeout(resolve, time)
-        })
     }
 
     setup(setup: VideoRendererSetup): void {

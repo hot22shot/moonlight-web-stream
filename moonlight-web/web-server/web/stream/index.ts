@@ -3,11 +3,14 @@ import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamS
 import { Component } from "../component/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
 import { AudioElementPlayer } from "./audio/audio_element.js"
-import { AudioPlayer } from "./audio/index.js"
+import { AudioPlayer, AudioPlayerSetup } from "./audio/index.js"
+import { buildAudioPipeline } from "./audio/pipeline.js"
+import { ByteBuffer } from "./buffer.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { Logger } from "./log.js"
 import { StreamStats } from "./stats.js"
 import { Transport } from "./transport/index.js"
+import { WebSocketTransport } from "./transport/web_socket.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
 import { createSupportedVideoFormatsBits, getSelectedVideoFormat, VideoCodecSupport } from "./video.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
@@ -202,6 +205,9 @@ export class Stream implements Component {
             const height = message.ConnectionComplete.height
             const fps = message.ConnectionComplete.fps
 
+            const audioChannels = message.ConnectionComplete.audio_channels
+            const audioSampleRate = message.ConnectionComplete.audio_sample_rate
+
             const format = getSelectedVideoFormat(formatRaw)
             if (format == null) {
                 this.debugLog(`Video Format ${formatRaw} was not found! Couldn't start stream!`, "fatal")
@@ -226,7 +232,10 @@ export class Stream implements Component {
                     height,
                 }),
                 // TODO: more audio info?
-                this.setupAudio()
+                this.setupAudio({
+                    channels: audioChannels,
+                    sampleRate: audioSampleRate
+                })
             ])
 
             this.debugLog(`Using video pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`)
@@ -285,11 +294,6 @@ export class Stream implements Component {
         this.stats.setTransport(this.transport)
     }
 
-    private async tryWebSocketTransport() {
-        this.debugLog("Trying Web Socket transport")
-
-        // TODO
-    }
     private async tryWebRTCTransport() {
         this.debugLog("Trying WebRTC transport")
 
@@ -312,6 +316,17 @@ export class Stream implements Component {
 
         // TODO: wait for closure
     }
+    private async tryWebSocketTransport() {
+        this.debugLog("Trying Web Socket transport")
+
+        this.sendWsMessage({
+            SetTransport: "WebSocket"
+        })
+
+        const transport = new WebSocketTransport(this.ws, new ByteBuffer(100000), this.logger)
+
+        this.setTransport(transport)
+    }
 
     private async setupVideo(setup: VideoRendererSetup) {
         if (this.videoRenderer) {
@@ -327,7 +342,7 @@ export class Stream implements Component {
         }
 
         await this.transport.setupHostVideo({
-            type: ["videotrack"]
+            type: ["videotrack", "data"]
         })
 
         const video = this.transport.getChannel(TransportChannelId.HOST_VIDEO)
@@ -346,12 +361,35 @@ export class Stream implements Component {
             video.addTrackListener((track) => videoRenderer.setTrack(track))
 
             this.videoRenderer = videoRenderer
+        } else if (video.type == "data") {
+            const { videoRenderer, log, error } = buildVideoPipeline("data", this.settings)
+            this.debugLog(log)
+
+            if (error != null) {
+                this.debugLog(error, "fatal")
+                return
+            }
+
+            videoRenderer.mount(this.divElement)
+
+            videoRenderer.setup(setup)
+
+            video.addReceiveListener((data) => {
+                videoRenderer.submitDecodeUnit({
+                    // TODO: get them somehow
+                    durationMicroseconds: 0,
+                    timestampMicroseconds: 0,
+                    data
+                })
+            })
+
+            this.videoRenderer = videoRenderer
         } else {
             this.debugLog(`Failed to create video pipeline with transport channel of type ${video.type} (${this.transport.implementationName})`)
             return
         }
     }
-    private async setupAudio() {
+    private async setupAudio(setup: AudioPlayerSetup) {
         if (this.audioPlayer) {
             this.debugLog("Found an old audio player -> cleaning it up")
 
@@ -365,24 +403,48 @@ export class Stream implements Component {
         }
 
         this.transport.setupHostAudio({
-            type: ["audiotrack"]
+            type: ["audiotrack", "data"]
         })
 
         const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
         if (audio.type == "audiotrack") {
-            // TODO: create build audio pipeline fn
-            if (AudioElementPlayer.isBrowserSupported()) {
-                const audioPlayer = new AudioElementPlayer()
-                audioPlayer.mount(this.divElement)
+            const { audioPlayer, log, error } = buildAudioPipeline("audiotrack", this.settings)
+            this.debugLog(log)
 
-                audioPlayer.setup({})
-                audio.addTrackListener((track) => audioPlayer.setTrack(track))
-
-                this.audioPlayer = audioPlayer
-            } else {
-                this.debugLog("No supported video renderer found!", "fatal")
+            if (error != null) {
+                this.debugLog(error, "fatal")
                 return
             }
+
+            audioPlayer.mount(this.divElement)
+
+            audioPlayer.setup(setup)
+            audio.addTrackListener((track) => audioPlayer.setTrack(track))
+
+            this.audioPlayer = audioPlayer
+        } if (audio.type == "data") {
+            const { audioPlayer, log, error } = buildAudioPipeline("data", this.settings)
+            this.debugLog(log)
+
+            if (error != null) {
+                this.debugLog(error, "fatal")
+                return
+            }
+
+            audioPlayer.mount(this.divElement)
+
+            audioPlayer.setup(setup)
+
+            audio.addReceiveListener((data) => {
+                audioPlayer.decodeAndPlay({
+                    // TODO: fill in duration and timestamp
+                    durationMicroseconds: 0,
+                    timestampMicroseconds: 0,
+                    data
+                })
+            })
+
+            this.audioPlayer = audioPlayer
         } else {
             throw "TODO"
         }

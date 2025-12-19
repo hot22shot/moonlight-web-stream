@@ -447,6 +447,8 @@ pub enum StreamServerMessage {
         width: u32,
         height: u32,
         fps: u32,
+        audio_channels: u32,
+        audio_sample_rate: u32,
     },
     ConnectionTerminated {
         error_code: i32,

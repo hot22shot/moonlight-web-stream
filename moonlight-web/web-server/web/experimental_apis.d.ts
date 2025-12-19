@@ -17,6 +17,16 @@ declare global {
         new(options: { track: MediaStreamTrack, maxBufferSize?: number }): MediaStreamTrackProcessor
         new(): MediaStreamTrackProcessor
     }
+
+    // MediaStreamTrackGenerator: https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackGenerator
+    interface MediaStreamTrackGenerator extends MediaStreamTrack {
+        readonly writable: WritableStream
+    }
+
+    var MediaStreamTrackGenerator: {
+        prototype: MediaStreamTrackGenerator
+        new(options: { kind: "audio" | "video" }): MediaStreamTrackGenerator
+    }
 }
 
 

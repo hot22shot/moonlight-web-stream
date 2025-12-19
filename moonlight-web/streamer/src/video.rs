@@ -28,8 +28,8 @@ impl VideoDecoder for StreamVideoDecoder {
         };
 
         {
-            let mut stream_info = stream.stream_info.blocking_lock();
-            *stream_info = Some(setup);
+            let mut stream_info = stream.stream_setup.blocking_lock();
+            stream_info.video = Some(setup);
         }
 
         {

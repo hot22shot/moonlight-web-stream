@@ -378,7 +378,7 @@ pub enum DecodeResult {
 ///
 /// If the mapping order does not match the channel order of the audio renderer, you may swap
 /// the values in the mismatched indices until the mapping array matches the desired channel order.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OpusMultistreamConfig {
     pub sample_rate: u32,
     pub channel_count: u32,

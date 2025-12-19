@@ -68,7 +68,6 @@ export abstract class TrackVideoRenderer extends VideoRenderer {
 }
 
 export type VideoDecodeUnit = {
-    type: "key" | "delta"
     timestampMicroseconds: number
     durationMicroseconds: number
     data: ArrayBuffer

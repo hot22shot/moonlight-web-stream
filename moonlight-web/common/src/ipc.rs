@@ -42,12 +42,14 @@ pub enum ServerIpcMessage {
         app_id: u32,
     },
     WebSocket(StreamClientMessage),
+    WebSocketTransport(Vec<u8>),
     Stop,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum StreamerIpcMessage {
     WebSocket(StreamServerMessage),
+    WebSocketTransport(Vec<u8>),
     Stop,
 }
 

@@ -240,10 +240,18 @@ pub async fn start_host(
                             );
                         }
                     }
+                    StreamerIpcMessage::WebSocketTransport(data) => {
+                        if let Err(Closed) = session.binary(data).await {
+                            warn!(
+                                "[Ipc]: Tried to send a ws message but the socket is already closed"
+                            );
+                        }
+                    }
                     StreamerIpcMessage::Stop => {
                         debug!("[Ipc]: ipc receiver stopped by streamer");
                         break;
                     }
+                    _ => {}
                 }
             }
             info!("[Ipc]: ipc receiver is closed");

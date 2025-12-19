@@ -429,6 +429,7 @@ impl OutboundPacket {
                 low_frequency_motor,
                 high_frequency_motor,
             } => {
+                raw_buffer.resize(6, 0);
                 let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
 
                 // Requires 6 bytes
@@ -448,6 +449,7 @@ impl OutboundPacket {
                 left_trigger_motor,
                 right_trigger_motor,
             } => {
+                raw_buffer.resize(6, 0);
                 let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
 
                 // Requires 6 bytes

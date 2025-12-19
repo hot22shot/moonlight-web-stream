@@ -50,7 +50,7 @@ use common::api_bindings::{StreamCapabilities, StreamServerMessage};
 use crate::{
     transport::{
         InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
-        TransportSender, webrtc,
+        TransportSender, web_socket, webrtc,
     },
     video::StreamVideoDecoder,
 };
@@ -200,6 +200,11 @@ struct StreamInfo {
     app_id: u32,
 }
 
+struct StreamSetup {
+    video: Option<VideoSetup>,
+    audio: Option<OpusMultistreamConfig>,
+}
+
 struct StreamConnection {
     pub runtime: Handle,
     pub moonlight: MoonlightInstance,
@@ -208,7 +213,7 @@ struct StreamConnection {
     pub settings: StreamSettings,
     pub ipc_sender: IpcSender<StreamerIpcMessage>,
     // Video
-    pub stream_info: Mutex<Option<VideoSetup>>,
+    pub stream_setup: Mutex<StreamSetup>,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
     pub active_gamepads: RwLock<ActiveGamepads>,
@@ -233,7 +238,10 @@ impl StreamConnection {
             info,
             settings,
             ipc_sender,
-            stream_info: Mutex::new(None),
+            stream_setup: Mutex::new(StreamSetup {
+                video: None,
+                audio: None,
+            }),
             stream: RwLock::new(None),
             active_gamepads: RwLock::new(ActiveGamepads::empty()),
             transport_sender: Mutex::new(None),
@@ -562,7 +570,14 @@ impl StreamConnection {
                 TransportType::WebSocket => {
                     info!("Trying Web Socket transport");
 
-                    todo!();
+                    let (sender, events) = match web_socket::new(self.settings.clone()).await {
+                        Ok(value) => value,
+                        Err(err) => {
+                            // TODO: what now?
+                            todo!();
+                        }
+                    };
+                    self.set_transport(Box::new(sender), Box::new(events)).await;
                 }
             }
         }
@@ -671,12 +686,17 @@ impl StreamConnection {
             touch: host_features.contains(HostFeatures::PEN_TOUCH_EVENTS),
         };
 
-        let video_setup = {
-            let video_setup = self.stream_info.lock().await;
-            video_setup.unwrap_or_else(|| {
+        let (video_setup, audio_setup) = {
+            let setup = self.stream_setup.lock().await;
+
+            let video = setup.video.unwrap_or_else(|| {
                 warn!("failed to query video setup information. Giving the browser guessed information");
                 VideoSetup { format: VideoFormat::H264, width: self.settings.width, height: self.settings.height, redraw_rate: self.settings.fps, flags: 0 }
-            })
+            });
+
+            let audio = setup.audio.clone().unwrap();
+
+            (video, audio)
         };
 
         spawn(async move {
@@ -688,6 +708,8 @@ impl StreamConnection {
                         width: video_setup.width,
                         height: video_setup.height,
                         fps: video_setup.redraw_rate,
+                        audio_channels: audio_setup.channel_count,
+                        audio_sample_rate: audio_setup.sample_rate,
                     },
                 ))
                 .await;
@@ -926,6 +948,11 @@ impl AudioDecoder for StreamAudioDecoder {
             warn!("Failed to setup audio because stream is deallocated");
             return -1;
         };
+
+        {
+            let mut stream_info = stream.stream_setup.blocking_lock();
+            stream_info.audio = Some(stream_config.clone());
+        }
 
         stream.runtime.clone().block_on(async move {
             let mut sender = stream.transport_sender.lock().await;

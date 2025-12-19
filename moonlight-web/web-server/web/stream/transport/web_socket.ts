@@ -20,6 +20,9 @@ export class WebSocketTransport implements Transport {
         this.ws = ws
         this.buffer = buffer
 
+        // Very important, set the binary type to arraybuffer
+        this.ws.binaryType = "arraybuffer"
+
         for (const keyRaw in TransportChannelId) {
             const key = keyRaw as TransportChannelIdKey
             const id = TransportChannelId[key]
@@ -28,25 +31,21 @@ export class WebSocketTransport implements Transport {
         }
     }
 
-    onconnected: (() => void) | null = null
-    ondisconnected: (() => void) | null = null
-
     getChannel(id: TransportChannelIdValue): TransportChannel {
         return this.channels[id]
     }
 
     async setupHostVideo(setup: TransportVideoSetup): Promise<void> {
         if (setup.type.indexOf("data") == -1) {
-            // TODO
-            throw "Not Supported"
+            this.logger?.debug("Cannot use Web Socket Transport: Found no supported video pipeline")
+            throw "Cannot use Web Socket Transport: Found no supported video pipeline"
         }
     }
     async setupHostAudio(setup: TransportAudioSetup): Promise<void> {
         if (setup.type.indexOf("data") == -1) {
-            // TODO
-            throw "Not Supported"
+            this.logger?.debug("Cannot use Web Socket Transport: Found no supported audio pipeline")
+            throw "Cannot use Web Socket Transport: Found no supported audio pipeline"
         }
-
     }
 
     onclose: ((shutdown: TransportShutdown) => void) | null = null
