@@ -108,7 +108,7 @@ class WebSocketDataTransportChannel implements DataTransportChannel {
 
         const buffer = this.buffer.getRemainingBuffer()
         for (const listener of this.receiveListeners) {
-            listener(buffer)
+            listener(buffer.buffer)
         }
     }
 
