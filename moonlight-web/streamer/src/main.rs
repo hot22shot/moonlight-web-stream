@@ -1,20 +1,22 @@
+#![feature(if_let_guard)]
+#![feature(async_fn_traits)]
+
 use std::{
     panic,
     process::exit,
     sync::{
-        Arc,
+        Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use bytes::Bytes;
 use common::{
     StreamSettings,
-    api_bindings::StreamerStatsUpdate,
-    config::PortRange,
-    ipc::{IpcReceiver, IpcSender, ServerIpcMessage, StreamerIpcMessage, create_process_ipc},
-    serialize_json,
+    ipc::{
+        IpcReceiver, IpcSender, ServerIpcMessage, StreamerConfig, StreamerIpcMessage,
+        create_process_ipc,
+    },
 };
 use log::{LevelFilter, debug, info, warn};
 use moonlight_common::{
@@ -24,8 +26,14 @@ use moonlight_common::{
     pair::ClientAuth,
     stream::{
         MoonlightInstance, MoonlightStream,
-        bindings::{ColorRange, EncryptionFlags, HostFeatures, VideoFormat},
-        video::VideoSetup,
+        audio::AudioDecoder,
+        bindings::{
+            ActiveGamepads, AudioConfig, Capabilities, ColorRange, ConnectionStatus, DecodeResult,
+            EncryptionFlags, HostFeatures, OpusMultistreamConfig, Stage, SupportedVideoFormats,
+            VideoDecodeUnit, VideoFormat,
+        },
+        connection::ConnectionListener,
+        video::{VideoDecoder, VideoSetup},
     },
 };
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
@@ -34,57 +42,21 @@ use tokio::{
     runtime::Handle,
     spawn,
     sync::{Mutex, Notify, RwLock},
-    task::spawn_blocking,
     time::sleep,
 };
-use webrtc::{
-    api::{
-        API, APIBuilder, interceptor_registry::register_default_interceptors,
-        media_engine::MediaEngine, setting_engine::SettingEngine,
-    },
-    data_channel::RTCDataChannel,
-    ice::udp_network::{EphemeralUDP, UDPNetwork},
-    ice_transport::{
-        ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
-        ice_connection_state::RTCIceConnectionState,
-    },
-    interceptor::registry::Registry,
-    peer_connection::{
-        RTCPeerConnection,
-        configuration::RTCConfiguration,
-        peer_connection_state::RTCPeerConnectionState,
-        sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
-    },
-};
 
-use common::api_bindings::{
-    RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamCapabilities, StreamClientMessage,
-    StreamServerMessage, StreamSignalingMessage,
-};
+use common::api_bindings::{StreamCapabilities, StreamServerMessage};
 
-use crate::{
-    audio::{OpusTrackSampleAudioDecoder, register_audio_codecs},
-    buffer::ByteBuffer,
-    connection::StreamConnectionListener,
-    convert::{
-        from_webrtc_ice, from_webrtc_sdp, into_webrtc_ice, into_webrtc_ice_candidate,
-        into_webrtc_network_type,
-    },
-    input::StreamInput,
-    video::{register_video_codecs, spawn_video_thread},
+use crate::transport::{
+    InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
+    TransportSender, webrtc,
 };
 
 pub type RequestClient = ReqwestClient;
 
-pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
-
-mod audio;
 mod buffer;
-mod connection;
 mod convert;
-mod input;
-mod sender;
-mod video;
+mod transport;
 
 #[tokio::main]
 async fn main() {
@@ -190,66 +162,6 @@ async fn main() {
     // -- Configure moonlight
     let moonlight = MoonlightInstance::global().expect("failed to find moonlight");
 
-    // -- Configure WebRTC
-    let rtc_config = RTCConfiguration {
-        ice_servers: config
-            .webrtc
-            .ice_servers
-            .clone()
-            .into_iter()
-            .map(into_webrtc_ice)
-            .collect(),
-        ..Default::default()
-    };
-    let mut api_settings = SettingEngine::default();
-
-    if let Some(PortRange { min, max }) = config.webrtc.port_range {
-        match EphemeralUDP::new(min, max) {
-            Ok(udp) => {
-                api_settings.set_udp_network(UDPNetwork::Ephemeral(udp));
-            }
-            Err(err) => {
-                warn!("[Stream]: Invalid port range in config: {err:?}");
-            }
-        }
-    }
-    if let Some(mapping) = config.webrtc.nat_1to1 {
-        api_settings.set_nat_1to1_ips(
-            mapping.ips.clone(),
-            into_webrtc_ice_candidate(mapping.ice_candidate_type),
-        );
-    }
-    api_settings.set_network_types(
-        config
-            .webrtc
-            .network_types
-            .iter()
-            .copied()
-            .map(into_webrtc_network_type)
-            .collect(),
-    );
-
-    api_settings.set_include_loopback_candidate(config.webrtc.include_loopback_candidates);
-
-    // -- Register media codecs
-    let mut api_media = MediaEngine::default();
-    register_audio_codecs(&mut api_media).expect("failed to register audio codecs");
-    register_video_codecs(&mut api_media, stream_settings.video_supported_formats)
-        .expect("failed to register video codecs");
-
-    // -- Build Api
-    let mut api_registry = Registry::new();
-
-    // Use the default set of Interceptors
-    api_registry = register_default_interceptors(api_registry, &mut api_media)
-        .expect("failed to register webrtc default interceptors");
-
-    let api = APIBuilder::new()
-        .with_setting_engine(api_settings)
-        .with_media_engine(api_media)
-        .with_interceptor_registry(api_registry)
-        .build();
-
     // -- Create and Configure Peer
     let connection = StreamConnection::new(
         moonlight,
@@ -260,8 +172,7 @@ async fn main() {
         stream_settings,
         ipc_sender.clone(),
         ipc_receiver,
-        &api,
-        rtc_config,
+        config,
     )
     .await
     .expect("failed to create connection");
@@ -301,20 +212,14 @@ struct StreamConnection {
     pub moonlight: MoonlightInstance,
     pub info: StreamInfo,
     pub settings: StreamSettings,
-    pub peer: Arc<RTCPeerConnection>,
     pub ipc_sender: IpcSender<StreamerIpcMessage>,
-    pub general_channel: Arc<RTCDataChannel>,
-    // Input
-    pub input: StreamInput,
     // Video
     pub stream_info: Mutex<Option<VideoSetup>>,
-    // Stats
-    pub stats_channel: RwLock<Option<Arc<RTCDataChannel>>>,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
-    pub timeout_terminate_request: Mutex<Option<Instant>>,
-    pub is_terminating: AtomicBool,
+    pub transport_sender: Mutex<Box<dyn TransportSender + Send + Sync>>,
     pub terminate: Notify,
+    is_terminating: AtomicBool,
 }
 
 impl StreamConnection {
@@ -322,92 +227,68 @@ impl StreamConnection {
         moonlight: MoonlightInstance,
         info: StreamInfo,
         settings: StreamSettings,
-        mut ipc_sender: IpcSender<StreamerIpcMessage>,
+        ipc_sender: IpcSender<StreamerIpcMessage>,
         mut ipc_receiver: IpcReceiver<ServerIpcMessage>,
-        api: &API,
-        config: RTCConfiguration,
+        config: StreamerConfig,
     ) -> Result<Arc<Self>, anyhow::Error> {
-        // Send WebRTC Info
-        ipc_sender
-            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::Setup {
-                ice_servers: config
-                    .ice_servers
-                    .iter()
-                    .cloned()
-                    .map(from_webrtc_ice)
-                    .collect(),
-            }))
-            .await;
-
-        let peer = Arc::new(api.new_peer_connection(config).await?);
-
-        // -- Input
-        let input = StreamInput::new();
-
-        let general_channel = peer.create_data_channel("general", None).await?;
+        let (sender, mut events) = webrtc::new(settings.clone(), &config.webrtc).await?;
 
         let this = Arc::new(Self {
             runtime: Handle::current(),
             moonlight,
             info,
             settings,
-            peer: peer.clone(),
             ipc_sender,
-            general_channel,
             stream_info: Mutex::new(None),
-            input,
-            stats_channel: Default::default(),
-            stream: Default::default(),
-            timeout_terminate_request: Default::default(),
+            stream: RwLock::new(None),
+            transport_sender: Mutex::new(Box::new(sender)),
+            terminate: Notify::default(),
             is_terminating: AtomicBool::new(false),
-            terminate: Notify::new(),
-        });
-
-        // -- Connection state
-        peer.on_ice_connection_state_change({
-            let this = this.clone();
-            Box::new(move |state| {
-                let this = this.clone();
-                Box::pin(async move {
-                    this.on_ice_connection_state_change(state).await;
-                })
-            })
-        });
-        peer.on_peer_connection_state_change({
-            let this = this.clone();
-            Box::new(move |state| {
-                let this = this.clone();
-                Box::pin(async move {
-                    this.on_peer_connection_state_change(state).await;
-                })
-            })
-        });
-
-        // -- Signaling
-        peer.on_negotiation_needed({
-            let this = this.clone();
-            Box::new(move || {
-                let this = this.clone();
-                Box::pin(async move {
-                    this.on_negotiation_needed().await;
-                })
-            })
-        });
-        peer.on_ice_candidate({
-            let this = this.clone();
-            Box::new(move |candidate| {
-                let this = this.clone();
-                Box::pin(async move {
-                    this.on_ice_candidate(candidate).await;
-                })
-            })
         });
 
         spawn({
-            let this = this.clone();
+            let runtime = this.runtime.clone();
+            let mut ipc_sender = this.ipc_sender.clone();
+            let this = Arc::downgrade(&this);
+
+            async move {
+                loop {
+                    match events.poll_event().await {
+                        Ok(TransportEvent::SendIpc(message)) => {
+                            ipc_sender.send(message).await;
+                        }
+                        Ok(TransportEvent::StartStream { settings }) => {
+                            // TODO: set settings
+                            let this = this.upgrade().unwrap();
+
+                            this.start_stream().await.unwrap();
+                        }
+                        Ok(TransportEvent::RecvPacket(packet)) => {
+                            let this = this.upgrade().unwrap();
+
+                            this.on_packet(packet).await;
+                        }
+                        Err(TransportError::Closed) | Ok(TransportEvent::Closed) => {
+                            let this = this.upgrade().unwrap();
+
+                            this.stop().await;
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        spawn({
+            let this = Arc::downgrade(&this);
 
             async move {
                 while let Some(message) = ipc_receiver.recv().await {
+                    let Some(this) = this.upgrade() else {
+                        debug!("Received ipc message while the main type is already deallocated");
+                        return;
+                    };
+
                     if let ServerIpcMessage::Stop = &message {
                         this.on_ipc_message(ServerIpcMessage::Stop).await;
                         return;
@@ -418,223 +299,124 @@ impl StreamConnection {
             }
         });
 
-        // -- Data Channels
-        peer.on_data_channel({
-            let this = this.clone();
-            Box::new(move |channel| {
-                let this = this.clone();
-                Box::pin(async move {
-                    this.on_data_channel(channel).await;
-                })
-            })
-        });
-
         Ok(this)
     }
 
-    // -- Handle Connection State
-    async fn on_ice_connection_state_change(self: &Arc<Self>, _state: RTCIceConnectionState) {}
-    async fn on_peer_connection_state_change(self: Arc<Self>, state: RTCPeerConnectionState) {
-        #[allow(clippy::collapsible_if)]
-        if matches!(state, RTCPeerConnectionState::Connected) {
-            if let Err(err) = self.start_stream().await {
-                warn!("[Stream]: failed to start stream: {err:?}");
-
-                self.stop().await;
-            }
-        } else if matches!(state, RTCPeerConnectionState::Closed) {
-            self.stop().await;
-        } else if matches!(
-            state,
-            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Disconnected
-        ) {
-            self.request_terminate().await;
-        } else {
-            self.clear_terminate_request().await;
-        }
-    }
-
-    // -- Handle Signaling
-    async fn on_negotiation_needed(&self) {
-        // Do nothing
-    }
-
-    async fn send_answer(&self) -> bool {
-        let local_description = match self.peer.create_answer(None).await {
-            Err(err) => {
-                warn!("[Signaling]: failed to create answer: {err:?}");
-                return false;
-            }
-            Ok(value) => value,
-        };
-
-        if let Err(err) = self
-            .peer
-            .set_local_description(local_description.clone())
-            .await
-        {
-            warn!("[Signaling]: failed to set local description: {err:?}");
-            return false;
-        }
-
-        debug!(
-            "[Signaling] Sending Local Description as Answer: {:?}",
-            local_description.sdp
-        );
-
-        self.ipc_sender
-            .clone()
-            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::WebRtc(
-                StreamSignalingMessage::Description(RtcSessionDescription {
-                    ty: from_webrtc_sdp(local_description.sdp_type),
-                    sdp: local_description.sdp,
-                }),
-            )))
-            .await;
-
-        true
-    }
-    async fn send_offer(&self) -> bool {
-        let local_description = match self.peer.create_offer(None).await {
-            Err(err) => {
-                warn!("[Signaling]: failed to create offer: {err:?}");
-                return false;
-            }
-            Ok(value) => value,
-        };
-
-        if let Err(err) = self
-            .peer
-            .set_local_description(local_description.clone())
-            .await
-        {
-            warn!("[Signaling]: failed to set local description: {err:?}");
-            return false;
-        }
-
-        debug!(
-            "[Signaling] Sending Local Description as Offer: {:?}",
-            local_description.sdp
-        );
-
-        self.ipc_sender
-            .clone()
-            .send(StreamerIpcMessage::WebSocket(StreamServerMessage::WebRtc(
-                StreamSignalingMessage::Description(RtcSessionDescription {
-                    ty: from_webrtc_sdp(local_description.sdp_type),
-                    sdp: local_description.sdp,
-                }),
-            )))
-            .await;
-
-        true
-    }
-
-    async fn on_ipc_message(&self, message: ServerIpcMessage) {
-        match message {
-            ServerIpcMessage::Init { .. } => {}
-            ServerIpcMessage::WebSocket(message) => {
-                self.on_ws_message(message).await;
-            }
-            ServerIpcMessage::Stop => {
-                self.stop().await;
-            }
-        }
-    }
-    async fn on_ws_message(&self, message: StreamClientMessage) {
-        match message {
-            StreamClientMessage::WebRtc(StreamSignalingMessage::Description(description)) => {
-                debug!("[Signaling] Received Remote Description: {:?}", description);
-
-                let description = match &description.ty {
-                    RtcSdpType::Offer => RTCSessionDescription::offer(description.sdp),
-                    RtcSdpType::Answer => RTCSessionDescription::answer(description.sdp),
-                    RtcSdpType::Pranswer => RTCSessionDescription::pranswer(description.sdp),
-                    _ => {
-                        warn!(
-                            "[Signaling]: failed to handle RTCSdpType {:?}",
-                            description.ty
-                        );
-                        return;
-                    }
-                };
-
-                let Ok(description) = description else {
-                    warn!("[Signaling]: Received invalid RTCSessionDescription");
-                    return;
-                };
-
-                let remote_ty = description.sdp_type;
-                if let Err(err) = self.peer.set_remote_description(description).await {
-                    warn!("[Signaling]: failed to set remote description: {err:?}");
-                    return;
-                }
-
-                // Send an answer (local description) if we got an offer
-                if remote_ty == RTCSdpType::Offer {
-                    self.send_answer().await;
-                }
-            }
-            StreamClientMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(description)) => {
-                debug!("[Signaling] Received Ice Candidate");
-
-                if let Err(err) = self
-                    .peer
-                    .add_ice_candidate(RTCIceCandidateInit {
-                        candidate: description.candidate,
-                        sdp_mid: description.sdp_mid,
-                        sdp_mline_index: description.sdp_mline_index,
-                        username_fragment: description.username_fragment,
-                    })
-                    .await
-                {
-                    warn!("[Signaling]: failed to add ice candidate: {err:?}");
-                }
-            }
-            // This should already be done
-            StreamClientMessage::Init { .. } => {}
-        }
-    }
-
-    async fn on_ice_candidate(&self, candidate: Option<RTCIceCandidate>) {
-        let Some(candidate) = candidate else {
+    async fn on_packet(&self, packet: InboundPacket) {
+        let stream = self.stream.read().await;
+        let Some(stream) = stream.as_ref() else {
+            warn!("Failed to send packet {packet:?} because of missing stream");
             return;
         };
 
-        let Ok(candidate_json) = candidate.to_json() else {
-            return;
+        let err = match packet {
+            InboundPacket::General { message } => {
+                todo!();
+            }
+            InboundPacket::MousePosition {
+                x,
+                y,
+                reference_width,
+                reference_height,
+            } => stream
+                .send_mouse_position(x, y, reference_width, reference_height)
+                .err(),
+            InboundPacket::MouseButton { action, button } => {
+                stream.send_mouse_button(action, button).err()
+            }
+            InboundPacket::MouseMove { delta_x, delta_y } => {
+                stream.send_mouse_move(delta_x, delta_y).err()
+            }
+            InboundPacket::HighResScroll { delta_x, delta_y } => {
+                let mut err = None;
+                if delta_y != 0 {
+                    err = stream.send_high_res_scroll(delta_y).err()
+                }
+                if delta_x != 0 {
+                    err = stream.send_high_res_horizontal_scroll(delta_x).err()
+                }
+                err
+            }
+            InboundPacket::Scroll { delta_x, delta_y } => {
+                let mut err = None;
+                if delta_y != 0 {
+                    err = stream.send_scroll(delta_y).err();
+                }
+                if delta_x != 0 {
+                    err = stream.send_horizontal_scroll(delta_x).err();
+                }
+                err
+            }
+            InboundPacket::Key {
+                action,
+                modifiers,
+                key,
+                flags,
+            } => stream
+                .send_keyboard_event_non_standard(key as i16, action, modifiers, flags)
+                .err(),
+            InboundPacket::Text { text } => stream.send_text(&text).err(),
+            InboundPacket::Touch {
+                pointer_id,
+                x,
+                y,
+                pressure_or_distance,
+                contact_area_major,
+                contact_area_minor,
+                rotation,
+                event_type,
+            } => stream
+                .send_touch(
+                    pointer_id,
+                    x,
+                    y,
+                    pressure_or_distance,
+                    contact_area_major,
+                    contact_area_minor,
+                    rotation,
+                    event_type,
+                )
+                .err(),
+            InboundPacket::ControllerConnected {
+                id,
+                ty,
+                supported_buttons,
+                capabilities,
+            } => {
+                // TODO
+                todo!();
+            }
+            InboundPacket::ControllerDisconnected { id } => {
+                // TODO
+                todo!();
+            }
+            InboundPacket::ControllerState {
+                id,
+                buttons,
+                left_trigger,
+                right_trigger,
+                left_stick_x,
+                left_stick_y,
+                right_stick_x,
+                right_stick_y,
+            } => {
+                // TODO
+                todo!();
+            }
         };
 
-        debug!(
-            "[Signaling] Sending Ice Candidate: {}",
-            candidate_json.candidate
-        );
-
-        let message =
-            StreamServerMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(RtcIceCandidate {
-                candidate: candidate_json.candidate,
-                sdp_mid: candidate_json.sdp_mid,
-                sdp_mline_index: candidate_json.sdp_mline_index,
-                username_fragment: candidate_json.username_fragment,
-            }));
-
-        self.ipc_sender
-            .clone()
-            .send(StreamerIpcMessage::WebSocket(message))
-            .await;
+        if let Some(err) = err {
+            warn!("Failed to handle packet: {err:?}");
+        }
     }
 
-    // -- Data Channels
-    async fn on_data_channel(self: &Arc<Self>, channel: Arc<RTCDataChannel>) {
-        debug!("adding data channel: \"{}\"", channel.label());
+    async fn on_ipc_message(self: &Arc<Self>, message: ServerIpcMessage) {
+        let this = self.clone();
 
-        if self.input.on_data_channel(self, &channel).await {
-            return;
-        }
+        let sender = this.transport_sender.lock().await;
 
-        if channel.label() == "stats" {
-            let mut stats = self.stats_channel.write().await;
-            *stats = Some(channel);
+        if let Err(err) = sender.on_ipc_message(message).await {
+            warn!("Failed to send ipc message: {err:?}");
         }
     }
 
@@ -652,20 +434,18 @@ impl StreamConnection {
 
         let mut host = self.info.host.lock().await;
 
-        let gamepads = self.input.active_gamepads.read().await;
+        let video_decoder = StreamVideoDecoder {
+            stream: Arc::downgrade(self),
+            supported_formats: SupportedVideoFormats::empty(),
+        };
 
-        let video_decoder = spawn_video_thread(
-            self.clone(),
-            self.settings.video_supported_formats,
-            self.settings.video_frame_queue_size as usize,
-        );
+        let audio_decoder = StreamAudioDecoder {
+            stream: Arc::downgrade(self),
+        };
 
-        let audio_decoder = OpusTrackSampleAudioDecoder::new(
-            self.clone(),
-            self.settings.audio_sample_queue_size as usize,
-        );
-
-        let connection_listener = StreamConnectionListener::new(self.clone());
+        let connection_listener = StreamConnectionListener {
+            stream: Arc::downgrade(self),
+        };
 
         let stream = match host
             .start_stream(
@@ -677,7 +457,7 @@ impl StreamConnection {
                 false,
                 true,
                 self.settings.play_audio_local,
-                *gamepads,
+                ActiveGamepads::empty(),
                 false,
                 self.settings.video_colorspace,
                 if self.settings.video_color_range_full {
@@ -745,70 +525,10 @@ impl StreamConnection {
                 .await;
         });
 
-        drop(gamepads);
-
         let mut stream_guard = self.stream.write().await;
         stream_guard.replace(stream);
 
         Ok(())
-    }
-
-    async fn send_stats(&self, stats: StreamerStatsUpdate) {
-        let stats_channel = self.stats_channel.read().await;
-        let Some(stats_channel) = stats_channel.as_ref() else {
-            return;
-        };
-
-        let json = match serde_json::to_string(&stats) {
-            Ok(value) => value,
-            Err(err) => {
-                warn!("failed to serialize stats: {err:?}");
-                return;
-            }
-        };
-
-        let mut raw_buffer = vec![0u8; json.len() + 2];
-
-        let mut buffer = ByteBuffer::new(&mut raw_buffer);
-        buffer.put_u16(json.len() as u16);
-        buffer.put_utf8_raw(&json);
-
-        let raw_buffer = Bytes::from(raw_buffer);
-
-        if let Err(err) = stats_channel.send(&raw_buffer).await {
-            if let webrtc::Error::ErrClosedPipe = err {
-                let mut stats_channel = self.stats_channel.write().await;
-                stats_channel.take();
-            }
-            warn!("failed to send stats: {err:?}");
-        }
-    }
-
-    async fn request_terminate(self: &Arc<Self>) {
-        let this = self.clone();
-
-        let mut terminate_request = self.timeout_terminate_request.lock().await;
-        *terminate_request = Some(Instant::now());
-        drop(terminate_request);
-
-        spawn(async move {
-            sleep(TIMEOUT_DURATION + Duration::from_millis(200)).await;
-
-            let now = Instant::now();
-
-            let terminate_request = this.timeout_terminate_request.lock().await;
-            if let Some(terminate_request) = *terminate_request
-                && (now - terminate_request) > TIMEOUT_DURATION
-            {
-                info!("Stopping because of timeout");
-                this.stop().await;
-            }
-        });
-    }
-    async fn clear_terminate_request(&self) {
-        let mut request = self.timeout_terminate_request.lock().await;
-
-        *request = None;
     }
 
     async fn stop(&self) {
@@ -827,22 +547,295 @@ impl StreamConnection {
             let mut stream = self.stream.write().await;
             stream.take()
         };
-        if let Err(err) = spawn_blocking(move || {
-            drop(stream);
-        })
-        .await
-        {
-            warn!("[Stream]: failed to stop stream: {err}");
-        };
-
-        if let Err(err) = self.peer.close().await {
-            warn!("failed to close peer: {err}");
-        }
+        drop(stream);
 
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;
 
         info!("Terminating Self");
         self.terminate.notify_waiters();
+    }
+}
+
+struct StreamConnectionListener {
+    stream: Weak<StreamConnection>,
+}
+
+impl ConnectionListener for StreamConnectionListener {
+    fn stage_starting(&mut self, stage: Stage) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        let mut ipc_sender = stream.ipc_sender.clone();
+
+        stream.runtime.spawn(async move {
+            ipc_sender
+                .send(StreamerIpcMessage::WebSocket(
+                    StreamServerMessage::StageStarting {
+                        stage: stage.name().to_string(),
+                    },
+                ))
+                .await;
+        });
+    }
+
+    fn stage_complete(&mut self, stage: Stage) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        let mut ipc_sender = stream.ipc_sender.clone();
+        ipc_sender.blocking_send(StreamerIpcMessage::WebSocket(
+            StreamServerMessage::StageComplete {
+                stage: stage.name().to_string(),
+            },
+        ));
+    }
+
+    fn stage_failed(&mut self, stage: Stage, error_code: i32) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        let mut ipc_sender = stream.ipc_sender.clone();
+        ipc_sender.blocking_send(StreamerIpcMessage::WebSocket(
+            StreamServerMessage::StageFailed {
+                stage: stage.name().to_string(),
+                error_code,
+            },
+        ));
+    }
+
+    fn connection_started(&mut self) {}
+
+    fn connection_terminated(&mut self, error_code: i32) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        let mut ipc_sender = stream.ipc_sender.clone();
+        ipc_sender.blocking_send(StreamerIpcMessage::WebSocket(
+            StreamServerMessage::ConnectionTerminated { error_code },
+        ));
+
+        stream.runtime.clone().block_on(async move {
+            stream.stop().await;
+        });
+    }
+
+    fn log_message(&mut self, message: &str) {
+        info!(target: "moonlight", "{}", message.trim());
+    }
+
+    fn connection_status_update(&mut self, status: ConnectionStatus) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        stream.clone().runtime.block_on(async move {
+            let sender = stream.transport_sender.lock().await;
+            if let Err(err) = sender
+                .send(OutboundPacket::General {
+                    message: StreamServerMessage::ConnectionStatusUpdate {
+                        status: status.into(),
+                    },
+                })
+                .await
+            {
+                warn!("Failed to send connection status update: {err:?}");
+            }
+        })
+    }
+
+    fn set_hdr_mode(&mut self, _hdr_enabled: bool) {}
+
+    fn controller_rumble(
+        &mut self,
+        controller_number: u16,
+        low_frequency_motor: u16,
+        high_frequency_motor: u16,
+    ) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        stream.runtime.clone().block_on(async move {
+            let sender = stream.transport_sender.lock().await;
+            if let Err(err) = sender
+                .send(OutboundPacket::ControllerRumble {
+                    controller_number: controller_number as u8,
+                    low_frequency_motor,
+                    high_frequency_motor,
+                })
+                .await
+            {
+                warn!("Failed to send controller rumble: {err:?}");
+            }
+        });
+    }
+
+    fn controller_rumble_triggers(
+        &mut self,
+        controller_number: u16,
+        left_trigger_motor: u16,
+        right_trigger_motor: u16,
+    ) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        stream.runtime.clone().block_on(async move {
+            let mut sender = stream.transport_sender.blocking_lock();
+
+            if let Err(err) = sender
+                .send(OutboundPacket::ControllerTriggerRumble {
+                    controller_number: controller_number as u8,
+                    left_trigger_motor,
+                    right_trigger_motor,
+                })
+                .await
+            {
+                warn!("Failed to send controller trigger rumble: {err:?}");
+            }
+        });
+    }
+
+    fn controller_set_motion_event_state(
+        &mut self,
+        _controller_number: u16,
+        _motion_type: u8,
+        _report_rate_hz: u16,
+    ) {
+        // unsupported: https://github.com/w3c/gamepad/issues/211
+    }
+
+    fn controller_set_adaptive_triggers(
+        &mut self,
+        _controller_number: u16,
+        _event_flags: u8,
+        _type_left: u8,
+        _type_right: u8,
+        _left: &mut u8,
+        _right: &mut u8,
+    ) {
+        // unsupported
+    }
+
+    fn controller_set_led(&mut self, _controller_number: u16, _r: u8, _g: u8, _b: u8) {
+        // unsupported
+    }
+}
+
+struct StreamVideoDecoder {
+    stream: Weak<StreamConnection>,
+    supported_formats: SupportedVideoFormats,
+}
+
+impl VideoDecoder for StreamVideoDecoder {
+    fn setup(&mut self, setup: VideoSetup) -> i32 {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to setup video because stream is deallocated");
+            return -1;
+        };
+
+        {
+            let mut stream_info = stream.stream_info.blocking_lock();
+            *stream_info = Some(setup);
+        }
+
+        {
+            stream.runtime.clone().block_on(async move {
+                let mut sender = stream.transport_sender.lock().await;
+
+                sender.setup_video(setup).await
+            })
+        }
+    }
+
+    fn start(&mut self) {}
+    fn stop(&mut self) {}
+
+    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to send video decode unit because stream is deallocated");
+            return DecodeResult::Ok;
+        };
+
+        stream.runtime.clone().block_on(async move {
+            let mut sender = stream.transport_sender.lock().await;
+
+            match sender.send_video_unit(unit).await {
+                Err(err) => {
+                    warn!("Failed to send video decode unit: {err}");
+                    DecodeResult::Ok
+                }
+                Ok(value) => value,
+            }
+        })
+    }
+
+    fn supported_formats(&self) -> SupportedVideoFormats {
+        self.supported_formats
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::empty()
+    }
+}
+
+struct StreamAudioDecoder {
+    stream: Weak<StreamConnection>,
+}
+
+impl AudioDecoder for StreamAudioDecoder {
+    fn setup(
+        &mut self,
+        audio_config: AudioConfig,
+        stream_config: OpusMultistreamConfig,
+        _ar_flags: i32,
+    ) -> i32 {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to setup audio because stream is deallocated");
+            return -1;
+        };
+
+        stream.runtime.clone().block_on(async move {
+            let mut sender = stream.transport_sender.lock().await;
+
+            sender.setup_audio(audio_config, stream_config).await
+        })
+    }
+
+    fn start(&mut self) {}
+    fn stop(&mut self) {}
+
+    fn decode_and_play_sample(&mut self, data: &[u8]) {
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to send audio sample because stream is deallocated");
+            return;
+        };
+
+        stream.runtime.clone().block_on(async move {
+            let stream = stream.transport_sender.lock().await;
+            if let Err(err) = stream.send_audio_sample(data).await {
+                warn!("Failed to send audio sample: {err}");
+            }
+        });
+    }
+
+    fn config(&self) -> AudioConfig {
+        AudioConfig::STEREO
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::empty()
     }
 }

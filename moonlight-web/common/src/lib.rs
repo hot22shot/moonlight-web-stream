@@ -7,7 +7,7 @@ pub mod api_bindings_consts;
 pub mod config;
 pub mod ipc;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamSettings {
     pub bitrate: u32,
     pub packet_size: u32,

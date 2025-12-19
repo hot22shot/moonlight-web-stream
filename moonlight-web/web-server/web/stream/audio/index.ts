@@ -20,7 +20,7 @@ export abstract class AudioPlayer implements Component {
     abstract unmount(parent: HTMLElement): void
 }
 
-export abstract class StreamAudioPlayer extends AudioPlayer {
+export abstract class TrackAudioPlayer extends AudioPlayer {
     abstract setTrack(track: MediaStreamTrack): void
 }
 

@@ -1,5 +1,5 @@
 import { Api } from "../api.js"
-import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamServerGeneralMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
+import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
 import { Component } from "../component/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
 import { AudioElementPlayer } from "./audio/audio_element.js"
@@ -158,7 +158,7 @@ export class Stream implements Component {
         }
     }
 
-    private async onMessage(message: StreamServerMessage | StreamServerGeneralMessage) {
+    private async onMessage(message: StreamServerMessage) {
         if (typeof message == "string") {
             const event: InfoEvent = new CustomEvent("stream-info", {
                 detail: { type: "serverMessage", message }

@@ -4,10 +4,15 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use anyhow::anyhow;
 use log::{debug, warn};
-use tokio::sync::{Mutex, Notify};
+use tokio::{
+    runtime::{Handle, Runtime},
+    sync::{Mutex, Notify},
+};
 use webrtc::{
     media::Sample,
+    peer_connection::RTCPeerConnection,
     rtcp::packet::Packet,
     rtp::{
         self,
@@ -22,14 +27,13 @@ use webrtc::{
     },
 };
 
-use crate::StreamConnection;
-
 pub struct TrackLocalSender<Track>
 where
     Track: TrackLike,
 {
+    runtime: Handle,
+    peer: Weak<RTCPeerConnection>,
     channel_queue_size: usize,
-    pub(crate) stream: Arc<StreamConnection>,
     new_samples_notify: Arc<Notify>,
     queue: Arc<Mutex<VecDeque<FrameSamples<Track>>>>,
 }
@@ -46,42 +50,45 @@ impl<Track> TrackLocalSender<Track>
 where
     Track: TrackLike,
 {
-    pub fn new(stream: Arc<StreamConnection>, channel_queue_size: usize) -> Self {
+    pub fn new(runtime: Handle, peer: Weak<RTCPeerConnection>, channel_queue_size: usize) -> Self {
         Self {
+            runtime,
+            peer,
             channel_queue_size,
-            stream,
             new_samples_notify: Default::default(),
             queue: Default::default(),
         }
     }
 
-    pub fn blocking_create_track(
+    // TODO: make the blocking calls use runtime.block_on
+    pub async fn create_track(
         &mut self,
         track: Track,
         mut on_packet: impl FnMut(Box<dyn Packet + Send + Sync>) + Send + 'static,
     ) -> Result<(), anyhow::Error> {
-        let stream = self.stream.clone();
+        let Some(peer) = self.peer.upgrade() else {
+            return Err(anyhow!(
+                "Failed to create track because of missing webrtc peer!"
+            ));
+        };
 
         let track = Arc::new(track);
 
         let new_samples_notify = self.new_samples_notify.clone();
         let queue = Arc::downgrade(&self.queue);
-        self.stream.runtime.spawn({
+        self.runtime.spawn({
             let track = track.clone();
             async move {
                 sample_sender(track, &new_samples_notify, queue).await;
             }
         });
 
-        let track_sender = self.stream.runtime.block_on({
-            let track = track.clone();
-            async move { stream.peer.add_track(track.track()).await }
-        })?;
+        let track_sender = peer.add_track(track.track()).await?;
 
         // Read incoming RTCP packets
         // Before these packets are returned they are processed by interceptors. For things
         // like NACK this needs to be called.
-        self.stream.runtime.spawn(async move {
+        self.runtime.spawn(async move {
             let mut rtcp_buf = vec![0u8; 1500];
             while let Ok((packets, _)) = track_sender.read(&mut rtcp_buf).await {
                 for packet in packets {
@@ -94,14 +101,11 @@ where
     }
 
     /// Returns if the frame will be delivered
-    pub fn blocking_send_samples(&self, samples: Vec<Track::Sample>, important: bool) -> bool {
-        let mut queue = self.queue.blocking_lock();
+    pub async fn send_samples(&self, samples: Vec<Track::Sample>, important: bool) -> bool {
+        let mut queue = self.queue.lock().await;
 
-        self.new_samples_notify.notify_waiters();
-
-        if important {
+        let result = if important {
             queue.push_front(FrameSamples { important, samples });
-
             true
         } else {
             if queue.len() > self.channel_queue_size {
@@ -109,20 +113,26 @@ where
             }
 
             queue.push_front(FrameSamples { important, samples });
-
             true
-        }
+        };
+
+        self.new_samples_notify.notify_waiters();
+
+        result
     }
 
     /// Returns if the frame will be delivered
-    pub fn blocking_clear_queue(&self, clear_important: bool) {
-        let mut queue = self.queue.blocking_lock();
+    pub async fn clear_queue(&self, clear_important: bool) {
+        let mut queue = self.queue.lock().await;
 
         if clear_important {
             queue.clear();
         } else {
             queue.retain(|frame| frame.important);
         }
+    }
+    pub fn blocking_clear_queue(&self, clear_important: bool) {
+        todo!()
     }
 }
 

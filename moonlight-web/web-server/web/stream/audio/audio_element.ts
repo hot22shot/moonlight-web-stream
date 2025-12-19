@@ -1,6 +1,6 @@
-import { AudioPlayerSetup, StreamAudioPlayer } from "./index.js";
+import { AudioPlayerSetup, TrackAudioPlayer } from "./index.js";
 
-export class AudioElementPlayer extends StreamAudioPlayer {
+export class AudioElementPlayer extends TrackAudioPlayer {
 
     static isBrowserSupported(): boolean {
         return "HTMLAudioElement" in window && "srcObject" in HTMLAudioElement.prototype

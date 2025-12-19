@@ -25,6 +25,7 @@ export type TransportChannelOption = {
     reliable: boolean
 }
 export const TRANSPORT_CHANNEL_OPTIONS: Record<keyof typeof TransportChannelId, TransportChannelOption> = {
+    GENERAL: { reliable: true, ordered: true },
     STATS: { reliable: true, ordered: true },
     HOST_VIDEO: { reliable: false, ordered: true },
     HOST_AUDIO: { reliable: false, ordered: true },

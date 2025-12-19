@@ -7,7 +7,7 @@ use bytes::BytesMut;
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
 
-use crate::video::annexb::{AnnexBSplitter, AnnexBStartCode};
+use crate::transport::webrtc::video::annexb::{AnnexBSplitter, AnnexBStartCode};
 
 #[allow(unused)]
 pub struct Nal {

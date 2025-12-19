@@ -195,6 +195,11 @@ where
             warn!("{}[Ipc] failed to send message", self.log_target);
         }
     }
+    pub fn blocking_send(&mut self, message: Message) {
+        if self.sender.blocking_send(message).is_err() {
+            warn!("{}[Ipc] failed to send message", self.log_target);
+        }
+    }
 }
 
 pub struct IpcReceiver<Message> {
