@@ -158,6 +158,15 @@ where
 
         self.put_u8_array(&bytes)
     }
+    pub fn put_u32(&mut self, data: u32) -> bool {
+        let bytes: [u8; 4] = if self.little_endian {
+            u32::to_le_bytes(data)
+        } else {
+            u32::to_be_bytes(data)
+        };
+
+        self.put_u8_array(&bytes)
+    }
 
     pub fn put_utf8_raw(&mut self, text: &str) -> bool {
         self.put_u8_array(text.as_bytes())

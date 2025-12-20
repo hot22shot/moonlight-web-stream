@@ -1,23 +1,7 @@
 import { StreamSupportedVideoFormats } from "../../api_bindings.js";
+import { ByteBuffer } from "../buffer.js";
+import { VIDEO_DECODER_CODECS } from "../video.js";
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
-
-const CODEC_TRANSLATION: Record<keyof typeof StreamSupportedVideoFormats, string> = {
-    // H.264 / AVC
-    H264: "avc1.64001E",              // High Profile, Level 3.0
-    H264_HIGH8_444: "avc1.6E001E",    // High 4:4:4 Predictive, 8-bit
-
-    // H.265 / HEVC
-    H265: "hev1.1.6.L120.90",         // Main profile, 8-bit
-    H265_MAIN10: "hev1.2.6.L120.90",  // Main10 profile
-    H265_REXT8_444: "hev1.3.6.L120.90",   // Range Extensions, 4:4:4 8-bit
-    H265_REXT10_444: "hev1.4.6.L120.90",  // Range Extensions, 4:4:4 10-bit
-
-    // AV1
-    AV1_MAIN8: "av01.0.08M.08",       // Main profile, 8-bit
-    AV1_MAIN10: "av01.0.10M.10",      // Main profile, 10-bit
-    AV1_HIGH8_444: "av01.1.08M.08",   // High profile, 4:4:4 8-bit
-    AV1_HIGH10_444: "av01.1.10M.10",  // High profile, 4:4:4 10-bit
-};
 
 const START_CODE_SHORT = new Uint8Array([0x00, 0x00, 0x01]); // 3-byte start code
 const START_CODE_LONG = new Uint8Array([0x00, 0x00, 0x00, 0x01]); // 4-byte start code
@@ -28,6 +12,39 @@ function startsWith(buffer: Uint8Array, position: number, check: Uint8Array): bo
         }
     }
     return true
+}
+
+function h264NalType(header: number): number {
+    return header & 0x1f;
+}
+function h264MakeAvcC(sps: Uint8Array, pps: Uint8Array): Uint8Array {
+    const size =
+        7 +                 // header
+        2 + sps.length +    // SPS
+        1 +                 // PPS count
+        2 + pps.length;     // PPS
+
+    const data = new Uint8Array(size);
+    let i = 0;
+
+    data[i++] = 0x01;      // configurationVersion
+    data[i++] = sps[1];   // AVCProfileIndication
+    data[i++] = sps[2];   // profile_compatibility
+    data[i++] = sps[3];   // AVCLevelIndication
+    data[i++] = 0xFF;     // lengthSizeMinusOne = 3 (4 bytes)
+
+    data[i++] = 0xE1;     // numOfSPS = 1
+    data[i++] = sps.length >> 8;
+    data[i++] = sps.length & 0xff;
+    data.set(sps, i);
+    i += sps.length;
+
+    data[i++] = 0x01;     // numOfPPS = 1
+    data[i++] = pps.length >> 8;
+    data[i++] = pps.length & 0xff;
+    data.set(pps, i);
+
+    return data;
 }
 
 export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRenderer {
@@ -41,11 +58,11 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
 
     private base: T
 
-    private codec: "h264" | "h265" | "av1" | null = null
+    private errored = false
     private decoder: VideoDecoder
 
     constructor(base: T) {
-        super(`data_to_frame -> ${base.implementationName}`)
+        super(`video_decoder -> ${base.implementationName}`)
         this.base = base
 
         this.decoder = new VideoDecoder({
@@ -55,6 +72,7 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
     }
 
     private onError(error: any) {
+        this.errored = true
         // TODO: use logger
         console.error(error)
     }
@@ -65,140 +83,138 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
 
     private decoderConfig: VideoDecoderConfig | null = null
     setup(setup: VideoRendererSetup): void {
-        this.decoderConfig = {
-            codec: CODEC_TRANSLATION[setup.format],
-            codedWidth: setup.width,
-            codedHeight: setup.height,
-            hardwareAcceleration: "prefer-hardware",
-            optimizeForLatency: true
+        const codec = VIDEO_DECODER_CODECS.find(codec => codec.key == setup.format)
+        if (!codec) {
+            // TODO: log?
+            throw "Failed to get codec configuration for WebCodecs VideoDecoder"
         }
-        this.decoder.configure(this.decoderConfig)
 
-        if (setup.format == "H264" || setup.format == "H264_HIGH8_444") {
-            this.codec = "h264"
-        } else if (setup.format == "H265" || setup.format == "H265_MAIN10" || setup.format == "H265_REXT8_444" || setup.format == "H265_REXT10_444") {
-            this.codec = "h265"
-        } else if (setup.format == "AV1_MAIN8" || setup.format == "AV1_MAIN10" || setup.format == "AV1_HIGH8_444" || setup.format == "AV1_HIGH10_444") {
-            this.codec = "av1"
+        this.decoderConfig = {
+            codec: codec.codec,
+            colorSpace: codec.colorSpace,
+            optimizeForLatency: true
         }
 
         this.base.setup(setup)
     }
 
-    private currentUnitSize = 0
-    private currentUnit: Uint8Array = new Uint8Array(1000)
-    submitDecodeUnit(unit: VideoDecodeUnit): void {
-        // We're getting annex prefixed nalus but we need length prefixed nalus -> convert them
+    private hasDescription = false
+    private pps: Uint8Array | null = null
+    private sps: Uint8Array | null = null
 
-        const data = new Uint8Array(unit.data);
+    private currentFrame = new Uint8Array(1000)
+    submitDecodeUnit(unit: VideoDecodeUnit): void {
+        if (this.errored) {
+            console.debug("Cannot submit decode unit because the stream errored")
+            return
+        }
+
+        // We're getting annex b prefixed nalus but we need length prefixed nalus -> convert them
+
+        if (unit.type != "key" && !this.hasDescription) {
+            return
+        }
+
+        const data = new Uint8Array(unit.data)
 
         let unitBegin = 0
         let currentPosition = 0
+        let currentFrameSize = 0
+
+        let handleStartCode = () => {
+            const slice = data.slice(unitBegin, currentPosition)
+
+            // Check if it's sps,pps
+            const nalType = h264NalType(slice[0])
+            if (nalType == 7) {
+                // Sps
+                this.sps = new Uint8Array(slice)
+            } else if (nalType == 8) {
+                // Pps
+                this.pps = new Uint8Array(slice)
+            } else {
+                // Append if not sps / pps -> Append size + data
+                this.checkFrameBufferSize(currentFrameSize, slice.length + 4)
+
+                // Append size
+                const sizeBuffer = new ByteBuffer(4)
+                sizeBuffer.putU32(slice.length)
+                sizeBuffer.flip()
+
+                this.currentFrame.set(sizeBuffer.getRemainingBuffer(), currentFrameSize)
+
+                // Append data
+                this.currentFrame.set(slice, currentFrameSize + 4)
+
+                currentFrameSize += slice.length + 4
+            }
+        }
 
         while (currentPosition < data.length) {
             let startCodeLength = 0
             let foundStartCode = false
 
             if (startsWith(data, currentPosition, START_CODE_LONG)) {
+                foundStartCode = true
                 startCodeLength = START_CODE_LONG.length
-                foundStartCode = true
             } else if (startsWith(data, currentPosition, START_CODE_SHORT)) {
-                startCodeLength = START_CODE_SHORT.length
                 foundStartCode = true
+                startCodeLength = START_CODE_SHORT.length
             }
 
             if (foundStartCode) {
-                // all previous data should go into the currentUnit and be submitted
-                const slice = data.subarray(unitBegin, currentPosition)
-                this.checkUnitBufferSize(slice.length)
+                if (currentPosition != 0) {
+                    handleStartCode()
+                }
 
-                this.currentUnit.set(slice, this.currentUnitSize)
-                this.currentUnitSize += slice.length
-
-                this.submitUnit(unit.timestampMicroseconds, unit.durationMicroseconds)
-
-                currentPosition += startCodeLength;
+                currentPosition += startCodeLength
                 unitBegin = currentPosition
             } else {
                 currentPosition += 1;
             }
         }
 
-        const slice = data.subarray(unitBegin, currentPosition)
-        this.checkUnitBufferSize(slice.length)
-        this.currentUnit.set(slice)
-        this.currentUnitSize = slice.length
+        // The last nal also needs to get processed
+        handleStartCode()
+
+        if (this.pps && this.sps) {
+            const description = h264MakeAvcC(this.sps, this.pps)
+            this.sps = null
+            this.pps = null
+
+            if (!this.decoderConfig) {
+                // TODO: what now??
+                throw "Failed to set decoderConfig for VideoDecoder"
+            }
+            this.decoderConfig.description = description
+
+            this.decoder.reset()
+            this.decoder.configure(this.decoderConfig)
+
+            console.debug("Reset decoder config using Sps and Pps")
+
+            this.hasDescription = true
+        } else if (!this.hasDescription) {
+            // TODO: what now -> maybe request another idr
+            throw "Received key frame without Sps and Pps"
+        }
+
+        const chunk = new EncodedVideoChunk({
+            type: unit.type,
+            timestamp: unit.timestampMicroseconds,
+            duration: unit.durationMicroseconds,
+            data: this.currentFrame.slice(0, currentFrameSize),
+        })
+
+        this.decoder.decode(chunk)
     }
-    private checkUnitBufferSize(requiredExtra: number) {
-        if (this.currentUnitSize + requiredExtra > this.currentUnit.length) {
-            const newUnit = new Uint8Array((this.currentUnitSize + requiredExtra) * 2);
+    private checkFrameBufferSize(currentSize: number, requiredExtra: number) {
+        if (currentSize + requiredExtra > this.currentFrame.length) {
+            const newFrame = new Uint8Array((currentSize + requiredExtra) * 2);
 
-            newUnit.set(this.currentUnit);
-            this.currentUnit = newUnit;
+            newFrame.set(this.currentFrame);
+            this.currentFrame = newFrame;
         }
-    }
-    private getCurrentNalUnitType(): number {
-        if (this.codec == "h264") {
-            // get the Nal header and read the type
-            // https://datatracker.ietf.org/doc/html/rfc3984#section-1.3
-
-            const header = this.currentUnit[0]
-            let nalUnitType = header & 0b00011111;
-
-            return nalUnitType
-        } else if (this.codec == "h265") {
-            // TODO
-            throw "Cannot find out if the submitted frame is a key frame because the codec \"h265\" is not yet implemented"
-        } else if (this.codec == "av1") {
-            // TODO
-            throw "Cannot find out if the submitted frame is a key frame because the codec \"av1\" is not yet implemented"
-        } else {
-            // TODO
-            throw "Cannot find out if the submitted frame is a key frame because no codec was set"
-        }
-    }
-
-    private hadKeyFrame = false
-
-    // TODO: put this into a seperated class for each codec?
-    // private sps: ArrayBuffer | null
-    // private pps: ArrayBuffer | null
-    // private idr: ArrayBuffer | null
-
-    private submitUnit(timestampMicroseconds: number, durationMicroseconds: number) {
-        if (this.currentUnitSize == 0) {
-            return
-        }
-        const nalType = this.getCurrentNalUnitType()
-
-        if (nalType == 5) {
-            // IDR
-            // this.idr = 
-        }
-
-        // if (isKey) {
-        //     this.hadKeyFrame = true
-        // }
-
-        // if (!this.hadKeyFrame && !isKey) {
-        //     console.debug("Not submitting delta frame because no key frame was present")
-        //     return
-        // }
-
-        // const data = this.currentUnit.slice(0, this.currentUnitSize)
-        // this.currentUnitSize = 0
-
-        // // TODO: remove
-        // console.info("Frame", isKey, data)
-
-        // const chunk = new EncodedVideoChunk({
-        //     type: isKey ? "key" : "delta",
-        //     timestamp: timestampMicroseconds,
-        //     duration: durationMicroseconds,
-        //     data,
-        // })
-
-        // this.decoder.decode(chunk)
     }
 
     cleanup(): void {

@@ -34,7 +34,7 @@ export type AudioDecodeUnit = {
 }
 
 export abstract class DataAudioPlayer extends AudioPlayer {
-    static readonly type: "data"
+    static readonly type: "audiodata"
 
     // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L356
     abstract decodeAndPlay(unit: AudioDecodeUnit): void

@@ -99,6 +99,12 @@ export class ByteBuffer {
         this.bytesUsed(2, true)
         return byte
     }
+    getU32(): number {
+        const view = new DataView(this.buffer.buffer)
+        const byte = view.getUint32(this.position)
+        this.bytesUsed(4, true)
+        return byte
+    }
     getBool(): boolean {
         return this.getU8() != 0
     }

@@ -1,8 +1,9 @@
 import { CanvasVideoRenderer } from "./canvas_element.js"
 import { VideoElementRenderer } from "./video_element.js"
 import { VideoMediaStreamTrackProcessorPipe } from "./media_stream_track_processor_pipe.js"
-import { DataVideoRenderer, TrackVideoRenderer, VideoRenderer } from "./index.js"
+import { DataVideoRenderer, PacketVideoRenderer, TrackVideoRenderer, VideoRenderer } from "./index.js"
 import { VideoDecoderPipe } from "./video_decoder_pipe.js"
+import { PacketVideoPipe } from "./depackitize_video_pipe.js"
 
 type PipelineResult<T> = { videoRenderer: T, log: string, error: null } | { videoRenderer: null, log: string, error: string }
 
@@ -33,7 +34,7 @@ export type VideoPipelineOptions = {
 }
 
 export function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions): PipelineResult<TrackVideoRenderer>
-export function buildVideoPipeline(type: "data", settings: VideoPipelineOptions): PipelineResult<DataVideoRenderer>
+export function buildVideoPipeline(type: "data", settings: VideoPipelineOptions): PipelineResult<PacketVideoRenderer>
 
 export function buildVideoPipeline(type: string, settings: VideoPipelineOptions): PipelineResult<VideoRenderer> {
     let log = `Building video pipeline with output "${type}"`
@@ -51,7 +52,7 @@ export function buildVideoPipeline(type: string, settings: VideoPipelineOptions)
 
     if (type == "data") {
         if (VideoDecoderPipe.isBrowserSupported() && CanvasVideoRenderer.isBrowserSupported()) {
-            const videoRenderer = new VideoDecoderPipe(new CanvasVideoRenderer())
+            const videoRenderer = new PacketVideoPipe(new VideoDecoderPipe(new CanvasVideoRenderer()))
 
             return { videoRenderer, log, error: null }
         }

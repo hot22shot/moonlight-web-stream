@@ -67,22 +67,35 @@ export abstract class TrackVideoRenderer extends VideoRenderer {
     abstract setTrack(track: MediaStreamTrack): void
 }
 
-export type VideoDecodeUnit = {
-    timestampMicroseconds: number
-    durationMicroseconds: number
-    data: ArrayBuffer
-}
-
-export abstract class DataVideoRenderer extends VideoRenderer {
-    static readonly type: string = "data"
-
-    /// Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298
-    abstract submitDecodeUnit(unit: VideoDecodeUnit): void
-}
-
 export abstract class FrameVideoRenderer extends VideoRenderer {
     static readonly type: string = "videoframe"
 
     /// Submits a frame. This renderer now "owns" the frame and needs to clean it up via close.
     abstract submitFrame(frame: VideoFrame): void
+}
+
+export type VideoDecodeUnit = {
+    type: "key" | "delta"
+    timestampMicroseconds: number
+    durationMicroseconds: number
+    /*
+      Contains the data for one frame:
+      - H264:
+        - keyframe: Must contain sps,pps,idr(one or multiple)
+        - delta: Must contain the whole frame(one or multiple CodecSliceNonIdr's)
+    */
+    data: ArrayBuffer
+}
+
+export abstract class DataVideoRenderer extends VideoRenderer {
+    static readonly type: string = "videodata"
+
+    /// Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298
+    abstract submitDecodeUnit(unit: VideoDecodeUnit): void
+}
+
+export abstract class PacketVideoRenderer extends VideoRenderer {
+    static readonly type: string = "data"
+
+    abstract submitPacket(buffer: ArrayBuffer): void
 }

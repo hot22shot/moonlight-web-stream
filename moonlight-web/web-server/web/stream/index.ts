@@ -375,12 +375,7 @@ export class Stream implements Component {
             videoRenderer.setup(setup)
 
             video.addReceiveListener((data) => {
-                videoRenderer.submitDecodeUnit({
-                    // TODO: get them somehow
-                    durationMicroseconds: 0,
-                    timestampMicroseconds: 0,
-                    data
-                })
+                videoRenderer.submitPacket(data)
             })
 
             this.videoRenderer = videoRenderer

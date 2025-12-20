@@ -6,7 +6,7 @@ use common::{
 };
 use log::debug;
 use moonlight_common::stream::{
-    bindings::{AudioConfig, DecodeResult, OpusMultistreamConfig, VideoDecodeUnit},
+    bindings::{AudioConfig, DecodeResult, FrameType, OpusMultistreamConfig, VideoDecodeUnit},
     video::VideoSetup,
 };
 use tokio::sync::mpsc::{Receiver, Sender, channel};
@@ -63,10 +63,15 @@ impl TransportSender for WebSocketTransportSender {
         &'a self,
         unit: &'a VideoDecodeUnit<'a>,
     ) -> Result<DecodeResult, TransportError> {
-        let mut new_buffer = vec![0];
+        let mut new_buffer = vec![0; 5];
 
         let mut byte_buffer = ByteBuffer::new(new_buffer.as_mut_slice());
         byte_buffer.put_u8(TransportChannelId::HOST_VIDEO);
+        byte_buffer.put_u8(match unit.frame_type {
+            FrameType::Idr => 1,
+            FrameType::PFrame => 0,
+        });
+        byte_buffer.put_u32(unit.presentation_time.as_micros() as u32);
 
         for buffer in unit.buffers {
             new_buffer.extend_from_slice(buffer.data);
