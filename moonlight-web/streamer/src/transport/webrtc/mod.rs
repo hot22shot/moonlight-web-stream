@@ -16,7 +16,7 @@ use common::{
     config::{PortRange, WebRtcConfig},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use moonlight_common::stream::{
     bindings::{AudioConfig, DecodeResult, OpusMultistreamConfig, VideoDecodeUnit},
     video::VideoSetup,
@@ -581,7 +581,7 @@ pub struct WebRTCTransportEvents {
 #[async_trait]
 impl TransportEvents for WebRTCTransportEvents {
     async fn poll_event(&mut self) -> Result<TransportEvent, TransportError> {
-        debug!("Polling WebRTCEvents");
+        trace!("Polling WebRTCEvents");
         self.event_receiver
             .recv()
             .await

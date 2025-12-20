@@ -220,7 +220,8 @@ export class StreamSettingsComponent implements Component {
             { value: "h264", name: "H264" },
             { value: "auto", name: "Auto (Experimental)" },
             { value: "h265", name: "H265" },
-            { value: "av1", name: "AV1 (Experimental)" },
+            // TODO: av1
+            // { value: "av1", name: "AV1 (Experimental)" },
         ], {
             displayName: "Video Codec",
             preSelectedOption: settings?.videoCodec ?? defaultSettings.videoCodec
