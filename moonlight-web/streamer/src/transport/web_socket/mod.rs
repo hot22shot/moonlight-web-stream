@@ -1,10 +1,11 @@
 use async_trait::async_trait;
+use bytes::Bytes;
 use common::{
     StreamSettings,
     api_bindings::TransportChannelId,
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
-use log::debug;
+use log::{debug, trace, warn};
 use moonlight_common::stream::{
     bindings::{AudioConfig, DecodeResult, FrameType, OpusMultistreamConfig, VideoDecodeUnit},
     video::VideoSetup,
@@ -13,7 +14,10 @@ use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::{
     buffer::ByteBuffer,
-    transport::{OutboundPacket, TransportError, TransportEvent, TransportEvents, TransportSender},
+    transport::{
+        InboundPacket, OutboundPacket, TransportChannel, TransportError, TransportEvent,
+        TransportEvents, TransportSender,
+    },
 };
 
 pub async fn new(
@@ -41,7 +45,7 @@ pub struct WebSocketTransportEvents {
 #[async_trait]
 impl TransportEvents for WebSocketTransportEvents {
     async fn poll_event(&mut self) -> Result<TransportEvent, TransportError> {
-        debug!("Polling WebSocketEvents");
+        trace!("Polling WebSocketEvents");
         self.event_receiver
             .recv()
             .await
@@ -79,7 +83,7 @@ impl TransportSender for WebSocketTransportSender {
 
         self.event_sender
             .send(TransportEvent::SendIpc(
-                StreamerIpcMessage::WebSocketTransport(new_buffer),
+                StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
             ))
             .await
             .unwrap();
@@ -105,7 +109,7 @@ impl TransportSender for WebSocketTransportSender {
 
         self.event_sender
             .send(TransportEvent::SendIpc(
-                StreamerIpcMessage::WebSocketTransport(new_buffer),
+                StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
             ))
             .await
             .unwrap();
@@ -125,7 +129,7 @@ impl TransportSender for WebSocketTransportSender {
 
         self.event_sender
             .send(TransportEvent::SendIpc(
-                StreamerIpcMessage::WebSocketTransport(new_buffer),
+                StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
             ))
             .await
             .unwrap();
@@ -134,7 +138,31 @@ impl TransportSender for WebSocketTransportSender {
     }
 
     async fn on_ipc_message(&self, message: ServerIpcMessage) -> Result<(), TransportError> {
-        // TODO
+        match message {
+            ServerIpcMessage::Init { .. } => unreachable!(),
+            ServerIpcMessage::Stop => todo!(),
+            ServerIpcMessage::WebSocket(_) => {}
+            ServerIpcMessage::WebSocketTransport(message) => {
+                if message.is_empty() {
+                    warn!("Empty packet received!");
+                    return Ok(());
+                }
+
+                let channel_id = message[0];
+
+                let Some(packet) =
+                    InboundPacket::deserialize(TransportChannel(channel_id), &message[1..])
+                else {
+                    warn!("Failed to receive packet on channel {channel_id}");
+                    return Ok(());
+                };
+
+                self.event_sender
+                    .send(TransportEvent::RecvPacket(packet))
+                    .await
+                    .unwrap();
+            }
+        }
         Ok(())
     }
 

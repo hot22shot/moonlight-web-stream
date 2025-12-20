@@ -18,7 +18,7 @@ use common::{
         create_process_ipc,
     },
 };
-use log::{LevelFilter, debug, error, info, warn};
+use log::{LevelFilter, debug, error, info, trace, warn};
 use moonlight_common::{
     MoonlightError,
     high::{HostError, MoonlightHost},
@@ -290,9 +290,9 @@ impl StreamConnection {
 
             async move {
                 loop {
-                    debug!("Polling new transport event");
+                    trace!("Polling new transport event");
                     let event = events.poll_event().await;
-                    debug!("Polled transport event: {event:?}");
+                    trace!("Polled transport event: {event:?}");
 
                     match event {
                         Ok(TransportEvent::SendIpc(message)) => {

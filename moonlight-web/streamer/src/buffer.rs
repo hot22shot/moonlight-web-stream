@@ -33,7 +33,7 @@ where
     pub fn new(buffer: T) -> Self {
         Self {
             position: 0,
-            limit: 0,
+            limit: buffer.as_ref().len(),
             little_endian: false,
             buffer,
         }
@@ -128,6 +128,9 @@ where
     pub fn flip(&mut self) {
         self.limit = self.position;
         self.position = 0;
+    }
+    pub fn remaining(&self) -> usize {
+        self.limit - self.position
     }
 }
 

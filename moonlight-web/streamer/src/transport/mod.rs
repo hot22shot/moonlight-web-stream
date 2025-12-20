@@ -134,6 +134,11 @@ impl InboundPacket {
 
         match channel {
             TransportChannel(TransportChannelId::GENERAL) => {
+                if buffer.remaining() < 2 {
+                    warn!("[InboudPacket]: failed to read general message");
+                    return None;
+                }
+
                 let len = buffer.get_u16();
                 let text = match buffer.get_utf8_raw(len as usize) {
                     Ok(text) => text,
@@ -173,15 +178,30 @@ impl InboundPacket {
                 | TransportChannelId::MOUSE_RELIABLE
                 | TransportChannelId::MOUSE_RELATIVE,
             ) => {
+                if buffer.remaining() < 1 {
+                    warn!("[InboudPacket]: failed to read mouse message");
+                    return None;
+                }
+
                 let ty = buffer.get_u8();
                 if ty == 0 {
                     // Move
+                    if buffer.remaining() < 4 {
+                        warn!("[InboudPacket]: failed to read mouse move message");
+                        return None;
+                    }
+
                     let delta_x = buffer.get_i16();
                     let delta_y = buffer.get_i16();
 
                     Some(InboundPacket::MouseMove { delta_x, delta_y })
                 } else if ty == 1 {
                     // Position
+                    if buffer.remaining() < 8 {
+                        warn!("[InboudPacket]: failed to read mouse position message");
+                        return None;
+                    }
+
                     let x = buffer.get_i16();
                     let y = buffer.get_i16();
                     let reference_width = buffer.get_i16();
@@ -195,6 +215,11 @@ impl InboundPacket {
                     })
                 } else if ty == 2 {
                     // Button Press / Release
+                    if buffer.remaining() < 2 {
+                        warn!("[InboudPacket]: failed to read mouse press / release message");
+                        return None;
+                    }
+
                     let action = if buffer.get_bool() {
                         MouseButtonAction::Press
                     } else {
@@ -208,12 +233,22 @@ impl InboundPacket {
                     Some(InboundPacket::MouseButton { action, button })
                 } else if ty == 3 {
                     // Mouse Wheel High Res
+                    if buffer.remaining() < 4 {
+                        warn!("[InboudPacket]: failed to read mouse wheel high res message");
+                        return None;
+                    }
+
                     let delta_x = buffer.get_i16();
                     let delta_y = buffer.get_i16();
 
                     Some(InboundPacket::HighResScroll { delta_x, delta_y })
                 } else if ty == 4 {
                     // Mouse Wheel Normal
+                    if buffer.remaining() < 4 {
+                        warn!("[InboudPacket]: failed to read mouse wheel normal message");
+                        return None;
+                    }
+
                     let delta_x = buffer.get_i8();
                     let delta_y = buffer.get_i8();
 
@@ -226,8 +261,19 @@ impl InboundPacket {
                 }
             }
             TransportChannel(TransportChannelId::KEYBOARD) => {
+                if buffer.remaining() < 1 {
+                    warn!("[InboudPacket]: failed to read keyboard message");
+                    return None;
+                }
+
                 let ty = buffer.get_u8();
                 if ty == 0 {
+                    // Key press / release
+                    if buffer.remaining() < 4 {
+                        warn!("[InboudPacket]: failed to read key press / release message");
+                        return None;
+                    }
+
                     let action = if buffer.get_bool() {
                         KeyAction::Down
                     } else {
@@ -247,6 +293,11 @@ impl InboundPacket {
                         flags: KeyFlags::empty(),
                     })
                 } else if ty == 1 {
+                    if buffer.remaining() < 1 {
+                        warn!("[InboudPacket]: failed to read key as text message");
+                        return None;
+                    }
+
                     let len = buffer.get_u8();
                     let Ok(key) = buffer.get_utf8_raw(len as usize) else {
                         warn!("[InboundPacket]: received invalid keyboard text message");
@@ -264,6 +315,11 @@ impl InboundPacket {
                 }
             }
             TransportChannel(TransportChannelId::TOUCH) => {
+                if buffer.remaining() < 27 {
+                    warn!("[InboudPacket]: failed to read touch message");
+                    return None;
+                }
+
                 let event_type = match buffer.get_u8() {
                     0 => TouchEventType::Down,
                     1 => TouchEventType::Move,
@@ -293,8 +349,19 @@ impl InboundPacket {
                 })
             }
             TransportChannel(TransportChannelId::CONTROLLERS) => {
+                if buffer.remaining() < 1 {
+                    warn!("[InboudPacket]: failed to read controller message");
+                    return None;
+                }
+
                 let ty = buffer.get_u8();
                 if ty == 0 {
+                    // add controller
+                    if buffer.remaining() < 7 {
+                        warn!("[InboudPacket]: failed to controller add message");
+                        return None;
+                    }
+
                     let id = buffer.get_u8();
                     let supported_buttons = ControllerButtons::from_bits(buffer.get_u32())
                         .unwrap_or_else(|| {
@@ -318,6 +385,12 @@ impl InboundPacket {
                         capabilities,
                     })
                 } else if ty == 1 {
+                    // Remove controller
+                    if buffer.remaining() < 1 {
+                        warn!("[InboudPacket]: failed to read controller remove message");
+                        return None;
+                    }
+
                     let id = buffer.get_u8();
 
                     Some(InboundPacket::ControllerDisconnected { id })
@@ -334,8 +407,23 @@ impl InboundPacket {
                     .enumerate()
                     .find(|(_, cmp_channel_id)| **cmp_channel_id == channel_id) =>
             {
+                if buffer.remaining() < 1 {
+                    warn!(
+                        "[InboudPacket]: failed to read controller state message {channel_id}, gamepad: {gamepad_id}"
+                    );
+                    return None;
+                }
+
                 let ty = buffer.get_u8();
                 if ty == 0 {
+                    // State
+                    if buffer.remaining() < 14 {
+                        warn!(
+                            "[InboudPacket]: failed to read controller state message {channel_id}, gamepad: {gamepad_id}"
+                        );
+                        return None;
+                    }
+
                     let Some(buttons) = ControllerButtons::from_bits(buffer.get_u32()) else {
                         warn!(
                             "[InboundPacket]: received invalid controller buttons for controller {gamepad_id}"

@@ -1,7 +1,7 @@
 import { ByteBuffer } from "../buffer.js";
 import { DataVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
 
-export class PacketVideoPipe<T extends DataVideoRenderer> extends VideoRenderer {
+export class DepacketizerVideoPipe<T extends DataVideoRenderer> extends VideoRenderer {
 
     private base: T
 
@@ -9,7 +9,7 @@ export class PacketVideoPipe<T extends DataVideoRenderer> extends VideoRenderer 
     private buffer = new ByteBuffer(5)
 
     constructor(base: T) {
-        super(`packet_video_pipe -> ${base.implementationName}`)
+        super(`video_depacketizer -> ${base.implementationName}`)
         this.base = base
     }
 
