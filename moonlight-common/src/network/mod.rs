@@ -2,6 +2,7 @@ use std::{
     borrow::Cow, fmt, fmt::Write as _, num::ParseIntError, str::FromStr, string::FromUtf8Error,
 };
 
+use log::warn;
 use roxmltree::{Document, Error, Node};
 use thiserror::Error;
 use uuid::{Uuid, fmt::Hyphenated};
@@ -172,6 +173,17 @@ pub async fn host_info<C: RequestClient>(
 
     let state_string = xml_child_text::<C>(root, "state")?.to_string();
 
+    let mac = match xml_child_text::<C>(root, "mac") {
+        Ok(mac) => match mac.parse()? {
+            mac if mac == MacAddress::from_bytes([0u8; 6]) => None,
+            mac => Some(mac),
+        },
+        Err(_) => {
+            warn!("failed to get mac from host response");
+            None
+        }
+    };
+
     Ok(HostInfo {
         host_name: xml_child_text::<C>(root, "hostname")?.to_string(),
         app_version: xml_child_text::<C>(root, "appversion")?.parse()?,
@@ -180,10 +192,7 @@ pub async fn host_info<C: RequestClient>(
         https_port: xml_child_text::<C>(root, "HttpsPort")?.parse()?,
         external_port: xml_child_text::<C>(root, "ExternalPort")?.parse()?,
         max_luma_pixels_hevc: xml_child_text::<C>(root, "MaxLumaPixelsHEVC")?.parse()?,
-        mac: match xml_child_text::<C>(root, "mac")?.parse()? {
-            mac if mac == MacAddress::from_bytes([0u8; 6]) => None,
-            mac => Some(mac),
-        },
+        mac,
         local_ip: xml_child_text::<C>(root, "LocalIP")?.to_string(),
         server_codec_mode_support: xml_child_text::<C>(root, "ServerCodecModeSupport")?.parse()?,
         pair_status: if xml_child_text::<C>(root, "PairStatus")?.parse::<u32>()? == 0 {
