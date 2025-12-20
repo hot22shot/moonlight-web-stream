@@ -8,17 +8,17 @@ use std::{
         Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
 };
 
 use common::{
     StreamSettings,
+    api_bindings::GeneralServerMessage,
     ipc::{
         IpcReceiver, IpcSender, ServerIpcMessage, StreamerConfig, StreamerIpcMessage,
         create_process_ipc,
     },
 };
-use log::{LevelFilter, debug, info, warn};
+use log::{LevelFilter, debug, error, info, warn};
 use moonlight_common::{
     MoonlightError,
     high::{HostError, MoonlightHost},
@@ -28,12 +28,12 @@ use moonlight_common::{
         MoonlightInstance, MoonlightStream,
         audio::AudioDecoder,
         bindings::{
-            ActiveGamepads, AudioConfig, Capabilities, ColorRange, ConnectionStatus, DecodeResult,
-            EncryptionFlags, HostFeatures, OpusMultistreamConfig, Stage, SupportedVideoFormats,
-            VideoDecodeUnit, VideoFormat,
+            ActiveGamepads, AudioConfig, Capabilities, ColorRange, ConnectionStatus,
+            ControllerButtons, EncryptionFlags, HostFeatures, OpusMultistreamConfig, Stage,
+            SupportedVideoFormats, VideoFormat,
         },
         connection::ConnectionListener,
-        video::{VideoDecoder, VideoSetup},
+        video::VideoSetup,
     },
 };
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
@@ -42,14 +42,16 @@ use tokio::{
     runtime::Handle,
     spawn,
     sync::{Mutex, Notify, RwLock},
-    time::sleep,
 };
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
 
-use crate::transport::{
-    InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
-    TransportSender, webrtc,
+use crate::{
+    transport::{
+        InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
+        TransportSender, webrtc,
+    },
+    video::StreamVideoDecoder,
 };
 
 pub type RequestClient = ReqwestClient;
@@ -57,6 +59,7 @@ pub type RequestClient = ReqwestClient;
 mod buffer;
 mod convert;
 mod transport;
+mod video;
 
 #[tokio::main]
 async fn main() {
@@ -217,6 +220,7 @@ struct StreamConnection {
     pub stream_info: Mutex<Option<VideoSetup>>,
     // Stream
     pub stream: RwLock<Option<MoonlightStream>>,
+    pub active_gamepads: RwLock<ActiveGamepads>,
     pub transport_sender: Mutex<Box<dyn TransportSender + Send + Sync>>,
     pub terminate: Notify,
     is_terminating: AtomicBool,
@@ -241,13 +245,13 @@ impl StreamConnection {
             ipc_sender,
             stream_info: Mutex::new(None),
             stream: RwLock::new(None),
+            active_gamepads: RwLock::new(ActiveGamepads::empty()),
             transport_sender: Mutex::new(Box::new(sender)),
             terminate: Notify::default(),
             is_terminating: AtomicBool::new(false),
         });
 
         spawn({
-            let runtime = this.runtime.clone();
             let mut ipc_sender = this.ipc_sender.clone();
             let this = Arc::downgrade(&this);
 
@@ -259,17 +263,53 @@ impl StreamConnection {
                         }
                         Ok(TransportEvent::StartStream { settings }) => {
                             // TODO: set settings
-                            let this = this.upgrade().unwrap();
+                            let Some(this) = this.upgrade() else {
+                                warn!(
+                                    "Failed to get stream connection, stopping listening to events"
+                                );
+                                return;
+                            };
 
-                            this.start_stream().await.unwrap();
+                            if let Err(err) = this.start_stream().await {
+                                error!("Failed to start stream, stopping: {err:?}");
+
+                                this.stop().await;
+                            }
                         }
                         Ok(TransportEvent::RecvPacket(packet)) => {
-                            let this = this.upgrade().unwrap();
+                            let Some(this) = this.upgrade() else {
+                                warn!(
+                                    "Failed to get stream connection, stopping listening to events"
+                                );
+                                return;
+                            };
 
                             this.on_packet(packet).await;
                         }
                         Err(TransportError::Closed) | Ok(TransportEvent::Closed) => {
-                            let this = this.upgrade().unwrap();
+                            let Some(this) = this.upgrade() else {
+                                warn!(
+                                    "Failed to get stream connection, stopping listening to events"
+                                );
+                                return;
+                            };
+
+                            this.stop().await;
+                            break;
+                        }
+                        // It wouldn't make sense to return this
+                        Err(TransportError::ChannelClosed) => unreachable!(),
+                        Err(TransportError::Implementation(err)) => {
+                            let Some(this) = this.upgrade() else {
+                                warn!(
+                                    "Failed to get stream connection, stopping listening to events"
+                                );
+                                return;
+                            };
+
+                            info!(
+                                "Stopping stream because of transport implementation error: {err}"
+                            );
 
                             this.stop().await;
                             break;
@@ -311,6 +351,7 @@ impl StreamConnection {
 
         let err = match packet {
             InboundPacket::General { message } => {
+                // TODO
                 todo!();
             }
             InboundPacket::MousePosition {
@@ -383,12 +424,47 @@ impl StreamConnection {
                 supported_buttons,
                 capabilities,
             } => {
-                // TODO
-                todo!();
+                let Some(gamepad) = ActiveGamepads::from_id(id) else {
+                    warn!("Failed to add gamepad because it is out of range: {id}");
+                    return;
+                };
+
+                let mut active_gamepads = self.active_gamepads.write().await;
+
+                active_gamepads.insert(gamepad);
+
+                stream
+                    .send_controller_arrival(
+                        id,
+                        *active_gamepads,
+                        ty,
+                        supported_buttons,
+                        capabilities,
+                    )
+                    .err()
             }
             InboundPacket::ControllerDisconnected { id } => {
-                // TODO
-                todo!();
+                let Some(gamepad) = ActiveGamepads::from_id(id) else {
+                    warn!("Failed to remove gamepad because it is out of range: {id}");
+                    return;
+                };
+
+                let mut active_gamepads = self.active_gamepads.write().await;
+                active_gamepads.remove(gamepad);
+
+                stream
+                    .send_multi_controller(
+                        id,
+                        *active_gamepads,
+                        ControllerButtons::empty(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    )
+                    .err()
             }
             InboundPacket::ControllerState {
                 id,
@@ -400,8 +476,33 @@ impl StreamConnection {
                 right_stick_x,
                 right_stick_y,
             } => {
-                // TODO
-                todo!();
+                let Some(gamepad) = ActiveGamepads::from_id(id) else {
+                    warn!("Failed to update gamepad state because it is out of range: {id}");
+                    return;
+                };
+
+                let active_gamepads = self.active_gamepads.read().await;
+                if !active_gamepads.contains(gamepad) {
+                    warn!(
+                        "Failed to send gamepad event for not registered gamepad, gamepad: {id}, currently active: {:?}",
+                        *active_gamepads
+                    );
+                    return;
+                }
+
+                stream
+                    .send_multi_controller(
+                        id,
+                        *active_gamepads,
+                        buttons,
+                        left_trigger,
+                        right_trigger,
+                        left_stick_x,
+                        left_stick_y,
+                        right_stick_x,
+                        right_stick_y,
+                    )
+                    .err()
             }
         };
 
@@ -437,6 +538,7 @@ impl StreamConnection {
         let video_decoder = StreamVideoDecoder {
             stream: Arc::downgrade(self),
             supported_formats: SupportedVideoFormats::empty(),
+            stats: Default::default(),
         };
 
         let audio_decoder = StreamAudioDecoder {
@@ -549,6 +651,12 @@ impl StreamConnection {
         };
         drop(stream);
 
+        let transport = self.transport_sender.lock().await;
+        if let Err(err) = transport.close().await {
+            warn!("Error whilst closing transport: {err}");
+        }
+        drop(transport);
+
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;
 
@@ -642,7 +750,7 @@ impl ConnectionListener for StreamConnectionListener {
             let sender = stream.transport_sender.lock().await;
             if let Err(err) = sender
                 .send(OutboundPacket::General {
-                    message: StreamServerMessage::ConnectionStatusUpdate {
+                    message: GeneralServerMessage::ConnectionStatusUpdate {
                         status: status.into(),
                     },
                 })
@@ -693,7 +801,7 @@ impl ConnectionListener for StreamConnectionListener {
         };
 
         stream.runtime.clone().block_on(async move {
-            let mut sender = stream.transport_sender.blocking_lock();
+            let sender = stream.transport_sender.blocking_lock();
 
             if let Err(err) = sender
                 .send(OutboundPacket::ControllerTriggerRumble {
@@ -734,63 +842,6 @@ impl ConnectionListener for StreamConnectionListener {
     }
 }
 
-struct StreamVideoDecoder {
-    stream: Weak<StreamConnection>,
-    supported_formats: SupportedVideoFormats,
-}
-
-impl VideoDecoder for StreamVideoDecoder {
-    fn setup(&mut self, setup: VideoSetup) -> i32 {
-        let Some(stream) = self.stream.upgrade() else {
-            warn!("Failed to setup video because stream is deallocated");
-            return -1;
-        };
-
-        {
-            let mut stream_info = stream.stream_info.blocking_lock();
-            *stream_info = Some(setup);
-        }
-
-        {
-            stream.runtime.clone().block_on(async move {
-                let mut sender = stream.transport_sender.lock().await;
-
-                sender.setup_video(setup).await
-            })
-        }
-    }
-
-    fn start(&mut self) {}
-    fn stop(&mut self) {}
-
-    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
-        let Some(stream) = self.stream.upgrade() else {
-            warn!("Failed to send video decode unit because stream is deallocated");
-            return DecodeResult::Ok;
-        };
-
-        stream.runtime.clone().block_on(async move {
-            let mut sender = stream.transport_sender.lock().await;
-
-            match sender.send_video_unit(unit).await {
-                Err(err) => {
-                    warn!("Failed to send video decode unit: {err}");
-                    DecodeResult::Ok
-                }
-                Ok(value) => value,
-            }
-        })
-    }
-
-    fn supported_formats(&self) -> SupportedVideoFormats {
-        self.supported_formats
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities::empty()
-    }
-}
-
 struct StreamAudioDecoder {
     stream: Weak<StreamConnection>,
 }
@@ -808,7 +859,7 @@ impl AudioDecoder for StreamAudioDecoder {
         };
 
         stream.runtime.clone().block_on(async move {
-            let mut sender = stream.transport_sender.lock().await;
+            let sender = stream.transport_sender.lock().await;
 
             sender.setup_audio(audio_config, stream_config).await
         })

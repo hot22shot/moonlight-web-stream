@@ -125,7 +125,7 @@ export class StreamStats {
         this.setEnabled(!this.isEnabled())
     }
 
-    private buffer: ByteBuffer = new ByteBuffer(1000)
+    private buffer: ByteBuffer = new ByteBuffer(10000)
     private onRawData(data: ArrayBuffer) {
         this.buffer.reset()
         this.buffer.putU8Array(new Uint8Array(data))

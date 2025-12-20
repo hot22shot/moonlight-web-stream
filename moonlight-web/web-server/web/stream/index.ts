@@ -189,12 +189,6 @@ export class Stream implements Component {
             })
 
             this.eventTarget.dispatchEvent(event)
-        } else if ("ConnectionStatusUpdate" in message) {
-            const event: InfoEvent = new CustomEvent("stream-info", {
-                detail: { type: "connectionStatus", status: message.ConnectionStatusUpdate.status }
-            })
-
-            this.eventTarget.dispatchEvent(event)
         } else if ("UpdateApp" in message) {
             const event: InfoEvent = new CustomEvent("stream-info", {
                 detail: { type: "app", app: message.UpdateApp.app }
@@ -262,7 +256,19 @@ export class Stream implements Component {
     }
 
     async startConnection() {
-        await this.tryWebRTCTransport()
+        this.debugLog(`Using transport: ${this.settings.dataTransport}`)
+
+        if (this.settings.dataTransport == "auto") {
+            await this.tryWebRTCTransport()
+
+            await this.tryWebSocketTransport()
+        } else if (this.settings.dataTransport == "webrtc") {
+            await this.tryWebRTCTransport()
+        } else if (this.settings.dataTransport == "websocket") {
+            await this.tryWebSocketTransport()
+        }
+
+        // TODO: handle failure
     }
 
     private transport: Transport | null = null
@@ -277,7 +283,15 @@ export class Stream implements Component {
         this.input.setTransport(this.transport)
         this.stats.setTransport(this.transport)
     }
+
+    private async tryWebSocketTransport() {
+        this.debugLog("Trying Web Socket transport")
+
+        // TODO
+    }
     private async tryWebRTCTransport() {
+        this.debugLog("Trying WebRTC transport")
+
         if (!this.iceServers) {
             this.debugLog(`Failed to try WebRTC Transport: no ice servers available`)
             return

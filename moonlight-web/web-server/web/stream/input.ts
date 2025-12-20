@@ -26,7 +26,7 @@ function trySendChannel(channel: DataTransportChannel | null, buffer: ByteBuffer
     }
 
     buffer.flip()
-    const readBuffer = buffer.getReadBuffer()
+    const readBuffer = buffer.getRemainingBuffer()
     if (readBuffer.length == 0) {
         throw "illegal buffer size"
     }
@@ -296,7 +296,8 @@ export class StreamInput {
         } else {
             const PACKET_SIZE = 1 + 2 + 2 + 2 + 2;
 
-            if (this.mouseAbsolute && this.mouseAbsolute.estimatedBufferedBytes() > PACKET_SIZE) {
+            const estimatedBufferedBytes = this.mouseAbsolute?.estimatedBufferedBytes()
+            if (this.mouseAbsolute && estimatedBufferedBytes != null && estimatedBufferedBytes > PACKET_SIZE) {
                 return
             }
             trySendChannel(this.mouseAbsolute, this.buffer)
@@ -738,6 +739,7 @@ export class StreamInput {
 
             const state = extractGamepadState(gamepad, this.config.controllerConfig)
 
+            // TODO: only send state on update
             this.sendController(gamepadId, state)
         }
     }
@@ -891,7 +893,9 @@ export class StreamInput {
         const PACKET_SIZE_BYTES = 1 + 4 + 1 + 1 + 2 + 2 + 2 + 2;
 
         const controllerChannel = this.controllerInputs[id]
-        if (controllerChannel && controllerChannel.estimatedBufferedBytes() > PACKET_SIZE_BYTES) {
+
+        const estimatedBufferedBytes = controllerChannel?.estimatedBufferedBytes()
+        if (controllerChannel && estimatedBufferedBytes != null && estimatedBufferedBytes > PACKET_SIZE_BYTES) {
             // Only send packets when we can handle them
             console.debug(`dropping controller packet for ${id} because the buffer amount is large enough: ${controllerChannel.estimatedBufferedBytes()}`)
             return

@@ -1,7 +1,11 @@
+use std::ops::Range;
+
 use async_trait::async_trait;
 use common::{
     StreamSettings,
-    api_bindings::{StreamClientMessage, StreamServerMessage, TransportChannelId},
+    api_bindings::{
+        GeneralClientMessage, GeneralServerMessage, StreamerStatsUpdate, TransportChannelId,
+    },
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
 use log::warn;
@@ -26,14 +30,18 @@ pub struct TransportChannel(pub u8);
 
 #[derive(Debug, Error)]
 pub enum TransportError {
+    #[error("the channel was closed")]
+    ChannelClosed,
     #[error("the transport was closed")]
     Closed,
+    #[error("implementation: {0}")]
+    Implementation(anyhow::Error),
 }
 
 #[derive(Debug)]
 pub enum InboundPacket {
     General {
-        message: StreamClientMessage,
+        message: GeneralClientMessage,
     },
     MouseMove {
         delta_x: i16,
@@ -320,15 +328,16 @@ impl InboundPacket {
                 }
             }
             TransportChannel(channel_id)
-                if let Some(id) = Self::CONTROLLER_CHANNELS
+                if let Some((gamepad_id, _)) = Self::CONTROLLER_CHANNELS
                     .iter()
-                    .find(|cmp_channel_id| **cmp_channel_id == channel_id) =>
+                    .enumerate()
+                    .find(|(_, cmp_channel_id)| **cmp_channel_id == channel_id) =>
             {
                 let ty = buffer.get_u8();
                 if ty == 0 {
                     let Some(buttons) = ControllerButtons::from_bits(buffer.get_u32()) else {
                         warn!(
-                            "[InboundPacket]: received invalid controller buttons for controller {id}"
+                            "[InboundPacket]: received invalid controller buttons for controller {gamepad_id}"
                         );
                         return None;
                     };
@@ -341,7 +350,7 @@ impl InboundPacket {
                     let right_stick_y = buffer.get_i16();
 
                     Some(InboundPacket::ControllerState {
-                        id: *id,
+                        id: gamepad_id as u8,
                         buttons,
                         left_trigger,
                         right_trigger,
@@ -362,8 +371,9 @@ impl InboundPacket {
 #[derive(Debug)]
 pub enum OutboundPacket {
     General {
-        message: StreamServerMessage,
+        message: GeneralServerMessage,
     },
+    Stats(StreamerStatsUpdate),
     ControllerRumble {
         controller_number: u8,
         low_frequency_motor: u16,
@@ -377,10 +387,7 @@ pub enum OutboundPacket {
 }
 
 impl OutboundPacket {
-    pub fn serialize<'a>(
-        &self,
-        raw_buffer: &'a mut Vec<u8>,
-    ) -> Option<(TransportChannel, &'a [u8])> {
+    pub fn serialize(&self, raw_buffer: &mut Vec<u8>) -> Option<(TransportChannel, Range<usize>)> {
         match self {
             Self::General { message } => {
                 let Ok(text) = serde_json::to_string(&message) else {
@@ -393,9 +400,27 @@ impl OutboundPacket {
                 buffer.put_u16(text.len() as u16);
                 buffer.put_utf8_raw(&text);
 
+                buffer.flip();
                 Some((
                     TransportChannel(TransportChannelId::GENERAL),
-                    buffer.into_mut(),
+                    buffer.into_raw().1,
+                ))
+            }
+            Self::Stats(stats) => {
+                let Ok(text) = serde_json::to_string(&stats) else {
+                    warn!("Failed to send stats message: {stats:?}");
+                    return None;
+                };
+                raw_buffer.resize(text.len() + 2, 0u8);
+                let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
+
+                buffer.put_u16(text.len() as u16);
+                buffer.put_utf8_raw(&text);
+
+                buffer.flip();
+                Some((
+                    TransportChannel(TransportChannelId::STATS),
+                    buffer.into_raw().1,
                 ))
             }
             Self::ControllerRumble {
@@ -411,9 +436,10 @@ impl OutboundPacket {
                 buffer.put_u16(*low_frequency_motor);
                 buffer.put_u16(*high_frequency_motor);
 
+                buffer.flip();
                 Some((
                     TransportChannel(TransportChannelId::CONTROLLER0 + controller_number),
-                    buffer.into_mut(),
+                    buffer.into_raw().1,
                 ))
             }
             Self::ControllerTriggerRumble {
@@ -429,9 +455,10 @@ impl OutboundPacket {
                 buffer.put_u16(*left_trigger_motor);
                 buffer.put_u16(*right_trigger_motor);
 
+                buffer.flip();
                 Some((
                     TransportChannel(TransportChannelId::CONTROLLER0 + controller_number),
-                    buffer.into_mut(),
+                    buffer.into_raw().1,
                 ))
             }
         }
@@ -454,7 +481,7 @@ pub trait TransportSender {
     async fn setup_video(&self, setup: VideoSetup) -> i32;
     async fn send_video_unit<'a>(
         &'a self,
-        unit: VideoDecodeUnit<'a>,
+        unit: &'a VideoDecodeUnit<'a>,
     ) -> Result<DecodeResult, TransportError>;
 
     async fn setup_audio(
@@ -468,6 +495,5 @@ pub trait TransportSender {
 
     async fn on_ipc_message(&self, message: ServerIpcMessage) -> Result<(), TransportError>;
 
-    fn is_closed(&self) -> bool;
     async fn close(&self) -> Result<(), TransportError>;
 }
