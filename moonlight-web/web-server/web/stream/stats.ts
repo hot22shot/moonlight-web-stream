@@ -5,10 +5,11 @@ import { DataTransportChannel, Transport } from "./transport/index.js"
 
 export type StreamStatsData = {
     videoCodec: string | null
-    decoderImplementation: string | null
     videoWidth: number | null
     videoHeight: number | null
     videoFps: number | null
+    videoPipeline: string | null
+    audioPipeline: string | null
     streamerRttMs: number | null
     streamerRttVarianceMs: number | null
     minHostProcessingLatencyMs: number | null
@@ -30,7 +31,9 @@ function num(value: number | null | undefined, suffix?: string): string | null {
 
 export function streamStatsToText(statsData: StreamStatsData): string {
     let text = `stats:
-video information: ${statsData.videoCodec}${statsData.decoderImplementation ? ` (${statsData.decoderImplementation})` : ""}, ${statsData.videoWidth}x${statsData.videoHeight}, ${statsData.videoFps} fps
+video information: ${statsData.videoCodec}, ${statsData.videoWidth}x${statsData.videoHeight}, ${statsData.videoFps} fps
+video pipeline: ${statsData.videoPipeline}
+audio pipeline: ${statsData.audioPipeline}
 streamer round trip time: ${num(statsData.streamerRttMs, "ms")} (variance: ${num(statsData.streamerRttVarianceMs, "ms")})
 host processing latency min/max/avg: ${num(statsData.minHostProcessingLatencyMs, "ms")} / ${num(statsData.maxHostProcessingLatencyMs, "ms")} / ${num(statsData.avgHostProcessingLatencyMs, "ms")}
 streamer processing latency min/max/avg: ${num(statsData.minStreamerProcessingTimeMs, "ms")} / ${num(statsData.maxStreamerProcessingTimeMs, "ms")} / ${num(statsData.avgStreamerProcessingTimeMs, "ms")}
@@ -60,10 +63,11 @@ export class StreamStats {
 
     private statsData: StreamStatsData = {
         videoCodec: null,
-        decoderImplementation: null,
         videoWidth: null,
         videoHeight: null,
         videoFps: null,
+        videoPipeline: null,
+        audioPipeline: null,
         streamerRttMs: null,
         streamerRttVarianceMs: null,
         minHostProcessingLatencyMs: null,
@@ -178,6 +182,12 @@ export class StreamStats {
         this.statsData.videoWidth = width
         this.statsData.videoHeight = height
         this.statsData.videoFps = fps
+    }
+    setVideoPipelineName(name: string) {
+        this.statsData.videoPipeline = name
+    }
+    setAudioPipelineName(name: string) {
+        this.statsData.audioPipeline = name
     }
 
     getCurrentStats(): StreamStatsData {

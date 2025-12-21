@@ -241,13 +241,19 @@ export class Stream implements Component {
                 })
             ])
 
-            this.debugLog(`Using video pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`)
-            this.debugLog(`Using audio pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`)
+            const videoPipeline = `${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
+            this.debugLog(`Using video pipeline: ${videoPipeline}`)
+
+            const audioPipeline = `${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`
+            this.debugLog(`Using audio pipeline: ${audioPipeline}`)
 
             if (!hasVideo || !hasAudio) {
                 // TODO: we should allow streaming without audio
                 // this.debugLog(`Either audio or video couldn't be setup: Audio ${hasAudio}, Video ${hasVideo}`, "fatal")
             }
+
+            this.stats.setVideoPipelineName(videoPipeline)
+            this.stats.setAudioPipelineName(audioPipeline)
         }
         // -- WebRTC Config
         else if ("Setup" in message) {
