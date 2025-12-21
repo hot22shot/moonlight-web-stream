@@ -11,6 +11,7 @@ use tokio::{
     sync::{Mutex, Notify},
 };
 use webrtc::{
+    api::media_engine::MediaEngine,
     media::Sample,
     peer_connection::RTCPeerConnection,
     rtcp::packet::Packet,
@@ -19,13 +20,52 @@ use webrtc::{
         extension::{
             HeaderExtension, abs_send_time_extension::AbsSendTimeExtension,
             playout_delay_extension::PlayoutDelayExtension,
+            transport_cc_extension::TransportCcExtension,
         },
     },
+    rtp_transceiver::rtp_codec::{RTCRtpHeaderExtensionCapability, RTPCodecType},
+    sdp::extmap::ABS_SEND_TIME_URI,
     track::track_local::{
         TrackLocal, track_local_static_rtp::TrackLocalStaticRTP,
         track_local_static_sample::TrackLocalStaticSample,
     },
 };
+
+const PLAYOUT_DELAY_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay";
+
+pub fn register_header_extensions(api_media: &mut MediaEngine) -> Result<(), webrtc::Error> {
+    api_media.register_header_extension(
+        RTCRtpHeaderExtensionCapability {
+            uri: PLAYOUT_DELAY_URI.to_string(),
+        },
+        RTPCodecType::Video,
+        None,
+    )?;
+    api_media.register_header_extension(
+        RTCRtpHeaderExtensionCapability {
+            uri: PLAYOUT_DELAY_URI.to_string(),
+        },
+        RTPCodecType::Audio,
+        None,
+    )?;
+
+    api_media.register_header_extension(
+        RTCRtpHeaderExtensionCapability {
+            uri: ABS_SEND_TIME_URI.to_string(),
+        },
+        RTPCodecType::Video,
+        None,
+    )?;
+    api_media.register_header_extension(
+        RTCRtpHeaderExtensionCapability {
+            uri: ABS_SEND_TIME_URI.to_string(),
+        },
+        RTPCodecType::Audio,
+        None,
+    )?;
+
+    Ok(())
+}
 
 pub struct TrackLocalSender<Track>
 where
