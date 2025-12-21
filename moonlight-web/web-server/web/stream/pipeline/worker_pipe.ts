@@ -1,11 +1,45 @@
-import { createVideoWorker, TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index.js";
+import { ExecutionEnvironment } from "../index.js";
+import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index.js";
+import { ToMainMessage, ToWorkerMessage } from "./worker_types.js";
+
+export function createPipelineWorker(): Worker {
+    return new Worker(new URL("worker.js", import.meta.url), { type: "module" })
+}
+
+function checkWorkerSupport(className: string): Promise<boolean> {
+
+    return new Promise((resolve, reject) => {
+        const worker = createPipelineWorker()
+
+        worker.onerror = reject
+        worker.onmessageerror = reject
+
+        worker.onmessage = (message) => {
+            const data = message.data as ToMainMessage
+
+            resolve(data.checkSupport.supported)
+        }
+
+        const request: ToWorkerMessage = {
+            checkSupport: { className }
+        }
+        worker.postMessage(request)
+    });
+}
+
+export async function checkExecutionEnvironment(className: string): Promise<ExecutionEnvironment> {
+    return {
+        main: className in window,
+        worker: await checkWorkerSupport(className),
+    }
+}
 
 export class WorkerPipeline {
 
     private worker: Worker
 
     constructor() {
-        this.worker = createVideoWorker()
+        this.worker = createPipelineWorker()
     }
 }
 

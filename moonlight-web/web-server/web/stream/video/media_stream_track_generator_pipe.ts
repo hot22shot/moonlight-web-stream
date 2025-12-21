@@ -1,4 +1,5 @@
-import { checkExecutionEnvironment, FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
+import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 export class VideoMediaStreamTrackGeneratorPipe<T extends TrackVideoRenderer> extends FrameVideoRenderer {
 

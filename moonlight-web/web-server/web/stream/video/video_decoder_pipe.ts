@@ -1,8 +1,8 @@
 import { ByteBuffer } from "../buffer.js";
-import { ExecutionEnvironment } from "../index.js";
 import { Logger } from "../log.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { VIDEO_DECODER_CODECS } from "../video.js";
-import { checkExecutionEnvironment, DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 const START_CODE_SHORT = new Uint8Array([0x00, 0x00, 0x01]); // 3-byte start code
 const START_CODE_LONG = new Uint8Array([0x00, 0x00, 0x00, 0x01]); // 4-byte start code

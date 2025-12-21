@@ -107,35 +107,3 @@ export abstract class PacketVideoRenderer extends VideoRenderer {
 
     abstract submitPacket(buffer: ArrayBuffer): void
 }
-
-export function createVideoWorker(): Worker {
-    return new Worker(new URL("worker.js", import.meta.url), { type: "module" })
-}
-
-function checkWorkerSupport(className: string): Promise<boolean> {
-
-    return new Promise((resolve, reject) => {
-        const worker = createVideoWorker()
-
-        worker.onerror = reject
-        worker.onmessageerror = reject
-
-        worker.onmessage = (message) => {
-            const data = message.data as ToMainMessage
-
-            resolve(data.checkSupport.supported)
-        }
-
-        const request: ToWorkerMessage = {
-            checkSupport: { className }
-        }
-        worker.postMessage(request)
-    });
-}
-
-export async function checkExecutionEnvironment(className: string): Promise<ExecutionEnvironment> {
-    return {
-        main: className in window,
-        worker: await checkWorkerSupport(className),
-    }
-}

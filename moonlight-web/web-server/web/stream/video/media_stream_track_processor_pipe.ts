@@ -1,4 +1,5 @@
-import { checkExecutionEnvironment, FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
+import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 function wait(time: number): Promise<void> {
     return new Promise((resolve, _reject) => {
