@@ -12,6 +12,7 @@ import { App, DetailedUser } from "./api_bindings.js";
 import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
 import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
 import { buildUrl } from "./config_.js";
+import { setStyle as setPageStyle } from "./styles/styles.js";
 
 async function startApp() {
     setTouchContextMenuEnabled(true)
@@ -219,7 +220,10 @@ class MainApp implements Component {
     private onSettingsChange() {
         const newSettings = this.settings.getStreamSettings()
 
+        // store settings in localStorage
         setLocalStreamSettings(newSettings)
+        // apply style
+        setPageStyle(newSettings.pageStyle)
     }
 
     private setCurrentDisplay(display: "hosts",
