@@ -2,13 +2,13 @@ import "./polyfill/index.js"
 import { Api, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { getStreamerSize, InfoEvent, Stream } from "./stream/index.js"
+import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { emptyVideoFormats, getStandardVideoFormats, getSupportedVideoFormats, hasAnyCodec } from "./stream/video.js";
+import { emptyVideoFormats, getSupportedVideoFormats, hasAnyCodec } from "./stream/video.js";
 import { StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";

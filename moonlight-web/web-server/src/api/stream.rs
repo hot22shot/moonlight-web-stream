@@ -114,7 +114,7 @@ pub async fn start_host(
                 return;
             }
             Err(err) => {
-                warn!("failed to start stream for host {host_id:?} (at host): {err:?}");
+                warn!("failed to start stream for host {host_id:?} (at host): {err}");
 
                 let _ =
                     send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
@@ -126,7 +126,7 @@ pub async fn start_host(
         let apps = match host.list_apps(&mut user).await {
             Ok(apps) => apps,
             Err(err) => {
-                warn!("failed to start stream for host {host_id:?} (at list_apps): {err:?}");
+                warn!("failed to start stream for host {host_id:?} (at list_apps): {err}");
 
                 let _ =
                     send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
@@ -146,7 +146,7 @@ pub async fn start_host(
         let (address, http_port) = match host.address_port(&mut user).await {
             Ok(address_port) => address_port,
             Err(err) => {
-                warn!("failed to start stream for host {host_id:?} (at get address_port): {err:?}");
+                warn!("failed to start stream for host {host_id:?} (at get address_port): {err}");
 
                 let _ =
                     send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
@@ -158,7 +158,7 @@ pub async fn start_host(
         let pair_info = match host.pair_info(&mut user).await {
             Ok(pair_info) => pair_info,
             Err(err) => {
-                warn!("failed to start stream for host {host_id:?} (at get pair_info): {err:?}");
+                warn!("failed to start stream for host {host_id:?} (at get pair_info): {err}");
 
                 let _ =
                     send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
@@ -204,14 +204,14 @@ pub async fn start_host(
                     let _ = session.close(None).await;
 
                     if let Err(err) = child.kill().await {
-                        warn!("[Stream]: failed to kill child: {err:?}");
+                        warn!("[Stream]: failed to kill child: {err}");
                     }
 
                     return;
                 }
             }
             Err(err) => {
-                error!("[Stream]: failed to spawn streamer process: {err:?}");
+                error!("[Stream]: failed to spawn streamer process: {err}");
 
                 let _ =
                     send_ws_message(&mut session, StreamServerMessage::InternalServerError).await;
@@ -236,8 +236,16 @@ pub async fn start_host(
                     StreamerIpcMessage::WebSocket(message) => {
                         if let Err(Closed) = send_ws_message(&mut session, message).await {
                             warn!(
-                                "[Ipc]: Tried to send a ws message but the socket is already closed"
+                                "[Ipc]: Tried to send a ws message (text) but the socket is already closed"
                             );
+                        }
+                    }
+                    StreamerIpcMessage::WebSocketTransport(data) => {
+                        if let Err(Closed) = session.binary(data).await {
+                            warn!(
+                                "[Ipc]: Tried to send a ws message (binary) but the socket is already closed"
+                            );
+                            break;
                         }
                     }
                     StreamerIpcMessage::Stop => {
@@ -278,13 +286,23 @@ pub async fn start_host(
             .await;
 
         // Redirect ws message into ipc
-        while let Some(Ok(Message::Text(text))) = stream.recv().await {
-            let Ok(message) = serde_json::from_str::<StreamClientMessage>(&text) else {
-                warn!("[Stream]: failed to deserialize from json");
-                return;
-            };
+        while let Some(Ok(message)) = stream.recv().await {
+            match message {
+                Message::Text(text) => {
+                    let Ok(message) = serde_json::from_str::<StreamClientMessage>(&text) else {
+                        warn!("[Stream]: failed to deserialize from json");
+                        return;
+                    };
 
-            ipc_sender.send(ServerIpcMessage::WebSocket(message)).await;
+                    ipc_sender.send(ServerIpcMessage::WebSocket(message)).await;
+                }
+                Message::Binary(binary) => {
+                    ipc_sender
+                        .send(ServerIpcMessage::WebSocketTransport(binary))
+                        .await;
+                }
+                _ => {}
+            }
         }
     });
 

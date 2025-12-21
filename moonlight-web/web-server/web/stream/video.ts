@@ -30,8 +30,9 @@ const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string, fmtpLine: Arra
     { key: "AV1_HIGH10", mimeType: "video/AV1", fmtpLine: ["profile=1"] },
 ]
 
-const VIDEO_DECODER_CODECS: Array<{ key: string } & VideoDecoderConfig> = [
-    { key: "H264_HIGH8_444", codec: "avc1.4d400c", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
+export const VIDEO_DECODER_CODECS: Array<{ key: string } & VideoDecoderConfig> = [
+    { key: "H264", codec: "avc1.42E01E", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware", optimizeForLatency: true },
+    { key: "H264_HIGH8_444", codec: "avc1.4d400c", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware", optimizeForLatency: true },
     // TODO? No major browser currently supports WebRTC h265, but it might support h265 video without webrtc so we don't check that
     // { key: "H265", codec: "hvc1.1.6.L93.B0" },
     // { key: "H265_MAIN10", codec: "hvc1.2.4.L120.90" },
@@ -59,15 +60,6 @@ export function emptyVideoFormats(): VideoCodecSupport {
     }
 }
 
-export function getStandardVideoFormats(): VideoCodecSupport {
-    const codecs = emptyVideoFormats()
-
-    // assumed universal
-    codecs.H264 = true
-
-    return codecs
-}
-
 export function hasAnyCodec(codecs: VideoCodecSupport): boolean {
     for (const key in codecs) {
         if (codecs[key]) {
@@ -79,10 +71,10 @@ export function hasAnyCodec(codecs: VideoCodecSupport): boolean {
 }
 
 export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
-    let support: VideoCodecSupport = getStandardVideoFormats()
+    let support: VideoCodecSupport = emptyVideoFormats()
 
-    let capabilities = RTCRtpReceiver.getCapabilities("video")
-    if ("getCapabilities" in RTCRtpReceiver && typeof RTCRtpReceiver.getCapabilities == "function" && (capabilities = RTCRtpReceiver.getCapabilities("video"))) {
+    let capabilities = null
+    if ("getCapabilities" in RTCRtpReceiver && typeof RTCRtpReceiver.getCapabilities == "function" && (capabilities = RTCRtpReceiver.getCapabilities("video")) && false) {
         for (const capCodec of capabilities.codecs) {
             for (const codec of CAPABILITIES_CODECS) {
                 let compatible = true
@@ -101,12 +93,12 @@ export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
                 }
             }
         }
-    } else if ("VideoDecoder" in window && window.isSecureContext) {
+    } else if ("VideoDecoder" in window) {
         for (const codec of VIDEO_DECODER_CODECS) {
             try {
                 const result = await VideoDecoder.isConfigSupported(codec)
 
-                support[codec.key] = result.supported || support[codec.key]
+                support[codec.key] = result.supported ?? support[codec.key]
             } catch (e) {
                 support[codec.key] = false
             }

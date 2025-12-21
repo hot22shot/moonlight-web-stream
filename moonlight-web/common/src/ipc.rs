@@ -3,7 +3,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use log::{LevelFilter, debug, info, warn};
+use bytes::Bytes;
+use log::{LevelFilter, info, trace, warn};
 use pem::Pem;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{
@@ -42,12 +43,14 @@ pub enum ServerIpcMessage {
         app_id: u32,
     },
     WebSocket(StreamClientMessage),
+    WebSocketTransport(Bytes),
     Stop,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum StreamerIpcMessage {
     WebSocket(StreamServerMessage),
+    WebSocketTransport(Bytes),
     Stop,
 }
 
@@ -155,7 +158,7 @@ async fn ipc_sender<Message>(
             }
         };
 
-        debug!("{log_target}[Ipc] sending {json}");
+        trace!("{log_target}[Ipc] sending {json}");
 
         json.push('\n');
 
@@ -230,7 +233,7 @@ where
             }
         };
 
-        debug!("{}[Ipc] received {line}", self.log_target);
+        trace!("{}[Ipc] received {line}", self.log_target);
 
         match serde_json::from_str::<Message>(&line) {
             Ok(value) => Some(value),

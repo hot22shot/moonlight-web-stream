@@ -33,7 +33,7 @@ where
     pub fn new(buffer: T) -> Self {
         Self {
             position: 0,
-            limit: 0,
+            limit: buffer.as_ref().len(),
             little_endian: false,
             buffer,
         }
@@ -129,6 +129,9 @@ where
         self.limit = self.position;
         self.position = 0;
     }
+    pub fn remaining(&self) -> usize {
+        self.limit - self.position
+    }
 }
 
 #[allow(unused)]
@@ -154,6 +157,15 @@ where
             u16::to_le_bytes(data)
         } else {
             u16::to_be_bytes(data)
+        };
+
+        self.put_u8_array(&bytes)
+    }
+    pub fn put_u32(&mut self, data: u32) -> bool {
+        let bytes: [u8; 4] = if self.little_endian {
+            u32::to_le_bytes(data)
+        } else {
+            u32::to_be_bytes(data)
         };
 
         self.put_u8_array(&bytes)

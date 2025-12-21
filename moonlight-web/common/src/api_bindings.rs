@@ -357,6 +357,13 @@ pub enum StreamSignalingMessage {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub enum TransportType {
+    WebRTC,
+    WebSocket,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamClientMessage {
     Init {
         host_id: u32,
@@ -374,6 +381,7 @@ pub enum StreamClientMessage {
         video_color_range_full: bool,
     },
     WebRtc(StreamSignalingMessage),
+    SetTransport(TransportType),
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
@@ -439,6 +447,8 @@ pub enum StreamServerMessage {
         width: u32,
         height: u32,
         fps: u32,
+        audio_channels: u32,
+        audio_sample_rate: u32,
     },
     ConnectionTerminated {
         error_code: i32,

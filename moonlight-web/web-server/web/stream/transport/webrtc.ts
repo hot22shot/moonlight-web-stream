@@ -320,9 +320,6 @@ export class WebRTCTransport implements Transport {
         return channel
     }
 
-    onconnected: (() => void) | null = null
-    ondisconnected: (() => void) | null = null
-
     onclose: (() => void) | null = null
     async close(): Promise<void> {
         this.peer?.close()
