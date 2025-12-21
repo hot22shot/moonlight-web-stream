@@ -91,3 +91,30 @@ export function extractGamepadState(gamepad: Gamepad, config: ControllerConfig):
         rightStickY
     }
 }
+
+export function emptyGamepadState(): GamepadState {
+    return {
+        buttonFlags: 0,
+        leftTrigger: 0,
+        rightTrigger: 0,
+        leftStickX: 0,
+        leftStickY: 0,
+        rightStickX: 0,
+        rightStickY: 0,
+    }
+}
+
+export function areGamepadStatesEqual(a: GamepadState, b: GamepadState): boolean {
+    return a.buttonFlags == b.buttonFlags
+        && areFloatsEqual(a.leftTrigger, b.leftTrigger)
+        && areFloatsEqual(a.rightTrigger, b.rightTrigger)
+        && areFloatsEqual(a.leftStickX, b.leftStickX)
+        && areFloatsEqual(a.leftStickY, b.leftStickY)
+        && areFloatsEqual(a.rightStickX, b.rightStickX)
+        && areFloatsEqual(a.rightStickY, b.rightStickY)
+}
+
+const FLOAT_COMPARE_MULTIPLIER = 100
+function areFloatsEqual(a: number, b: number): boolean {
+    return Math.round(a * FLOAT_COMPARE_MULTIPLIER) == Math.round(b * FLOAT_COMPARE_MULTIPLIER)
+}
