@@ -4,8 +4,7 @@ export type PageStyle = "standard" | "old"
 
 let currentStyle: null | PageStyle = null
 
-let styleLink = document.createElement("link")
-styleLink.rel = "stylesheet"
+let styleLink = document.getElementById("style") as HTMLLinkElement
 
 export function setStyle(style: PageStyle) {
     if (!currentStyle) {
@@ -14,7 +13,10 @@ export function setStyle(style: PageStyle) {
 
     currentStyle = style
 
-    styleLink.href = `styles/${style}.css`
+    const file = `styles/${style}.css`
+    if (styleLink.href != file) {
+        styleLink.href = file
+    }
 }
 export function getStyle(): PageStyle {
     // Style is set at the bottom of this page so it cannot be null

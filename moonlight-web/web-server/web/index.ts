@@ -12,7 +12,7 @@ import { App, DetailedUser } from "./api_bindings.js";
 import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
 import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
 import { buildUrl } from "./config_.js";
-import { setStyle as setPageStyle } from "./styles/styles.js";
+import { setStyle as setPageStyle } from "./styles/index.js";
 
 async function startApp() {
     setTouchContextMenuEnabled(true)

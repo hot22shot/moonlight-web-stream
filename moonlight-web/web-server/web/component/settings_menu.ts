@@ -1,6 +1,6 @@
 import { ControllerConfig } from "../stream/gamepad.js";
 import { MouseScrollMode } from "../stream/input.js";
-import { PageStyle } from "../styles/styles.js";
+import { PageStyle } from "../styles/index.js";
 import { Component, ComponentEvent } from "./index.js";
 import { InputComponent, SelectComponent } from "./input.js";
 import { SidebarEdge } from "./sidebar/index.js";
@@ -350,7 +350,8 @@ export class StreamSettingsComponent implements Component {
             { value: "standard", name: "Standard" },
             { value: "old", name: "Old" }
         ], {
-            displayName: "Style"
+            displayName: "Style",
+            preSelectedOption: settings?.pageStyle ?? defaultSettings.pageStyle
         })
         this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
         this.pageStyle.mount(this.divElement)
