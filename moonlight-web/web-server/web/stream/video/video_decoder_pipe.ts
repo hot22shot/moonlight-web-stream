@@ -1,8 +1,8 @@
-import { StreamSupportedVideoFormats } from "../../api_bindings.js";
 import { ByteBuffer } from "../buffer.js";
+import { ExecutionEnvironment } from "../index.js";
 import { Logger } from "../log.js";
 import { VIDEO_DECODER_CODECS } from "../video.js";
-import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
+import { checkExecutionEnvironment, DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 const START_CODE_SHORT = new Uint8Array([0x00, 0x00, 0x01]); // 3-byte start code
 const START_CODE_LONG = new Uint8Array([0x00, 0x00, 0x00, 0x01]); // 4-byte start code
@@ -50,11 +50,12 @@ function h264MakeAvcC(sps: Uint8Array, pps: Uint8Array): Uint8Array {
 
 export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRenderer {
 
-    static isBrowserSupported(): boolean {
-        // TODO: check for config
+    static readonly baseType: "videoframe" = "videoframe"
 
-        // We need the WebCodecs API
-        return "VideoDecoder" in window
+    static async getInfo(): Promise<VideoRendererInfo> {
+        return {
+            executionEnvironment: await checkExecutionEnvironment("VideoDecoder")
+        }
     }
 
     private logger: Logger | null

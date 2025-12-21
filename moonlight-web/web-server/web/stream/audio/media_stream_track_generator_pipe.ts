@@ -9,7 +9,7 @@ export class AudioMediaStreamTrackGeneratorPipe<T extends TrackAudioPlayer> exte
     private base: T
 
     private trackGenerator: MediaStreamTrackGenerator
-    private writer: WritableStreamDefaultWriter
+    private writer: WritableStreamDefaultWriter<AudioData>
 
     constructor(base: T) {
         super(`audio_media_stream_track_generator -> ${base.implementationName}`)

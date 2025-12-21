@@ -1,7 +1,21 @@
 import { ByteBuffer } from "../buffer.js";
-import { DataVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
+import { DataVideoRenderer, VideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 export class DepacketizeVideoPipe<T extends DataVideoRenderer> extends VideoRenderer {
+
+    static readonly type: "videocustom" = "videocustom"
+
+    static readonly baseType: "videodata" = "videodata"
+
+    static async getInfo(): Promise<VideoRendererInfo> {
+        // no link
+        return {
+            executionEnvironment: {
+                main: true,
+                worker: true
+            }
+        }
+    }
 
     private base: T
 

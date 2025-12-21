@@ -15,6 +15,11 @@ import { createSupportedVideoFormatsBits, getSelectedVideoFormat, VideoCodecSupp
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
 import { buildVideoPipeline } from "./video/pipeline.js"
 
+export type ExecutionEnvironment = {
+    main: boolean
+    worker: boolean
+}
+
 export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
     { type: "serverMessage", message: string } |
@@ -240,7 +245,7 @@ export class Stream implements Component {
             this.debugLog(`Using audio pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`)
 
             if (!hasVideo || !hasAudio) {
-                this.debugLog(`Either audio or video couldn't be setup: Audio ${hasAudio}, Video ${hasVideo}`, "fatal")
+                // this.debugLog(`Either audio or video couldn't be setup: Audio ${hasAudio}, Video ${hasVideo}`, "fatal")
             }
         }
         // -- WebRTC Config
@@ -353,7 +358,7 @@ export class Stream implements Component {
 
         const video = this.transport.getChannel(TransportChannelId.HOST_VIDEO)
         if (video.type == "videotrack") {
-            const { videoRenderer, error } = buildVideoPipeline("videotrack", this.settings, this.logger)
+            const { videoRenderer, error } = await buildVideoPipeline("videotrack", this.settings, this.logger)
 
             if (error) {
                 return false
@@ -366,7 +371,7 @@ export class Stream implements Component {
 
             this.videoRenderer = videoRenderer
         } else if (video.type == "data") {
-            const { videoRenderer, error } = buildVideoPipeline("data", this.settings, this.logger)
+            const { videoRenderer, error } = await buildVideoPipeline("data", this.settings, this.logger)
 
             if (error) {
                 return false
