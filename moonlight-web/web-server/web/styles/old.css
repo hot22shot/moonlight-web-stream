@@ -441,7 +441,7 @@ input[type=number] {
 
 .logout-button {
     background-color: red;
-    background-image: url("resources/new/logout-svgrepo-com.svg");
+    background-image: url("../resources/new/logout-svgrepo-com.svg");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 60px;
@@ -450,7 +450,7 @@ input[type=number] {
 }
 
 .login-button {
-    background-image: url("resources/new/user.svg");
+    background-image: url("../resources/new/user.svg");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 60px;
@@ -460,7 +460,7 @@ input[type=number] {
 
 .admin-button {
     background-color: red;
-    background-image: url("resources/new/admin-svgrepo-com.svg");
+    background-image: url("../resources/new/admin-svgrepo-com.svg");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 60px;
@@ -478,7 +478,7 @@ input[type=number] {
 
 /** Settings */
 .open-settings {
-    background-image: url("resources/settings.svg");
+    background-image: url("../resources/settings.svg");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 60px;
@@ -492,7 +492,7 @@ input[type=number] {
 
 /** Hosts */
 .host-add {
-    background-image: url("resources/ic_add_to_queue_white_48px.svg");
+    background-image: url("../resources/ic_add_to_queue_white_48px.svg");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 60px;
@@ -665,7 +665,7 @@ canvas.video-stream {
 
 /* Admin */
 .user-button {
-    background-image: url("resources/new/user.svg");
+    background-image: url("../resources/new/user.svg");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 60px;

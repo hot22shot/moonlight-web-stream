@@ -1,8 +1,15 @@
-import { FrameVideoRenderer, getStreamRectCorrected, VideoRendererSetup } from "./index.js"
+import { FrameVideoRenderer, getStreamRectCorrected, VideoRendererInfo, VideoRendererSetup } from "./index.js"
 
 export class CanvasVideoRenderer extends FrameVideoRenderer {
-    static isBrowserSupported(): boolean {
-        return "HTMLCanvasElement" in window && "CanvasRenderingContext2D" in window
+
+    static async getInfo(): Promise<VideoRendererInfo> {
+        // no link
+        return {
+            executionEnvironment: {
+                main: "HTMLCanvasElement" in window && "CanvasRenderingContext2D" in window,
+                worker: false
+            }
+        }
     }
 
     private canvas: HTMLCanvasElement = document.createElement("canvas")

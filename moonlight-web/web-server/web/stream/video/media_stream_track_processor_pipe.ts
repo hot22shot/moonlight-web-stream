@@ -1,4 +1,5 @@
-import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererSetup } from "./index.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
+import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 function wait(time: number): Promise<void> {
     return new Promise((resolve, _reject) => {
@@ -7,8 +8,14 @@ function wait(time: number): Promise<void> {
 }
 
 export class VideoMediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> extends TrackVideoRenderer {
-    static isBrowserSupported(): boolean {
-        return "MediaStreamTrackProcessor" in window
+
+    static readonly baseType: "videoframe" = "videoframe"
+
+    static async getInfo(): Promise<VideoRendererInfo> {
+        // https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackProcessor
+        return {
+            executionEnvironment: await checkExecutionEnvironment("MediaStreamTrackProcessor")
+        }
     }
 
     private running: boolean = false

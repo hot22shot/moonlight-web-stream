@@ -1,8 +1,13 @@
-import { getStreamRectCorrected, TrackVideoRenderer, VideoRendererSetup } from "./index.js";
+import { getStreamRectCorrected, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 export class VideoElementRenderer extends TrackVideoRenderer {
-    static isBrowserSupported(): boolean {
-        return "HTMLVideoElement" in window && "srcObject" in HTMLVideoElement.prototype
+    static async getInfo(): Promise<VideoRendererInfo> {
+        return {
+            executionEnvironment: {
+                main: "HTMLVideoElement" in window && "srcObject" in HTMLVideoElement.prototype,
+                worker: false
+            }
+        }
     }
 
     private videoElement = document.createElement("video")

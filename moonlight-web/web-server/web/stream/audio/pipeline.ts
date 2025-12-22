@@ -2,39 +2,19 @@ import { AudioPlayer, DataAudioPlayer, TrackAudioPlayer } from "./index.js"
 import { AudioDecoderPipe } from "./audio_decoder_pipe.js"
 import { AudioElementPlayer } from "./audio_element.js"
 import { AudioMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
+import { Logger } from "../log.js"
 
-type PipelineResult<T> = { audioPlayer: T, log: string, error: null } | { audioPlayer: null, log: string, error: string }
-
-interface FinalAudioRenderer {
-    new(): AudioPlayer
-
-    readonly type: string
-    isBrowserSupported(): boolean
-}
-const FINAL_AUDIO_RENDERER: Array<FinalAudioRenderer> = [
-    AudioElementPlayer
-]
-
-interface AudioPipe {
-    new(base: any): AudioPlayer
-
-    readonly type: string
-    isBrowserSupported(): boolean
-}
-const PIPE_TYPES: Array<string> = ["data", "audiotrack", "audiosample"]
-const AUDIO_PIPES: Record<string, AudioPipe> = {
-    data_to_audiosample: AudioDecoderPipe,
-    audiotrack_to_audiosample: AudioMediaStreamTrackGeneratorPipe,
-}
+type PipelineResult<T> = { audioPlayer: T, error: false } | { audioPlayer: null, error: true }
 
 export type AudioPipelineOptions = {
 }
 
-export function buildAudioPipeline(type: "audiotrack", settings: AudioPipelineOptions): PipelineResult<TrackAudioPlayer>
-export function buildAudioPipeline(type: "data", settings: AudioPipelineOptions): PipelineResult<DataAudioPlayer>
+export function buildAudioPipeline(type: "audiotrack", settings: AudioPipelineOptions, logger?: Logger): PipelineResult<TrackAudioPlayer>
+export function buildAudioPipeline(type: "data", settings: AudioPipelineOptions, logger?: Logger): PipelineResult<DataAudioPlayer>
 
-export function buildAudioPipeline(type: string, settings: AudioPipelineOptions): PipelineResult<AudioPlayer> {
-    let log = `Building audio pipeline with output "${type}"`
+// TODO: use logger
+export function buildAudioPipeline(type: string, settings: AudioPipelineOptions, logger?: Logger): PipelineResult<AudioPlayer> {
+    logger?.debug(`Building audio pipeline with output "${type}"`)
 
     // TODO dynamically create pipelines based on browser support
 
@@ -42,19 +22,16 @@ export function buildAudioPipeline(type: string, settings: AudioPipelineOptions)
         if (AudioElementPlayer.isBrowserSupported()) {
             const audioPlayer = new AudioElementPlayer()
 
-            return { audioPlayer, log, error: null }
-        } else {
-            return { audioPlayer: null, log, error: "AudioElementPlayer is not supported -> cannot play audio" }
+            return { audioPlayer, error: false }
         }
     } else if (type == "data") {
         if (AudioDecoderPipe.isBrowserSupported() && AudioMediaStreamTrackGeneratorPipe.isBrowserSupported() && AudioElementPlayer.isBrowserSupported()) {
             const audioPlayer = new AudioDecoderPipe(new AudioMediaStreamTrackGeneratorPipe(new AudioElementPlayer()))
 
-            return { audioPlayer, log, error: null }
-        } else {
-            return { audioPlayer: null, log, error: `One of AudioDecoder,AudioMediaStreamTrackGenerator,AudioElementPlayer is not supported -> cannot play audio` }
+            return { audioPlayer, error: false }
         }
     }
 
-    return { audioPlayer: null, log, error: "No supported audio player found!" }
+    logger?.debug("No supported audio player found!")
+    return { audioPlayer: null, error: true }
 }

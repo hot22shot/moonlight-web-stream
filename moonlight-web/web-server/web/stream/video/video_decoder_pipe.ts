@@ -1,7 +1,8 @@
-import { StreamSupportedVideoFormats } from "../../api_bindings.js";
 import { ByteBuffer } from "../buffer.js";
+import { Logger } from "../log.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { VIDEO_DECODER_CODECS } from "../video.js";
-import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
+import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
 const START_CODE_SHORT = new Uint8Array([0x00, 0x00, 0x01]); // 3-byte start code
 const START_CODE_LONG = new Uint8Array([0x00, 0x00, 0x00, 0x01]); // 4-byte start code
@@ -49,20 +50,25 @@ function h264MakeAvcC(sps: Uint8Array, pps: Uint8Array): Uint8Array {
 
 export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRenderer {
 
-    static isBrowserSupported(): boolean {
-        // TODO: check for config
+    static readonly baseType: "videoframe" = "videoframe"
 
-        // We need the WebCodecs API
-        return "VideoDecoder" in window
+    static async getInfo(): Promise<VideoRendererInfo> {
+        return {
+            executionEnvironment: await checkExecutionEnvironment("VideoDecoder")
+        }
     }
+
+    private logger: Logger | null
 
     private base: T
 
     private errored = false
     private decoder: VideoDecoder
 
-    constructor(base: T) {
+    constructor(base: T, logger?: Logger) {
         super(`video_decoder -> ${base.implementationName}`)
+        this.logger = logger ?? null
+
         this.base = base
 
         this.decoder = new VideoDecoder({
@@ -73,7 +79,8 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
 
     private onError(error: any) {
         this.errored = true
-        // TODO: use logger
+
+        this.logger?.debug(`VideoDecoder has an error ${"toString" in error ? error.toString() : `${error}`}`, { type: "fatal" })
         console.error(error)
     }
 
@@ -85,8 +92,8 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
     setup(setup: VideoRendererSetup): void {
         const codec = VIDEO_DECODER_CODECS.find(codec => codec.key == setup.format)
         if (!codec) {
-            // TODO: log?
-            throw "Failed to get codec configuration for WebCodecs VideoDecoder"
+            this.logger?.debug("Failed to get codec configuration for WebCodecs VideoDecoder", { type: "fatal" })
+            return
         }
 
         this.decoderConfig = {
@@ -105,7 +112,7 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
     private currentFrame = new Uint8Array(1000)
     submitDecodeUnit(unit: VideoDecodeUnit): void {
         if (this.errored) {
-            console.debug("Cannot submit decode unit because the stream errored")
+            console.debug("Cannot submit video decode unit because the stream errored")
             return
         }
 
@@ -183,8 +190,10 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
             this.pps = null
 
             if (!this.decoderConfig) {
-                // TODO: what now??
-                throw "Failed to set decoderConfig for VideoDecoder"
+                this.errored = true
+
+                this.logger?.debug("Failed to retrieve decoderConfig which should already exist for VideoDecoder", { type: "fatal" })
+                return
             }
             this.decoderConfig.description = description
 
@@ -195,8 +204,9 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
 
             this.hasDescription = true
         } else if (!this.hasDescription) {
-            // TODO: what now -> maybe request another idr
-            throw "Received key frame without Sps and Pps"
+            // TODO: maybe request another idr
+            this.logger?.debug("Received key frame without Sps and Pps")
+            return
         }
 
         const chunk = new EncodedVideoChunk({

@@ -2,19 +2,23 @@ import { Api } from "../api.js"
 import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
 import { Component } from "../component/index.js"
 import { StreamSettings } from "../component/settings_menu.js"
-import { AudioElementPlayer } from "./audio/audio_element.js"
 import { AudioPlayer, AudioPlayerSetup } from "./audio/index.js"
 import { buildAudioPipeline } from "./audio/pipeline.js"
-import { ByteBuffer } from "./buffer.js"
+import { BIG_BUFFER } from "./buffer.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { Logger } from "./log.js"
 import { StreamStats } from "./stats.js"
-import { Transport } from "./transport/index.js"
+import { Transport, TransportShutdown } from "./transport/index.js"
 import { WebSocketTransport } from "./transport/web_socket.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
 import { createSupportedVideoFormatsBits, getSelectedVideoFormat, VideoCodecSupport } from "./video.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
 import { buildVideoPipeline } from "./video/pipeline.js"
+
+export type ExecutionEnvironment = {
+    main: boolean
+    worker: boolean
+}
 
 export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
@@ -224,22 +228,32 @@ export class Stream implements Component {
 
             this.stats.setVideoInfo(format ?? "Unknown", width, height, fps)
 
-            await Promise.all([
+            const [hasVideo, hasAudio] = await Promise.all([
                 this.setupVideo({
                     format,
                     fps,
                     width,
                     height,
                 }),
-                // TODO: more audio info?
                 this.setupAudio({
                     channels: audioChannels,
                     sampleRate: audioSampleRate
                 })
             ])
 
-            this.debugLog(`Using video pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`)
-            this.debugLog(`Using audio pipeline: ${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`)
+            const videoPipeline = `${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
+            this.debugLog(`Using video pipeline: ${videoPipeline}`)
+
+            const audioPipeline = `${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`
+            this.debugLog(`Using audio pipeline: ${audioPipeline}`)
+
+            if (!hasVideo || !hasAudio) {
+                // TODO: we should allow streaming without audio
+                // this.debugLog(`Either audio or video couldn't be setup: Audio ${hasAudio}, Video ${hasVideo}`, "fatal")
+            }
+
+            this.stats.setVideoPipelineName(videoPipeline)
+            this.stats.setAudioPipelineName(audioPipeline)
         }
         // -- WebRTC Config
         else if ("Setup" in message) {
@@ -268,9 +282,9 @@ export class Stream implements Component {
         this.debugLog(`Using transport: ${this.settings.dataTransport}`)
 
         if (this.settings.dataTransport == "auto") {
-            // TODO: wait until transport failed(no connect) or was successful and return out of this fn
             await this.tryWebRTCTransport()
 
+            // TODO: use Web Socket Transport after WebRTC fail
             // await this.tryWebSocketTransport()
         } else if (this.settings.dataTransport == "webrtc") {
             await this.tryWebRTCTransport()
@@ -278,7 +292,7 @@ export class Stream implements Component {
             await this.tryWebSocketTransport()
         }
 
-        // TODO: handle failure
+        this.debugLog("Tried all configured transport options but no connection was possible", "fatal")
     }
 
     private transport: Transport | null = null
@@ -294,7 +308,7 @@ export class Stream implements Component {
         this.stats.setTransport(this.transport)
     }
 
-    private async tryWebRTCTransport() {
+    private async tryWebRTCTransport(): Promise<TransportShutdown> {
         this.debugLog("Trying WebRTC transport")
 
         this.sendWsMessage({
@@ -303,7 +317,7 @@ export class Stream implements Component {
 
         if (!this.iceServers) {
             this.debugLog(`Failed to try WebRTC Transport: no ice servers available`)
-            return
+            return "failednoconnect"
         }
 
         const transport = new WebRTCTransport(this.logger)
@@ -314,7 +328,11 @@ export class Stream implements Component {
         })
         this.setTransport(transport)
 
-        // TODO: wait for closure
+        return new Promise((resolve, reject) => {
+            transport.onclose = (shutdown) => {
+                resolve(shutdown)
+            }
+        })
     }
     private async tryWebSocketTransport() {
         this.debugLog("Trying Web Socket transport")
@@ -323,12 +341,12 @@ export class Stream implements Component {
             SetTransport: "WebSocket"
         })
 
-        const transport = new WebSocketTransport(this.ws, new ByteBuffer(100000), this.logger)
+        const transport = new WebSocketTransport(this.ws, BIG_BUFFER, this.logger)
 
         this.setTransport(transport)
     }
 
-    private async setupVideo(setup: VideoRendererSetup) {
+    private async setupVideo(setup: VideoRendererSetup): Promise<boolean> {
         if (this.videoRenderer) {
             this.debugLog("Found an old video renderer -> cleaning it up")
 
@@ -338,7 +356,7 @@ export class Stream implements Component {
         }
         if (!this.transport) {
             this.debugLog("Failed to setup video without transport")
-            return
+            return false
         }
 
         await this.transport.setupHostVideo({
@@ -347,12 +365,10 @@ export class Stream implements Component {
 
         const video = this.transport.getChannel(TransportChannelId.HOST_VIDEO)
         if (video.type == "videotrack") {
-            const { videoRenderer, log, error } = buildVideoPipeline("videotrack", this.settings)
-            this.debugLog(log)
+            const { videoRenderer, error } = await buildVideoPipeline("videotrack", this.settings, this.logger)
 
-            if (error != null) {
-                this.debugLog(error, "fatal")
-                return
+            if (error) {
+                return false
             }
 
             videoRenderer.mount(this.divElement)
@@ -362,12 +378,10 @@ export class Stream implements Component {
 
             this.videoRenderer = videoRenderer
         } else if (video.type == "data") {
-            const { videoRenderer, log, error } = buildVideoPipeline("data", this.settings)
-            this.debugLog(log)
+            const { videoRenderer, error } = await buildVideoPipeline("data", this.settings, this.logger)
 
-            if (error != null) {
-                this.debugLog(error, "fatal")
-                return
+            if (error) {
+                return false
             }
 
             videoRenderer.mount(this.divElement)
@@ -381,10 +395,12 @@ export class Stream implements Component {
             this.videoRenderer = videoRenderer
         } else {
             this.debugLog(`Failed to create video pipeline with transport channel of type ${video.type} (${this.transport.implementationName})`)
-            return
+            return false
         }
+
+        return true
     }
-    private async setupAudio(setup: AudioPlayerSetup) {
+    private async setupAudio(setup: AudioPlayerSetup): Promise<boolean> {
         if (this.audioPlayer) {
             this.debugLog("Found an old audio player -> cleaning it up")
 
@@ -394,7 +410,7 @@ export class Stream implements Component {
         }
         if (!this.transport) {
             this.debugLog("Failed to setup audio without transport")
-            return
+            return false
         }
 
         this.transport.setupHostAudio({
@@ -403,12 +419,10 @@ export class Stream implements Component {
 
         const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
         if (audio.type == "audiotrack") {
-            const { audioPlayer, log, error } = buildAudioPipeline("audiotrack", this.settings)
-            this.debugLog(log)
+            const { audioPlayer, error } = buildAudioPipeline("audiotrack", this.settings)
 
-            if (error != null) {
-                this.debugLog(error, "fatal")
-                return
+            if (error) {
+                return false
             }
 
             audioPlayer.mount(this.divElement)
@@ -417,13 +431,11 @@ export class Stream implements Component {
             audio.addTrackListener((track) => audioPlayer.setTrack(track))
 
             this.audioPlayer = audioPlayer
-        } if (audio.type == "data") {
-            const { audioPlayer, log, error } = buildAudioPipeline("data", this.settings)
-            this.debugLog(log)
+        } else if (audio.type == "data") {
+            const { audioPlayer, error } = buildAudioPipeline("data", this.settings)
 
-            if (error != null) {
-                this.debugLog(error, "fatal")
-                return
+            if (error) {
+                return false
             }
 
             audioPlayer.mount(this.divElement)
@@ -441,8 +453,11 @@ export class Stream implements Component {
 
             this.audioPlayer = audioPlayer
         } else {
-            throw "TODO"
+            this.debugLog(`Cannot find audio pipeline for transport type "${audio.type}"`)
+            return false
         }
+
+        return true
     }
 
     mount(parent: HTMLElement): void {
@@ -492,8 +507,6 @@ export class Stream implements Component {
             const json = JSON.parse(message)
 
             this.onMessage(json)
-        } else if (message instanceof ArrayBuffer) {
-            // TODO
         }
     }
 

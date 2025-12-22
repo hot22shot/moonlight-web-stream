@@ -1,5 +1,11 @@
 import { Component } from "../../component/index.js"
 import { StreamSupportedVideoFormats } from "../../api_bindings.js"
+import { ExecutionEnvironment } from "../index.js"
+import { ToMainMessage, ToWorkerMessage } from "../pipeline/worker_types.js"
+
+export type VideoRendererInfo = {
+    executionEnvironment: ExecutionEnvironment
+}
 
 export type VideoRendererSetup = {
     format: keyof typeof StreamSupportedVideoFormats,
@@ -22,7 +28,9 @@ export abstract class VideoRenderer implements Component {
     abstract onUserInteraction(): void
     abstract getStreamRect(): DOMRect
 
+    // Don't work inside a worker
     abstract mount(parent: HTMLElement): void
+    // Don't work inside a worker
     abstract unmount(parent: HTMLElement): void
 }
 

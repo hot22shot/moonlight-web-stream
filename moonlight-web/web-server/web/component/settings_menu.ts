@@ -1,5 +1,6 @@
 import { ControllerConfig } from "../stream/gamepad.js";
 import { MouseScrollMode } from "../stream/input.js";
+import { PageStyle } from "../styles/index.js";
 import { Component, ComponentEvent } from "./index.js";
 import { InputComponent, SelectComponent } from "./input.js";
 import { SidebarEdge } from "./sidebar/index.js";
@@ -24,11 +25,13 @@ export type StreamSettings = {
     controllerConfig: ControllerConfig
     dataTransport: TransportType
     toggleFullscreenWithKeybind: boolean
+    pageStyle: PageStyle
 }
 
 export type StreamCodec = "h264" | "auto" | "h265" | "av1"
 export type TransportType = "auto" | "webrtc" | "websocket"
 
+// TODO: rename this into a more generalized settings, this not only affects streaming
 export function defaultStreamSettings(): StreamSettings {
     return {
         sidebarEdge: "left",
@@ -53,7 +56,8 @@ export function defaultStreamSettings(): StreamSettings {
             sendIntervalOverride: null,
         },
         dataTransport: "auto",
-        toggleFullscreenWithKeybind: false
+        toggleFullscreenWithKeybind: false,
+        pageStyle: "standard"
     }
 }
 
@@ -116,6 +120,9 @@ export class StreamSettingsComponent implements Component {
     private otherHeader: HTMLHeadingElement = document.createElement("h2")
     private dataTransport: SelectComponent
     private toggleFullscreenWithKeybind: InputComponent
+
+    // TODO: make a different category
+    private pageStyle: SelectComponent
 
     constructor(settings?: StreamSettings) {
         const defaultSettings = defaultStreamSettings()
@@ -338,6 +345,16 @@ export class StreamSettingsComponent implements Component {
         this.toggleFullscreenWithKeybind.addChangeListener(this.onSettingsChange.bind(this))
         this.toggleFullscreenWithKeybind.mount(this.divElement)
 
+        this.pageStyle = new SelectComponent("pageStyle", [
+            { value: "standard", name: "Standard" },
+            { value: "old", name: "Old" }
+        ], {
+            displayName: "Style",
+            preSelectedOption: settings?.pageStyle ?? defaultSettings.pageStyle
+        })
+        this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
+        this.pageStyle.mount(this.divElement)
+
         this.onSettingsChange()
     }
 
@@ -393,6 +410,8 @@ export class StreamSettingsComponent implements Component {
         settings.dataTransport = this.dataTransport.getValue() as any
 
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
+
+        settings.pageStyle = this.pageStyle.getValue() as any
 
         return settings
     }

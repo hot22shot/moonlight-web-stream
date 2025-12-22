@@ -16,7 +16,7 @@ use common::{
     config::{PortRange, WebRtcConfig},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use moonlight_common::stream::{
     bindings::{AudioConfig, DecodeResult, OpusMultistreamConfig, VideoDecodeUnit},
     video::VideoSetup,
@@ -59,6 +59,7 @@ use crate::{
         TransportEvents, TransportSender,
         webrtc::{
             audio::{WebRtcAudio, register_audio_codecs},
+            sender::register_header_extensions,
             video::{WebRtcVideo, register_video_codecs},
         },
     },
@@ -132,6 +133,7 @@ pub async fn new(
     register_audio_codecs(&mut api_media).expect("failed to register audio codecs");
     register_video_codecs(&mut api_media, stream_settings.video_supported_formats)
         .expect("failed to register video codecs");
+    register_header_extensions(&mut api_media).expect("failed to register header extensions");
 
     // -- Build Api
     let mut api_registry = Registry::new();
@@ -581,7 +583,7 @@ pub struct WebRTCTransportEvents {
 #[async_trait]
 impl TransportEvents for WebRTCTransportEvents {
     async fn poll_event(&mut self) -> Result<TransportEvent, TransportError> {
-        debug!("Polling WebRTCEvents");
+        trace!("Polling WebRTCEvents");
         self.event_receiver
             .recv()
             .await

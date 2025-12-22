@@ -1,6 +1,6 @@
 import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton, TransportChannelId } from "../api_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
-import { ControllerConfig, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
+import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 import { DataTransportChannel, Transport, TransportChannelIdKey, TransportChannelIdValue } from "./transport/index.js"
@@ -637,7 +637,7 @@ export class StreamInput {
         return actuators
     }
 
-    private gamepads: Array<number | null> = []
+    private gamepads: Array<{ gamepadIndex: number, oldState: GamepadState } | null> = []
     private gamepadRumbleInterval: number | null = null
 
     onGamepadConnect(gamepad: Gamepad) {
@@ -646,21 +646,21 @@ export class StreamInput {
             return
         }
 
-        if (this.gamepads.indexOf(gamepad.index) != -1) {
+        if (this.gamepads.find(value => value?.gamepadIndex == gamepad.index)) {
             return
         }
 
         let id = -1
         for (let i = 0; i < this.gamepads.length; i++) {
             if (this.gamepads[i] == null) {
-                this.gamepads[i] = gamepad.index
+                this.gamepads[i] = { gamepadIndex: gamepad.index, oldState: emptyGamepadState() }
                 id = i
                 break
             }
         }
         if (id == -1) {
             id = this.gamepads.length
-            this.gamepads.push(gamepad.index)
+            this.gamepads.push({ gamepadIndex: gamepad.index, oldState: emptyGamepadState() })
         }
 
         // Start Rumble interval
@@ -702,9 +702,9 @@ export class StreamInput {
         }
     }
     onGamepadDisconnect(event: GamepadEvent) {
-        const index = this.gamepads.indexOf(event.gamepad.index)
+        const index = this.gamepads.findIndex(value => value?.gamepadIndex == event.gamepad.index)
         if (index != -1) {
-            const id = this.gamepads[index]
+            const id = this.gamepads[index]?.gamepadIndex
             if (id != null) {
                 this.sendControllerRemove(id)
             }
@@ -724,11 +724,11 @@ export class StreamInput {
         }
 
         for (let gamepadId = 0; gamepadId < this.gamepads.length; gamepadId++) {
-            const gamepadIndex = this.gamepads[gamepadId]
-            if (gamepadIndex == null) {
+            const oldGamepadState = this.gamepads[gamepadId]
+            if (oldGamepadState == null) {
                 return
             }
-            const gamepad = navigator.getGamepads()[gamepadIndex]
+            const gamepad = navigator.getGamepads()[oldGamepadState.gamepadIndex]
             if (!gamepad) {
                 continue
             }
@@ -738,8 +738,10 @@ export class StreamInput {
             }
 
             const state = extractGamepadState(gamepad, this.config.controllerConfig)
+            if (state == oldGamepadState.oldState) {
+                continue
+            }
 
-            // TODO: only send state on update
             this.sendController(gamepadId, state)
         }
     }
@@ -759,7 +761,7 @@ export class StreamInput {
             const lowFrequencyMotor = this.buffer.getU16() / U16_MAX
             const highFrequencyMotor = this.buffer.getU16() / U16_MAX
 
-            const gamepadIndex = this.gamepads[id]
+            const gamepadIndex = this.gamepads[id]?.gamepadIndex
             if (gamepadIndex == null) {
                 return
             }
@@ -771,7 +773,7 @@ export class StreamInput {
             const leftTrigger = this.buffer.getU16() / U16_MAX
             const rightTrigger = this.buffer.getU16() / U16_MAX
 
-            const gamepadIndex = this.gamepads[id]
+            const gamepadIndex = this.gamepads[id]?.gamepadIndex
             if (gamepadIndex == null) {
                 return
             }
@@ -797,7 +799,7 @@ export class StreamInput {
 
     private onGamepadRumbleInterval() {
         for (let id = 0; id < this.gamepads.length; id++) {
-            const gamepadIndex = this.gamepads[id]
+            const gamepadIndex = this.gamepads[id]?.gamepadIndex
             if (gamepadIndex == null) {
                 continue
             }
