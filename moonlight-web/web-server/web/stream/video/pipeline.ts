@@ -95,7 +95,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
                 && videoInfo.get(VideoDecoderPipe)?.executionEnvironment.main
                 && videoInfo.get(CanvasVideoRenderer)?.executionEnvironment.main
             ) {
-                const videoRenderer = new DepacketizeVideoPipe(new VideoDecoderPipe(new CanvasVideoRenderer()))
+                const videoRenderer = new DepacketizeVideoPipe(new VideoDecoderPipe(new CanvasVideoRenderer(), logger))
 
                 return { videoRenderer, error: false }
             }
@@ -113,7 +113,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
             && videoInfo.get(VideoMediaStreamTrackGeneratorPipe)?.executionEnvironment.main
             && videoInfo.get(VideoElementRenderer)?.executionEnvironment.main
         ) {
-            const videoRenderer = new DepacketizeVideoPipe(new VideoDecoderPipe(new VideoMediaStreamTrackGeneratorPipe(new VideoElementRenderer())))
+            const videoRenderer = new DepacketizeVideoPipe(new VideoDecoderPipe(new VideoMediaStreamTrackGeneratorPipe(new VideoElementRenderer()), logger))
 
             return { videoRenderer, error: false }
         } else if (
@@ -121,7 +121,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
             && videoInfo.get(VideoDecoderPipe)?.executionEnvironment.main
             && videoInfo.get(CanvasVideoRenderer)?.executionEnvironment.main
         ) {
-            const videoRenderer = new DepacketizeVideoPipe(new VideoDecoderPipe(new CanvasVideoRenderer()))
+            const videoRenderer = new DepacketizeVideoPipe(new VideoDecoderPipe(new CanvasVideoRenderer(), logger))
 
             return { videoRenderer, error: false }
         }

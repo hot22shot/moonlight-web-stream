@@ -33,16 +33,14 @@ const CAPABILITIES_CODECS: Array<{ key: string, mimeType: string, fmtpLine: Arra
 export const VIDEO_DECODER_CODECS: Array<{ key: string } & VideoDecoderConfig> = [
     { key: "H264", codec: "avc1.42E01E", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware", optimizeForLatency: true },
     { key: "H264_HIGH8_444", codec: "avc1.4d400c", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware", optimizeForLatency: true },
-    // TODO? No major browser currently supports WebRTC h265, but it might support h265 video without webrtc so we don't check that
-    // { key: "H265", codec: "hvc1.1.6.L93.B0" },
-    // { key: "H265_MAIN10", codec: "hvc1.2.4.L120.90" },
-    // { key: "H265_REXT8_444", codec: "hvc1.6.6.L93.90", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
-    // { key: "H265_REXT10_444", codec: "hvc1.6.10.L120.90", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
-    // TODO: Av1
-    // { key: "AV1_MAIN8", codec: "av01.0.04M.08" },
-    // { key: "AV1_MAIN10", codec: "av01.0.04M.10" },
-    // { key: "AV1_HIGH8_444", codec: "av01.0.08M.08", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } },
-    // { key: "AV1_HIGH10_444", codec: "av01.0.08M.10", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true } }
+    { key: "H265", codec: "hvc1.1.6.L93.B0", hardwareAcceleration: "prefer-hardware" },
+    { key: "H265_MAIN10", codec: "hvc1.2.4.L120.90", hardwareAcceleration: "prefer-hardware" },
+    { key: "H265_REXT8_444", codec: "hvc1.6.6.L93.90", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware" },
+    { key: "H265_REXT10_444", codec: "hvc1.6.10.L120.90", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware" },
+    { key: "AV1_MAIN8", codec: "av01.0.04M.08", hardwareAcceleration: "prefer-hardware" },
+    { key: "AV1_MAIN10", codec: "av01.0.04M.10", hardwareAcceleration: "prefer-hardware" },
+    { key: "AV1_HIGH8_444", codec: "av01.0.08M.08", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware" },
+    { key: "AV1_HIGH10_444", codec: "av01.0.08M.10", colorSpace: { primaries: "bt709", matrix: "bt709", transfer: "bt709", fullRange: true }, hardwareAcceleration: "prefer-hardware" }
 ]
 
 export function emptyVideoFormats(): VideoCodecSupport {
@@ -71,6 +69,8 @@ export function hasAnyCodec(codecs: VideoCodecSupport): boolean {
 }
 
 export async function getSupportedVideoFormats(): Promise<VideoCodecSupport> {
+    // TODO: this function is kinda misleading for the server, there are multiple transports which support different codecs -> seperate the codecs into the supported codecs per transport
+
     let support: VideoCodecSupport = emptyVideoFormats()
 
     let capabilities = null

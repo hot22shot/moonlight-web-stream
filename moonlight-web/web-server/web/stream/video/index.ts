@@ -91,6 +91,9 @@ export type VideoDecodeUnit = {
       - H264:
         - keyframe: Must contain sps,pps,idr(one or multiple)
         - delta: Must contain the whole frame(one or multiple CodecSliceNonIdr's)
+      - H265:
+        - keyframe: Must contain sps,pps,idr(one or multiple)
+        - delta: Must contain the whole frame(one or multiple CodecSliceNonIdr's)
     */
     data: ArrayBuffer
 }
