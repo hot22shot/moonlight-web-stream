@@ -20,7 +20,6 @@ use webrtc::{
         extension::{
             HeaderExtension, abs_send_time_extension::AbsSendTimeExtension,
             playout_delay_extension::PlayoutDelayExtension,
-            transport_cc_extension::TransportCcExtension,
         },
     },
     rtp_transceiver::rtp_codec::{RTCRtpHeaderExtensionCapability, RTPCodecType},
@@ -100,7 +99,6 @@ where
         }
     }
 
-    // TODO: make the blocking calls use runtime.block_on
     pub async fn create_track(
         &mut self,
         track: Track,
@@ -285,7 +283,7 @@ impl TrackLike for SequencedTrackLocalStaticRTP {
             return Ok(());
         }
         if any_paused {
-            // TODO: maybe warn?
+            warn!("WebRTC: not all paused but any paused");
         }
 
         let mut sequence_number = self.sequence_number.lock().await;
