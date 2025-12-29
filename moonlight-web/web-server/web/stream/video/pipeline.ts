@@ -8,7 +8,7 @@ import { Logger } from "../log.js"
 import { VideoTrackGeneratorPipe } from "./video_track_generator.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { andVideoCodecs, hasAnyCodec, VideoCodecSupport } from "../video.js"
-import { buildPipeline, OutputPipeStatic, PipeInfo, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
+import { buildPipeline, gatherPipeInfo, getPipe, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { workerPipe } from "../pipeline/worker_pipe.js"
 import { WorkerDataSendPipe, WorkerVideoFrameReceivePipe } from "../pipeline/worker_io.js"
@@ -19,41 +19,6 @@ const TestWorkerPipeline1 = workerPipe("TestWorkerPipeline1", { pipes: ["WorkerD
 // -- Gather information about the browser
 interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }
 interface VideoPipeStatic extends PipeInfoStatic, PipeStatic { }
-
-const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
-    VideoElementRenderer,
-    CanvasVideoRenderer,
-]
-const VIDEO_PIPES: Array<VideoPipeStatic> = [
-    DepacketizeVideoPipe,
-    VideoMediaStreamTrackGeneratorPipe,
-    VideoMediaStreamTrackProcessorPipe,
-    VideoDecoderPipe,
-    VideoTrackGeneratorPipe,
-    // testing
-    TestWorkerPipeline1,
-    WorkerDataSendPipe,
-    WorkerVideoFrameReceivePipe
-]
-
-async function gatherInfo(): Promise<Map<VideoRendererStatic | VideoPipeStatic, PipeInfo>> {
-    const map = new Map()
-
-    const promises = []
-
-    const all: Array<VideoRendererStatic | VideoPipeStatic> = [...VIDEO_RENDERERS]
-    all.push(...VIDEO_PIPES)
-    for (const pipe of all) {
-        promises.push(pipe.getInfo().then(info => {
-            map.set(pipe, info)
-        }))
-    }
-
-    await Promise.all(promises)
-
-    return map
-}
-const PIPE_INFO: Promise<Map<VideoRendererStatic | VideoPipeStatic, PipeInfo>> = gatherInfo()
 
 // -- Build the pipeline
 export type VideoPipelineOptions = {
@@ -86,11 +51,11 @@ export async function buildVideoPipeline(type: "videotrack", settings: VideoPipe
 export async function buildVideoPipeline(type: "data", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<DataPipe & VideoRenderer>>
 
 export async function buildVideoPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<VideoRenderer>> {
-    const videoInfo = await PIPE_INFO
+    const pipesInfo = await gatherPipeInfo()
     logger?.debug(`Supported Video Renderers / Pipes: {`)
     let isFirst = true
-    for (const [key, value] of videoInfo.entries()) {
-        logger?.debug(`${isFirst ? " " : ","}  "${key.name}": ${JSON.stringify(value)}`)
+    for (const [key, value] of pipesInfo.entries()) {
+        logger?.debug(`${isFirst ? " " : ","}  "${getPipe(key)?.name}": ${JSON.stringify(value)}`)
         isFirst = false
     }
     logger?.debug(`}`)
@@ -120,7 +85,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         // Check if supported and contains codecs
         let supportedCodecs = settings.supportedVideoCodecs
         for (const pipe of pipeline.pipes) {
-            const pipeInfo = videoInfo.get(pipe)
+            const pipeInfo = pipesInfo.get(pipe)
             if (!pipeInfo) {
                 logger?.debug(`Failed to query info for video pipe ${pipe.name}`)
                 continue pipelineLoop
@@ -135,7 +100,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
             }
         }
 
-        const rendererInfo = videoInfo.get(pipeline.renderer)
+        const rendererInfo = await pipeline.renderer.getInfo()
         if (!rendererInfo) {
             logger?.debug(`Failed to query info for video renderer ${pipeline.renderer.name}`)
             continue pipelineLoop

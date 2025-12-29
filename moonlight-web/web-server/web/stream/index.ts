@@ -433,7 +433,7 @@ export class Stream implements Component {
 
         const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
         if (audio.type == "audiotrack") {
-            const { audioPlayer, error } = buildAudioPipeline("audiotrack", this.settings)
+            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", this.settings)
 
             if (error) {
                 return false
@@ -445,7 +445,7 @@ export class Stream implements Component {
 
             this.audioPlayer = audioPlayer
         } else if (audio.type == "data") {
-            const { audioPlayer, error } = buildAudioPipeline("data", this.settings)
+            const { audioPlayer, error } = await buildAudioPipeline("data", this.settings)
 
             if (error) {
                 return false

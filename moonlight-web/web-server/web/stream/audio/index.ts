@@ -6,20 +6,16 @@ export type AudioPlayerSetup = {
     sampleRate: number
 }
 
-export abstract class AudioPlayer implements Component {
+export interface AudioPlayer extends Component, Pipe {
     readonly implementationName: string
 
-    constructor(implementationName: string) {
-        this.implementationName = implementationName
-    }
+    setup(setup: AudioPlayerSetup): void
+    cleanup(): void
 
-    abstract setup(setup: AudioPlayerSetup): void
-    abstract cleanup(): void
+    onUserInteraction(): void
 
-    abstract onUserInteraction(): void
-
-    abstract mount(parent: HTMLElement): void
-    abstract unmount(parent: HTMLElement): void
+    mount(parent: HTMLElement): void
+    unmount(parent: HTMLElement): void
 }
 
 export interface TrackAudioPlayer extends Pipe {

@@ -1,13 +1,40 @@
 import { Logger } from "../log.js";
-import { Pipe } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, SampleAudioPlayer } from "./index.js";
+
+async function detectCodec(): Promise<boolean> {
+    if (!("isConfigSupported" in AudioDecoder)) {
+        // Opus is most likely supported
+        return true
+    }
+
+    const supported = await AudioDecoder.isConfigSupported({
+        codec: "opus",
+        // normal Stereo configuration
+        numberOfChannels: 2,
+        sampleRate: 48000
+    })
+
+    return supported?.supported ?? false
+}
 
 export class AudioDecoderPipe implements DataAudioPlayer {
 
-    static isBrowserSupported(): boolean {
-        // TODO: check for opus
-        return "AudioDecoder" in window
+    static readonly baseType = "audiosample"
+    static readonly type = "audiodata"
+
+    static async getInfo(): Promise<PipeInfo> {
+        const supported = await checkExecutionEnvironment("AudioDecoder")
+
+        return {
+            executionEnvironment: {
+                main: supported.main ? await detectCodec() : false,
+                // TODO: should we detect in a worker?
+                worker: supported.worker
+            },
+        }
     }
 
     readonly implementationName: string

@@ -1,11 +1,17 @@
-import { Pipe } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
-import { AudioPlayerSetup, SampleAudioPlayer, TrackAudioPlayer } from "./index.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
+import { SampleAudioPlayer, TrackAudioPlayer } from "./index.js";
 
 export class AudioMediaStreamTrackGeneratorPipe implements SampleAudioPlayer {
 
-    static isBrowserSupported(): boolean {
-        return "MediaStreamTrackGenerator" in window
+    static readonly baseType = "audiotrack"
+    static readonly type = "audiosample"
+
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            executionEnvironment: await checkExecutionEnvironment("MediaStreamTrackGenerator")
+        }
     }
 
     implementationName: string

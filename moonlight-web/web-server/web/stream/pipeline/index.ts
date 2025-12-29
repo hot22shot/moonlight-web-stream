@@ -1,3 +1,6 @@
+import { AudioDecoderPipe } from "../audio/audio_decoder_pipe.js";
+import { DepacketizeAudioPipe } from "../audio/depacketize_pipe.js";
+import { AudioMediaStreamTrackGeneratorPipe } from "../audio/media_stream_track_generator_pipe.js";
 import { ExecutionEnvironment } from "../index.js";
 import { Logger } from "../log.js";
 import { VideoCodecSupport } from "../video.js";
@@ -7,7 +10,6 @@ import { VideoMediaStreamTrackProcessorPipe } from "../video/media_stream_track_
 import { VideoDecoderPipe } from "../video/video_decoder_pipe.js";
 import { VideoTrackGeneratorPipe } from "../video/video_track_generator.js";
 import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe } from "./worker_io.js";
-import { WorkerPipe } from "./worker_pipe.js";
 
 export interface Pipe {
     readonly implementationName: string
@@ -25,8 +27,6 @@ export interface PipeInfoStatic {
 }
 export interface PipeStatic extends PipeInfoStatic, InputPipeStatic {
     readonly type: string
-
-    getInfo(): Promise<PipeInfo>
 
     new(base: any, logger?: Logger): Pipe
 }
@@ -46,24 +46,6 @@ export type Pipeline = {
 
 export function pipelineToString(pipeline: Pipeline): string {
     return pipeline.pipes.map(pipe => pipeName(pipe)).join(" -> ")
-}
-
-function pipes(): Array<PipeStatic> {
-    return [
-        // Worker
-        WorkerDataSendPipe,
-        WorkerDataReceivePipe,
-        WorkerVideoFrameSendPipe,
-        WorkerVideoFrameReceivePipe,
-        // Video
-        DepacketizeVideoPipe,
-        VideoMediaStreamTrackGeneratorPipe,
-        VideoMediaStreamTrackProcessorPipe,
-        VideoDecoderPipe,
-        VideoTrackGeneratorPipe,
-        // TODO: Audio
-        // DepacketizeAudioPipe,
-    ]
 }
 
 export function pipeName(pipe: string | PipeStatic): string {
@@ -106,4 +88,51 @@ export function buildPipeline(base: OutputPipeStatic, pipeline: Pipeline, logger
     }
 
     return pipe
+}
+
+let PIPE_INFO: Promise<Map<PipeStatic, PipeInfo>> | null
+
+export function gatherPipeInfo(): Promise<Map<PipeStatic, PipeInfo>> {
+    if (PIPE_INFO) {
+        return PIPE_INFO
+    } else {
+        PIPE_INFO = gatherPipeInfoInternal()
+        return PIPE_INFO
+    }
+}
+async function gatherPipeInfoInternal(): Promise<Map<PipeStatic, PipeInfo>> {
+    const map = new Map()
+
+    const promises = []
+
+    const all: Array<PipeStatic> = pipes()
+    for (const pipe of all) {
+        promises.push(pipe.getInfo().then(info => {
+            map.set(pipe, info)
+        }))
+    }
+
+    await Promise.all(promises)
+
+    return map
+}
+
+export function pipes(): Array<PipeStatic> {
+    return [
+        // Worker
+        WorkerDataSendPipe,
+        WorkerDataReceivePipe,
+        WorkerVideoFrameSendPipe,
+        WorkerVideoFrameReceivePipe,
+        // Video
+        DepacketizeVideoPipe,
+        VideoMediaStreamTrackGeneratorPipe,
+        VideoMediaStreamTrackProcessorPipe,
+        VideoDecoderPipe,
+        VideoTrackGeneratorPipe,
+        // Audio
+        DepacketizeAudioPipe,
+        AudioMediaStreamTrackGeneratorPipe,
+        AudioDecoderPipe,
+    ]
 }

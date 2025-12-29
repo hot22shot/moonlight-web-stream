@@ -1,10 +1,18 @@
-import { Pipe } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { AudioPlayerSetup, TrackAudioPlayer } from "./index.js";
 
 export class AudioElementPlayer implements TrackAudioPlayer {
 
-    static isBrowserSupported(): boolean {
-        return "HTMLAudioElement" in window && "srcObject" in HTMLAudioElement.prototype
+    static readonly type = "audiotrack"
+
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            executionEnvironment: {
+                main: "HTMLAudioElement" in window && "srcObject" in HTMLAudioElement.prototype,
+                // Not available in a worker
+                worker: false
+            }
+        }
     }
 
     readonly implementationName: string = "audio_element"

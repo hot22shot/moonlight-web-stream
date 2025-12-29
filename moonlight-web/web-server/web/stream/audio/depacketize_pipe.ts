@@ -1,10 +1,21 @@
-import { Pipe } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough, DataPipe } from "../pipeline/pipes.js";
 import { DataAudioPlayer } from "./index.js";
 
 export class DepacketizeAudioPipe implements DataPipe {
 
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            executionEnvironment: {
+                main: true,
+                worker: true
+            }
+        }
+    }
+
+    static readonly baseType = "data"
     static readonly type = "data"
+
 
     readonly implementationName: string
 
