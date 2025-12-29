@@ -212,6 +212,10 @@ export class Stream implements Component {
                     sampleRate: audioSampleRate
                 })
             ])
+        } else if ("ConnectionTerminated" in message) {
+            const code = message.ConnectionTerminated.error_code
+
+            this.debugLog(`ConnectionTerminated with code ${code}`, { type: "fatalDescription" })
         }
         // -- WebRTC Config
         else if ("Setup" in message) {

@@ -749,11 +749,14 @@ impl StreamConnection {
 
         debug!("[Stream]: Stopping...");
 
-        let stream = {
+        {
             let mut stream = self.stream.write().await;
-            stream.take()
-        };
-        drop(stream);
+            if let Some(stream) = stream.take() {
+                spawn_blocking(move || {
+                    stream.stop();
+                });
+            }
+        }
 
         let mut transport = self.transport_sender.lock().await;
         if let Some(transport) = transport.take() {
