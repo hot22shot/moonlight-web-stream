@@ -31,6 +31,7 @@ export function buildAudioPipeline(type: string, settings: AudioPipelineOptions,
             return { audioPlayer: audioPlayer as any, error: false }
         }
     }
+    // TODO: create a opus decoder using other js sound apis
 
     logger?.debug("No supported audio player found!")
     return { audioPlayer: null, error: true }

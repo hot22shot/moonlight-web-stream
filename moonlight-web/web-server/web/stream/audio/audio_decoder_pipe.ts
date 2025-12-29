@@ -6,6 +6,7 @@ import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, SampleAudioPlayer }
 export class AudioDecoderPipe implements DataAudioPlayer {
 
     static isBrowserSupported(): boolean {
+        // TODO: check for opus
         return "AudioDecoder" in window
     }
 

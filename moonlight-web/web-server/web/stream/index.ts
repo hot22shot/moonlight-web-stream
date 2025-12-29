@@ -123,8 +123,6 @@ export class Stream implements Component {
         this.ws.addEventListener("close", this.onWsClose.bind(this))
         this.ws.addEventListener("message", this.onRawWsMessage.bind(this))
 
-        const fps = this.settings.fps
-
         this.sendWsMessage({
             Init: {
                 host_id: this.hostId,

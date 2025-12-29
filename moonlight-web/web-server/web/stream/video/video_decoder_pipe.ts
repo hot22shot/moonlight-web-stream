@@ -23,13 +23,14 @@ async function detectCodecs(): Promise<VideoCodecSupport> {
     }
 
     return andVideoCodecs(codecs, {
-        // TODO: implement av1 stream translator?
         H264: true,
-        H264_HIGH8_444: true,
+        // TODO: Firefox, Safari say they can play this codec, but they can't
+        H264_HIGH8_444: false,
         H265: true,
         H265_MAIN10: true,
         H265_REXT8_444: true,
         H265_REXT10_444: true,
+        // TODO: implement av1 stream translator?
         AV1_MAIN8: false,
         AV1_MAIN10: false,
         AV1_HIGH8_444: false,
@@ -156,6 +157,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         }
     }
 
+    private bufferedUnits: Array<VideoDecodeUnit> = []
     submitDecodeUnit(unit: VideoDecodeUnit): void {
         if (this.errored) {
             console.debug("Cannot submit video decode unit because the stream errored")
@@ -163,9 +165,17 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         }
 
         if (!this.translator) {
-            this.errored = true
-            this.logger?.debug("Failed to process video chunk because no video stream translator was set!", { "type": "fatal" })
+            this.bufferedUnits.push(unit)
+            console.debug("Cannot submit video decode unit because no video translator is currently set. Buffering frame until one is set!")
             return
+        }
+
+        if (this.bufferedUnits.length > 0) {
+            const bufferedUnits = this.bufferedUnits.splice(0)
+
+            for (const bufferedUnit of bufferedUnits) {
+                this.submitDecodeUnit(bufferedUnit)
+            }
         }
 
         const value = this.translator.submitDecodeUnit(unit)
