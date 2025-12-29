@@ -1,12 +1,21 @@
 import { Logger } from "../log.js";
 import { FrameVideoRenderer, VideoRendererSetup } from "../video/index.js";
-import { Pipe } from "./index.js";
+import { Pipe, PipeInfo } from "./index.js";
 import { addPipePassthrough, DataPipe } from "./pipes.js";
 import { WorkerPipe, WorkerReceiver } from "./worker_pipe.js";
 import { WorkerMessage } from "./worker_types.js";
 
-export class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer {
-    static readonly type = "workerinput"
+class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer {
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            executionEnvironment: {
+                main: true,
+                worker: true,
+            }
+        }
+    }
+
+    static readonly type = "workeroutput"
 
     readonly implementationName: string
 
@@ -42,8 +51,25 @@ export class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoR
     submitFrame(_frame: VideoFrame): void { }
     submitPacket(_buffer: ArrayBuffer): void { }
 }
+export class WorkerVideoFrameReceivePipe extends WorkerReceiverPipe {
+    static readonly baseType = "videoframe"
+}
+export class WorkerDataReceivePipe extends WorkerReceiverPipe {
+    static readonly baseType = "data"
+}
 
-export class WorkerSenderPipe implements DataPipe, FrameVideoRenderer {
+class WorkerSenderPipe implements DataPipe, FrameVideoRenderer {
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            executionEnvironment: {
+                main: true,
+                worker: true
+            }
+        }
+    }
+
+    static readonly baseType = "workerinput"
+
     readonly implementationName: string
 
     private base: WorkerPipe
@@ -59,10 +85,19 @@ export class WorkerSenderPipe implements DataPipe, FrameVideoRenderer {
         return this.base
     }
 
+    // Setup is handled in the WorkerPipe
+
     submitFrame(videoFrame: VideoFrame): void {
-        this.getBase()?.onWorkerMessage({ videoFrame })
+        this.getBase().onWorkerMessage({ videoFrame })
     }
     submitPacket(data: ArrayBuffer): void {
-        this.getBase()?.onWorkerMessage({ data })
+        this.getBase().onWorkerMessage({ data })
     }
+}
+
+export class WorkerVideoFrameSendPipe extends WorkerSenderPipe {
+    static readonly type = "videoframe"
+}
+export class WorkerDataSendPipe extends WorkerSenderPipe {
+    static readonly type = "data"
 }

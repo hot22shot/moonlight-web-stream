@@ -1,17 +1,32 @@
+import { ExecutionEnvironment } from "../index.js";
 import { Logger } from "../log.js";
+import { VideoCodecSupport } from "../video.js";
 import { DepacketizeVideoPipe } from "../video/depackitize_video_pipe.js";
 import { VideoMediaStreamTrackGeneratorPipe } from "../video/media_stream_track_generator_pipe.js";
 import { VideoMediaStreamTrackProcessorPipe } from "../video/media_stream_track_processor_pipe.js";
 import { VideoDecoderPipe } from "../video/video_decoder_pipe.js";
 import { VideoTrackGeneratorPipe } from "../video/video_track_generator.js";
+import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe } from "./worker_io.js";
+import { WorkerPipe } from "./worker_pipe.js";
 
 export interface Pipe {
     readonly implementationName: string
 
     getBase(): Pipe | null
 }
-export interface PipeStatic extends InputPipeStatic {
+
+export type PipeInfo = {
+    executionEnvironment: ExecutionEnvironment
+    supportedVideoCodecs?: VideoCodecSupport
+}
+
+export interface PipeInfoStatic {
+    getInfo(): Promise<PipeInfo>
+}
+export interface PipeStatic extends PipeInfoStatic, InputPipeStatic {
     readonly type: string
+
+    getInfo(): Promise<PipeInfo>
 
     new(base: any, logger?: Logger): Pipe
 }
@@ -35,6 +50,11 @@ export function pipelineToString(pipeline: Pipeline): string {
 
 function pipes(): Array<PipeStatic> {
     return [
+        // Worker
+        WorkerDataSendPipe,
+        WorkerDataReceivePipe,
+        WorkerVideoFrameSendPipe,
+        WorkerVideoFrameReceivePipe,
         // Video
         DepacketizeVideoPipe,
         VideoMediaStreamTrackGeneratorPipe,
@@ -77,7 +97,7 @@ export function buildPipeline(base: OutputPipeStatic, pipeline: Pipeline, logger
         }
 
         if (previousPipeStatic && currentPipe.baseType != previousPipeStatic.type) {
-            logger?.debug(`Failed to create pipeline "${pipelineToString(pipeline)}" because of baseType of "${currentPipe.name}" is "${currentPipe.baseType}", but it's trying to connect with "${previousPipeStatic.type}"`)
+            logger?.debug(`Failed to create pipeline "${pipelineToString(pipeline)}" because baseType of "${currentPipe.name}" is "${currentPipe.baseType}", but it's trying to connect with "${previousPipeStatic.type}"`)
             return null
         }
 

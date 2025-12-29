@@ -1,23 +1,23 @@
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
-import { Pipe } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough, DataPipe } from "../pipeline/pipes.js";
 import { allVideoCodecs } from "../video.js";
-import { DataVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { DataVideoRenderer, VideoRendererSetup } from "./index.js";
 
 export class DepacketizeVideoPipe implements DataPipe {
 
     static readonly baseType = "videodata"
     static readonly type = "data"
 
-    static async getInfo(): Promise<VideoRendererInfo> {
+    static async getInfo(): Promise<PipeInfo> {
         // no link
         return {
             executionEnvironment: {
                 main: true,
                 worker: true
             },
-            supportedCodecs: allVideoCodecs()
+            supportedVideoCodecs: allVideoCodecs()
         }
     }
 
@@ -57,11 +57,12 @@ export class DepacketizeVideoPipe implements DataPipe {
         addPipePassthrough(this)
     }
 
-    async setup(setup: VideoRendererSetup): Promise<void> {
-        if ("setup" in this.base && typeof this.base.setup == "function") {
-            await this.base.setup(setup)
-        }
+    setup(setup: VideoRendererSetup) {
         this.frameDurationMicroseconds = 1000000 / setup.fps
+
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            return this.base.setup(...arguments)
+        }
     }
 
     getBase(): Pipe | null {

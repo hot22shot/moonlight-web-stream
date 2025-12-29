@@ -1,3 +1,4 @@
+import { LogMessageInfo } from "../log.js"
 import { VideoRendererSetup } from "../video/index.js"
 import { Pipeline } from "./index.js"
 
@@ -15,4 +16,5 @@ export type WorkerMessage =
 
 export type ToMainMessage =
     { checkSupport: { supported: boolean } } |
+    { log: string, info: LogMessageInfo } |
     { output: WorkerMessage }

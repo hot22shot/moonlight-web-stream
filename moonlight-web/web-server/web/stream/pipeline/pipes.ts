@@ -13,7 +13,7 @@ export function addPipePassthrough(pipe: Pipe, overwrite?: Array<string>) {
         pipeAny[name] = function () {
             const base = pipe.getBase() as any
             if (base) {
-                base[name].apply(base, arguments)
+                return base[name].apply(base, arguments)
             }
         }
     }

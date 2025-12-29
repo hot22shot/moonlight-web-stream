@@ -1,6 +1,8 @@
 import { ExecutionEnvironment } from "../index.js";
 import { Logger } from "../log.js";
-import { Pipe, Pipeline, pipelineToString, PipeStatic } from "./index.js";
+import { VideoRendererSetup } from "../video/index.js";
+import { Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
+import { addPipePassthrough } from "./pipes.js";
 import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types.js";
 
 export function createPipelineWorker(): Worker | null {
@@ -48,15 +50,17 @@ export async function checkExecutionEnvironment(className: string): Promise<Exec
     }
 }
 
-// Some components might have mounting / unmounting elements to / from the dom
-// -> We also need to pass them through
 export interface WorkerReceiver extends Pipe {
     onWorkerMessage(message: WorkerMessage): void
 }
 
 export class WorkerPipe implements WorkerReceiver {
-    static readonly baseType = "workeroutput"
-    static readonly type = "workerinput"
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            // TODO: check in the actual worker for support
+            executionEnvironment: await checkExecutionEnvironment("Worker")
+        }
+    }
 
     readonly implementationName: string
 
@@ -64,6 +68,7 @@ export class WorkerPipe implements WorkerReceiver {
 
     private worker: Worker
     private base: WorkerReceiver
+    private pipeline: Pipeline
 
     constructor(base: WorkerReceiver, pipeline: Pipeline, logger?: Logger) {
         this.implementationName = `worker_pipe [${pipelineToString(pipeline)}] -> ${base.implementationName}`
@@ -71,6 +76,7 @@ export class WorkerPipe implements WorkerReceiver {
 
         // TODO: check that the pipeline starts with output and ends with input
         this.base = base
+        this.pipeline = pipeline
 
         const worker = createPipelineWorker()
         if (!worker) {
@@ -79,6 +85,8 @@ export class WorkerPipe implements WorkerReceiver {
         this.worker = worker
 
         this.worker.onmessage = this.onReceiveWorkerMessage.bind(this)
+
+        addPipePassthrough(this)
     }
 
     onWorkerMessage(input: WorkerMessage): void {
@@ -92,11 +100,30 @@ export class WorkerPipe implements WorkerReceiver {
 
         if ("output" in data) {
             this.base.onWorkerMessage(data.output)
+        } else if ("log" in data) {
+            this.logger?.debug(data.log, data.info)
         }
     }
 
-    cleanup(): void {
+    setup(setup: VideoRendererSetup) {
+        const message2: ToWorkerMessage = {
+            createPipeline: this.pipeline
+        }
+        this.worker.postMessage(message2)
+
+        this.onWorkerMessage({ videoSetup: setup })
+
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            return this.base.setup(...arguments)
+        }
+    }
+
+    cleanup() {
         this.worker.terminate()
+
+        if ("cleanup" in this.base && typeof this.base.cleanup == "function") {
+            return this.base.cleanup(...arguments)
+        }
     }
 
     getBase(): Pipe | null {
@@ -104,8 +131,12 @@ export class WorkerPipe implements WorkerReceiver {
     }
 }
 
-export function workerPipe(pipeline: Pipeline): PipeStatic {
+export function workerPipe(name: string, pipeline: Pipeline): PipeStatic {
+    // TODO: use name somehow
     class CustomWorkerPipe extends WorkerPipe {
+        static readonly baseType = "workeroutput"
+        static readonly type = "workerinput"
+
         constructor(base: any, logger?: Logger) {
             super(base, pipeline, logger)
         }

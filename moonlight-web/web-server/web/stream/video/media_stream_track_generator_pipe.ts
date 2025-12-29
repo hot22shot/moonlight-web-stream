@@ -1,19 +1,19 @@
-import { Pipe } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { allVideoCodecs } from "../video.js";
-import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo } from "./index.js";
+import { FrameVideoRenderer, TrackVideoRenderer } from "./index.js";
 
 export class VideoMediaStreamTrackGeneratorPipe implements FrameVideoRenderer {
 
     static readonly baseType = "videotrack"
     static readonly type = "videoframe"
 
-    static async getInfo(): Promise<VideoRendererInfo> {
+    static async getInfo(): Promise<PipeInfo> {
         // https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackGenerator
         return {
             executionEnvironment: await checkExecutionEnvironment("MediaStreamTrackGenerator"),
-            supportedCodecs: allVideoCodecs()
+            supportedVideoCodecs: allVideoCodecs()
         }
     }
 

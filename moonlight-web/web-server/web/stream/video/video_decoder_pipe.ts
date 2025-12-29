@@ -1,10 +1,10 @@
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
-import { Pipe } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { andVideoCodecs, emptyVideoCodecs, maybeVideoCodecs, VIDEO_DECODER_CODECS, VideoCodecSupport } from "../video.js";
-import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
 
 async function detectCodecs(): Promise<VideoCodecSupport> {
     if (!("isConfigSupported" in VideoDecoder)) {
@@ -60,13 +60,13 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     static readonly baseType = "videoframe"
     static readonly type = "videodata"
 
-    static async getInfo(): Promise<VideoRendererInfo> {
+    static async getInfo(): Promise<PipeInfo> {
         const supported = await checkExecutionEnvironment("VideoDecoder")
 
         return {
             executionEnvironment: supported,
             // TODO: if it's only supported in a worker check there, maybe directly in checkExecEnv?
-            supportedCodecs: supported.main ? await detectCodecs() : emptyVideoCodecs()
+            supportedVideoCodecs: supported.main ? await detectCodecs() : emptyVideoCodecs()
         }
     }
 
@@ -152,7 +152,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         this.translator = translator
 
         if ("setup" in this.base && typeof this.base.setup == "function") {
-            await this.base.setup(setup)
+            return await this.base.setup(...arguments)
         }
     }
 
@@ -188,6 +188,14 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         }
 
         this.decoder.decode(chunk)
+    }
+
+    cleanup() {
+        this.decoder.close()
+
+        if ("cleanup" in this.base && typeof this.base.cleanup == "function") {
+            return this.base.cleanup(arguments)
+        }
     }
 
     getBase(): Pipe | null {

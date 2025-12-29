@@ -1,6 +1,6 @@
-import { Pipe } from "../pipeline/index.js"
+import { Pipe, PipeInfo } from "../pipeline/index.js"
 import { allVideoCodecs } from "../video.js"
-import { FrameVideoRenderer, getStreamRectCorrected, VideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js"
+import { FrameVideoRenderer, getStreamRectCorrected, VideoRenderer, VideoRendererSetup } from "./index.js"
 
 // TODO: create an offscreen canvas renderer: https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
 
@@ -8,14 +8,14 @@ export class CanvasVideoRenderer implements VideoRenderer, FrameVideoRenderer {
 
     static readonly type = "videoframe"
 
-    static async getInfo(): Promise<VideoRendererInfo> {
+    static async getInfo(): Promise<PipeInfo> {
         // no link
         return {
             executionEnvironment: {
                 main: "HTMLCanvasElement" in window && "CanvasRenderingContext2D" in window,
                 worker: false
             },
-            supportedCodecs: allVideoCodecs()
+            supportedVideoCodecs: allVideoCodecs()
         }
     }
 

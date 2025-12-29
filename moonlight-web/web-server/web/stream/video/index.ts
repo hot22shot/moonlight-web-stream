@@ -1,13 +1,6 @@
 import { Component } from "../../component/index.js"
 import { StreamSupportedVideoCodecs } from "../../api_bindings.js"
-import { ExecutionEnvironment } from "../index.js"
-import { VideoCodecSupport } from "../video.js"
 import { Pipe } from "../pipeline/index.js"
-
-export type VideoRendererInfo = {
-    executionEnvironment: ExecutionEnvironment
-    supportedCodecs: VideoCodecSupport
-}
 
 export type VideoRendererSetup = {
     codec: keyof typeof StreamSupportedVideoCodecs,
