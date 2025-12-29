@@ -1,4 +1,5 @@
 import { Component } from "../../component/index.js"
+import { Pipe } from "../pipeline/index.js"
 
 export type AudioPlayerSetup = {
     channels: number
@@ -21,10 +22,10 @@ export abstract class AudioPlayer implements Component {
     abstract unmount(parent: HTMLElement): void
 }
 
-export abstract class TrackAudioPlayer extends AudioPlayer {
-    static readonly type: "audiotrack"
+export interface TrackAudioPlayer extends Pipe {
+    // static readonly type: "audiotrack"
 
-    abstract setTrack(track: MediaStreamTrack): void
+    setTrack(track: MediaStreamTrack): void
 }
 
 export type AudioDecodeUnit = {
@@ -33,15 +34,15 @@ export type AudioDecodeUnit = {
     data: ArrayBuffer
 }
 
-export abstract class DataAudioPlayer extends AudioPlayer {
-    static readonly type: "audiodata"
+export interface DataAudioPlayer extends Pipe {
+    // static readonly type: "audiodata"
 
     // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L356
-    abstract decodeAndPlay(unit: AudioDecodeUnit): void
+    decodeAndPlay(unit: AudioDecodeUnit): void
 }
 
-export abstract class SampleAudioPlayer extends AudioPlayer {
-    static readonly type: "audiosample"
+export interface SampleAudioPlayer extends Pipe {
+    // static readonly type: "audiosample"
 
-    abstract submitSample(sample: AudioData): void
+    submitSample(sample: AudioData): void
 }

@@ -9,8 +9,8 @@ type PipelineResult<T> = { audioPlayer: T, error: false } | { audioPlayer: null,
 export type AudioPipelineOptions = {
 }
 
-export function buildAudioPipeline(type: "audiotrack", settings: AudioPipelineOptions, logger?: Logger): PipelineResult<TrackAudioPlayer>
-export function buildAudioPipeline(type: "data", settings: AudioPipelineOptions, logger?: Logger): PipelineResult<DataAudioPlayer>
+export function buildAudioPipeline(type: "audiotrack", settings: AudioPipelineOptions, logger?: Logger): PipelineResult<TrackAudioPlayer & AudioPlayer>
+export function buildAudioPipeline(type: "data", settings: AudioPipelineOptions, logger?: Logger): PipelineResult<DataAudioPlayer & AudioPlayer>
 
 // TODO: use logger
 export function buildAudioPipeline(type: string, settings: AudioPipelineOptions, logger?: Logger): PipelineResult<AudioPlayer> {
@@ -28,7 +28,7 @@ export function buildAudioPipeline(type: string, settings: AudioPipelineOptions,
         if (AudioDecoderPipe.isBrowserSupported() && AudioMediaStreamTrackGeneratorPipe.isBrowserSupported() && AudioElementPlayer.isBrowserSupported()) {
             const audioPlayer = new AudioDecoderPipe(new AudioMediaStreamTrackGeneratorPipe(new AudioElementPlayer()))
 
-            return { audioPlayer, error: false }
+            return { audioPlayer: audioPlayer as any, error: false }
         }
     }
 

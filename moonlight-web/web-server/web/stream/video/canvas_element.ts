@@ -1,9 +1,12 @@
+import { Pipe } from "../pipeline/index.js"
 import { allVideoCodecs } from "../video.js"
-import { FrameVideoRenderer, getStreamRectCorrected, VideoRendererInfo, VideoRendererSetup } from "./index.js"
+import { FrameVideoRenderer, getStreamRectCorrected, VideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js"
 
 // TODO: create an offscreen canvas renderer: https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
 
-export class CanvasVideoRenderer extends FrameVideoRenderer {
+export class CanvasVideoRenderer implements VideoRenderer, FrameVideoRenderer {
+
+    static readonly type = "videoframe"
 
     static async getInfo(): Promise<VideoRendererInfo> {
         // no link
@@ -16,6 +19,8 @@ export class CanvasVideoRenderer extends FrameVideoRenderer {
         }
     }
 
+    readonly implementationName: string = "canvas_element"
+
     private canvas: HTMLCanvasElement = document.createElement("canvas")
     private context: CanvasRenderingContext2D | null = null
     private currentFrame: VideoFrame | null = null
@@ -25,8 +30,6 @@ export class CanvasVideoRenderer extends FrameVideoRenderer {
     private videoSize: [number, number] | null = null
 
     constructor() {
-        super("canvas_element")
-
         this.canvas.classList.add("video-stream")
     }
 
@@ -119,5 +122,9 @@ export class CanvasVideoRenderer extends FrameVideoRenderer {
         }
 
         return getStreamRectCorrected(this.canvas.getBoundingClientRect(), this.videoSize)
+    }
+
+    getBase(): Pipe | null {
+        return null
     }
 }

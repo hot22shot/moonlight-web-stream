@@ -1,12 +1,20 @@
-import { AudioPlayer, AudioPlayerSetup, DataAudioPlayer } from "./index.js";
+import { Pipe } from "../pipeline/index.js";
+import { addPipePassthrough, DataPipe } from "../pipeline/pipes.js";
+import { DataAudioPlayer } from "./index.js";
 
-export class DepacketizeAudioPipe<T extends DataAudioPlayer> extends AudioPlayer {
+export class DepacketizeAudioPipe implements DataPipe {
 
-    private base: T
+    static readonly type = "data"
 
-    constructor(base: T) {
-        super(`depacketize_audio -> ${base.implementationName}`)
+    readonly implementationName: string
+
+    private base: DataAudioPlayer
+
+    constructor(base: DataAudioPlayer) {
+        this.implementationName = `depacketize_audio -> ${base.implementationName}`
         this.base = base
+
+        addPipePassthrough(this)
     }
 
     submitPacket(buffer: ArrayBuffer) {
@@ -18,22 +26,7 @@ export class DepacketizeAudioPipe<T extends DataAudioPlayer> extends AudioPlayer
         })
     }
 
-    setup(setup: AudioPlayerSetup): void {
-        this.base.setup(setup)
+    getBase(): Pipe | null {
+        return this.base
     }
-    cleanup(): void {
-        this.base.cleanup()
-    }
-
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
-    }
-
 }

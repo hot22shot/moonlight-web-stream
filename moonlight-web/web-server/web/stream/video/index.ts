@@ -2,6 +2,7 @@ import { Component } from "../../component/index.js"
 import { StreamSupportedVideoCodecs } from "../../api_bindings.js"
 import { ExecutionEnvironment } from "../index.js"
 import { VideoCodecSupport } from "../video.js"
+import { Pipe } from "../pipeline/index.js"
 
 export type VideoRendererInfo = {
     executionEnvironment: ExecutionEnvironment
@@ -15,24 +16,25 @@ export type VideoRendererSetup = {
     fps: number
 }
 
-export abstract class VideoRenderer implements Component {
+// TODO: remove generics from VideoRenderers
+
+// TODO: maybe implement Pipe for some types?
+export interface VideoRenderer extends Component, Pipe {
     readonly implementationName: string
 
-    constructor(implementationName: string) {
-        this.implementationName = implementationName
-    }
-
     /// Returns the success
-    abstract setup(setup: VideoRendererSetup): Promise<void>
-    abstract cleanup(): void
+    setup(setup: VideoRendererSetup): Promise<void>
+    cleanup(): void
 
-    abstract onUserInteraction(): void
-    abstract getStreamRect(): DOMRect
+    /// Don't work inside a worker
+    onUserInteraction(): void
+    /// Don't work inside a worker
+    getStreamRect(): DOMRect
 
-    // Don't work inside a worker
-    abstract mount(parent: HTMLElement): void
-    // Don't work inside a worker
-    abstract unmount(parent: HTMLElement): void
+    /// Don't work inside a worker
+    mount(parent: HTMLElement): void
+    /// Don't work inside a worker
+    unmount(parent: HTMLElement): void
 }
 
 export function getStreamRectCorrected(boundingRect: DOMRect, videoSize: [number, number]): DOMRect {
@@ -70,17 +72,17 @@ export function getStreamRectCorrected(boundingRect: DOMRect, videoSize: [number
     )
 }
 
-export abstract class TrackVideoRenderer extends VideoRenderer {
-    static readonly type: string = "videotrack"
+export interface TrackVideoRenderer extends Pipe {
+    // static readonly type = "videotrack"
 
-    abstract setTrack(track: MediaStreamTrack): void
+    setTrack(track: MediaStreamTrack): void
 }
 
-export abstract class FrameVideoRenderer extends VideoRenderer {
-    static readonly type: string = "videoframe"
+export interface FrameVideoRenderer extends Pipe {
+    // static readonly type = "videoframe"
 
     /// Submits a frame. This renderer now "owns" the frame and needs to clean it up via close.
-    abstract submitFrame(frame: VideoFrame): void
+    submitFrame(frame: VideoFrame): void
 }
 
 export type VideoDecodeUnit = {
@@ -99,15 +101,9 @@ export type VideoDecodeUnit = {
     data: ArrayBuffer
 }
 
-export abstract class DataVideoRenderer extends VideoRenderer {
-    static readonly type: string = "videodata"
+export interface DataVideoRenderer extends Pipe {
+    // static readonly type = "videodata"
 
     /// Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298
-    abstract submitDecodeUnit(unit: VideoDecodeUnit): void
-}
-
-export abstract class PacketVideoRenderer extends VideoRenderer {
-    static readonly type: string = "data"
-
-    abstract submitPacket(buffer: ArrayBuffer): void
+    submitDecodeUnit(unit: VideoDecodeUnit): void
 }

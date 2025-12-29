@@ -307,6 +307,7 @@ impl StreamConnection {
                                 return;
                             };
 
+                            // TODO: after the stream stops we don't stop the streamer -> the frontend won't show connection lost
                             let this = this.clone();
                             spawn(async move {
                                 if let Err(err) = this.start_stream(settings).await {

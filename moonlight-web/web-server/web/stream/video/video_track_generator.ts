@@ -1,10 +1,12 @@
+import { Pipe } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { allVideoCodecs } from "../video.js";
-import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo } from "./index.js";
 
-export class VideoTrackGeneratorPipe<T extends TrackVideoRenderer> extends FrameVideoRenderer {
-
-    static readonly baseType: "videotrack" = "videotrack"
+export class VideoTrackGeneratorPipe implements FrameVideoRenderer {
+    static readonly baseType = "videotrack"
+    static readonly type = "videoframe"
 
     static async getInfo(): Promise<VideoRendererInfo> {
         // https://developer.mozilla.org/en-US/docs/Web/API/VideoTrackGenerator
@@ -14,17 +16,21 @@ export class VideoTrackGeneratorPipe<T extends TrackVideoRenderer> extends Frame
         }
     }
 
-    private base: T
+    readonly implementationName: string
+
+    private base: TrackVideoRenderer
 
     private trackGenerator: VideoTrackGenerator
     private writer: WritableStreamDefaultWriter<VideoFrame>
 
-    constructor(base: T) {
-        super(`video_track_generator -> ${base.implementationName}`)
+    constructor(base: TrackVideoRenderer) {
+        this.implementationName = `video_track_generator -> ${base.implementationName}`
         this.base = base
 
         this.trackGenerator = new VideoTrackGenerator()
         this.writer = this.trackGenerator.writable.getWriter()
+
+        addPipePassthrough(this)
     }
 
     private isFirstSample = true
@@ -37,25 +43,7 @@ export class VideoTrackGeneratorPipe<T extends TrackVideoRenderer> extends Frame
         this.writer.write(frame)
     }
 
-    async setup(setup: VideoRendererSetup): Promise<void> {
-        await this.base.setup(setup)
+    getBase(): Pipe | null {
+        return this.base
     }
-    cleanup(): void {
-        this.base.cleanup()
-    }
-
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-    getStreamRect(): DOMRect {
-        return this.base.getStreamRect()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
-    }
-
 }

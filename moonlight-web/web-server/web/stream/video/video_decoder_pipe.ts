@@ -1,5 +1,7 @@
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
+import { Pipe } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { andVideoCodecs, emptyVideoCodecs, maybeVideoCodecs, VIDEO_DECODER_CODECS, VideoCodecSupport } from "../video.js";
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererInfo, VideoRendererSetup } from "./index.js";
@@ -54,9 +56,9 @@ function startsWith(buffer: Uint8Array, position: number, check: Uint8Array): bo
 }
 
 // TODO: this isn't working in firefox
-export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRenderer {
-
-    static readonly baseType: "videoframe" = "videoframe"
+export class VideoDecoderPipe implements DataVideoRenderer {
+    static readonly baseType = "videoframe"
+    static readonly type = "videodata"
 
     static async getInfo(): Promise<VideoRendererInfo> {
         const supported = await checkExecutionEnvironment("VideoDecoder")
@@ -68,15 +70,17 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         }
     }
 
+    readonly implementationName: string
+
     private logger: Logger | null
 
-    private base: T
+    private base: FrameVideoRenderer
 
     private errored = false
     private decoder: VideoDecoder
 
-    constructor(base: T, logger?: Logger) {
-        super(`video_decoder -> ${base.implementationName}`)
+    constructor(base: FrameVideoRenderer, logger?: Logger) {
+        this.implementationName = `video_decoder -> ${base.implementationName}`
         this.logger = logger ?? null
 
         this.base = base
@@ -85,6 +89,8 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
             error: this.onError.bind(this),
             output: this.onOutput.bind(this)
         })
+
+        addPipePassthrough(this)
     }
 
     private onError(error: any) {
@@ -115,9 +121,8 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         } else if (setup.codec == "H265" || setup.codec == "H265_MAIN10" || setup.codec == "H265_REXT8_444" || setup.codec == "H265_REXT10_444") {
             translator = new H265StreamVideoTranslator(this.logger ?? undefined)
         } else if (setup.codec == "AV1_MAIN8" || setup.codec == "AV1_MAIN10" || setup.codec == "AV1_HIGH8_444" || setup.codec == "AV1_HIGH10_444") {
-            // TODO: av1?
             this.errored = true
-            this.logger?.debug("Av1 stream translator is not implemented currently!")
+            this.logger?.debug("Av1 stream translator is not implemented currently!", { type: "fatalDescription" })
             return
         } else {
             this.errored = true
@@ -146,7 +151,9 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         translator.setBaseConfig(config)
         this.translator = translator
 
-        await this.base.setup(setup)
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            await this.base.setup(setup)
+        }
     }
 
     submitDecodeUnit(unit: VideoDecodeUnit): void {
@@ -183,27 +190,9 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         this.decoder.decode(chunk)
     }
 
-    cleanup(): void {
-        this.decoder.close()
-
-        this.base.cleanup()
+    getBase(): Pipe | null {
+        return this.base
     }
-
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-
-    getStreamRect(): DOMRect {
-        return this.base.getStreamRect()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
-    }
-
 }
 
 abstract class CodecStreamTranslator {

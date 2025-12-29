@@ -1,21 +1,25 @@
 import { Logger } from "../log.js";
+import { Pipe } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, SampleAudioPlayer } from "./index.js";
 
-export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlayer {
+export class AudioDecoderPipe implements DataAudioPlayer {
 
     static isBrowserSupported(): boolean {
         return "AudioDecoder" in window
     }
 
+    readonly implementationName: string
+
     private logger: Logger | null = null
 
-    private base: T
+    private base: SampleAudioPlayer
 
     private errored = false
     private decoder: AudioDecoder
 
-    constructor(base: T, logger?: Logger) {
-        super(`audio_decoder -> ${base.implementationName}`)
+    constructor(base: SampleAudioPlayer, logger?: Logger) {
+        this.implementationName = `audio_decoder -> ${base.implementationName}`
         this.logger = logger ?? null
 
         this.base = base
@@ -24,6 +28,8 @@ export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlay
             error: this.onError.bind(this),
             output: this.onOutput.bind(this)
         })
+
+        addPipePassthrough(this)
     }
 
     private onError(error: any) {
@@ -38,13 +44,16 @@ export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlay
     }
 
     setup(setup: AudioPlayerSetup): void {
-        this.base.setup(setup)
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            this.base.setup(setup)
+        }
 
         this.decoder.configure({
             codec: "opus",
             numberOfChannels: setup.channels,
             sampleRate: setup.sampleRate
         })
+
     }
 
     private isFirstPacket = true
@@ -69,19 +78,15 @@ export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlay
     }
 
     cleanup(): void {
-        this.base.cleanup()
+        if ("cleanup" in this.base && typeof this.base.cleanup == "function") {
+            this.base.cleanup()
+        }
 
         this.decoder.close()
     }
 
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
+    getBase(): Pipe | null {
+        return this.base
     }
 
 }

@@ -280,9 +280,7 @@ impl WebRtcVideo {
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
                     trace!(
                         "H265, Start Code: {:?}, NAL: {:?}, Bytes: {:02X?}",
-                        nal.start_code,
-                        nal.header,
-                        &nal.full[0..20]
+                        nal.start_code, nal.header, &nal.full
                     );
 
                     let data = trim_bytes_to_range(

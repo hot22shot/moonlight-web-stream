@@ -1,29 +1,22 @@
 import { CanvasVideoRenderer } from "./canvas_element.js"
 import { VideoElementRenderer } from "./video_element.js"
 import { VideoMediaStreamTrackProcessorPipe } from "./media_stream_track_processor_pipe.js"
-import { PacketVideoRenderer, TrackVideoRenderer, VideoRenderer, VideoRendererInfo } from "./index.js"
+import { TrackVideoRenderer, VideoRenderer, VideoRendererInfo } from "./index.js"
 import { VideoDecoderPipe } from "./video_decoder_pipe.js"
 import { DepacketizeVideoPipe } from "./depackitize_video_pipe.js"
 import { Logger } from "../log.js"
 import { VideoTrackGeneratorPipe } from "./video_track_generator.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { andVideoCodecs, hasAnyCodec, VideoCodecSupport } from "../video.js"
-
+import { buildPipeline, OutputPipeStatic, PipeStatic } from "../pipeline/index.js"
+import { DataPipe } from "../pipeline/pipes.js"
 
 // -- Gather information about the browser
-interface VideoRendererStatic {
-    readonly type: string
-
+interface VideoRendererStatic extends OutputPipeStatic {
     getInfo(): Promise<VideoRendererInfo>
-    new(logger?: Logger): VideoRenderer
 }
-interface VideoPipeStatic {
-    readonly baseType: string
-
-    readonly type: string
-
+interface VideoPipeStatic extends PipeStatic {
     getInfo(): Promise<VideoRendererInfo>
-    new(base: any, logger?: Logger): VideoRenderer
 }
 
 const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
@@ -68,7 +61,6 @@ type PipelineResult<T> = { videoRenderer: T, supportedCodecs: VideoCodecSupport,
 type Pipeline = { input: string, pipes: Array<VideoPipeStatic>, renderer: VideoRendererStatic }
 
 const FORCE_CANVAS_PIPELINES: Array<Pipeline> = [
-    { input: "videotrack", pipes: [], renderer: VideoElementRenderer },
     { input: "videotrack", pipes: [VideoMediaStreamTrackProcessorPipe], renderer: CanvasVideoRenderer },
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe], renderer: CanvasVideoRenderer },
 ]
@@ -81,8 +73,8 @@ const PIPELINES: Array<Pipeline> = [
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe], renderer: CanvasVideoRenderer },
 ]
 
-export async function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackVideoRenderer>>
-export async function buildVideoPipeline(type: "data", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<PacketVideoRenderer>>
+export async function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackVideoRenderer & VideoRenderer>>
+export async function buildVideoPipeline(type: "data", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<DataPipe & VideoRenderer>>
 
 export async function buildVideoPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<VideoRenderer>> {
     const videoInfo = await VIDEO_INFO
@@ -96,7 +88,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
 
     logger?.debug(`Building video pipeline with output "${type}"`)
 
-    let pipelines = []
+    let pipelines: Array<Pipeline> = []
     // Forced renderer
     if (settings.canvasRenderer) {
         logger?.debug("Forcing canvas renderer")
@@ -146,14 +138,13 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         }
 
         // Build that pipeline
-        let previousPipe = new pipeline.renderer(logger)
-        for (let index = pipeline.pipes.length - 1; index >= 0; index--) {
-            const pipe = pipeline.pipes[index];
-
-            previousPipe = new pipe(previousPipe, logger)
+        const videoRenderer = buildPipeline(pipeline.renderer, { pipes: pipeline.pipes }, logger)
+        if (!videoRenderer) {
+            logger?.debug("Failed to build video pipeline")
+            return { videoRenderer: null, supportedCodecs: null, error: true }
         }
 
-        return { videoRenderer: previousPipe, supportedCodecs, error: false }
+        return { videoRenderer: videoRenderer as VideoRenderer, supportedCodecs, error: false }
     }
 
     logger?.debug("No supported video renderer found!")

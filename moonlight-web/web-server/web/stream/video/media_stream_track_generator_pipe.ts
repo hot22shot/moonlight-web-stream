@@ -1,10 +1,13 @@
+import { Pipe } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { allVideoCodecs } from "../video.js";
-import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo } from "./index.js";
 
-export class VideoMediaStreamTrackGeneratorPipe<T extends TrackVideoRenderer> extends FrameVideoRenderer {
+export class VideoMediaStreamTrackGeneratorPipe implements FrameVideoRenderer {
 
-    static readonly baseType: "videotrack" = "videotrack"
+    static readonly baseType = "videotrack"
+    static readonly type = "videoframe"
 
     static async getInfo(): Promise<VideoRendererInfo> {
         // https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackGenerator
@@ -14,20 +17,25 @@ export class VideoMediaStreamTrackGeneratorPipe<T extends TrackVideoRenderer> ex
         }
     }
 
-    private base: T
+    readonly implementationName: string
+
+    private base: TrackVideoRenderer
 
     private trackGenerator: MediaStreamTrackGenerator
     private writer: WritableStreamDefaultWriter<VideoFrame>
 
-    constructor(base: T) {
-        super(`video_media_stream_track_generator -> ${base.implementationName}`)
+    constructor(base: TrackVideoRenderer) {
+        this.implementationName = `video_media_stream_track_generator -> ${base.implementationName}`
         this.base = base
 
         this.trackGenerator = new MediaStreamTrackGenerator({ kind: "video" })
         this.writer = this.trackGenerator.writable.getWriter()
+
+        addPipePassthrough(this)
     }
 
     private isFirstSample = true
+
     submitFrame(frame: VideoFrame): void {
         if (this.isFirstSample) {
             this.isFirstSample = false
@@ -37,25 +45,7 @@ export class VideoMediaStreamTrackGeneratorPipe<T extends TrackVideoRenderer> ex
         this.writer.write(frame)
     }
 
-    async setup(setup: VideoRendererSetup): Promise<void> {
-        await this.base.setup(setup)
+    getBase(): Pipe | null {
+        return this.base
     }
-    cleanup(): void {
-        this.base.cleanup()
-    }
-
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-    getStreamRect(): DOMRect {
-        return this.base.getStreamRect()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
-    }
-
 }

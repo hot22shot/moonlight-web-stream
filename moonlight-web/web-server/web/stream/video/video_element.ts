@@ -1,3 +1,4 @@
+import { Pipe } from "../pipeline/index.js";
 import { emptyVideoCodecs, maybeVideoCodecs, VIDEO_DECODER_CODECS, VideoCodecSupport } from "../video.js";
 import { getStreamRectCorrected, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
 
@@ -26,7 +27,9 @@ function detectCodecs(): VideoCodecSupport {
     return codecs
 }
 
-export class VideoElementRenderer extends TrackVideoRenderer {
+export class VideoElementRenderer implements TrackVideoRenderer {
+    static readonly type = "videotrack"
+
     static async getInfo(): Promise<VideoRendererInfo> {
         const supported = "HTMLVideoElement" in window && "srcObject" in HTMLVideoElement.prototype
 
@@ -39,6 +42,8 @@ export class VideoElementRenderer extends TrackVideoRenderer {
         }
     }
 
+    readonly implementationName: string = "video_element"
+
     private videoElement = document.createElement("video")
     private oldTrack: MediaStreamTrack | null = null
     private stream = new MediaStream()
@@ -46,8 +51,6 @@ export class VideoElementRenderer extends TrackVideoRenderer {
     private size: [number, number] | null = null
 
     constructor() {
-        super("video_element")
-
         this.videoElement.classList.add("video-stream")
         this.videoElement.preload = "none"
         this.videoElement.controls = false
@@ -111,5 +114,9 @@ export class VideoElementRenderer extends TrackVideoRenderer {
         }
 
         return getStreamRectCorrected(this.videoElement.getBoundingClientRect(), this.size)
+    }
+
+    getBase(): Pipe | null {
+        return null
     }
 }
