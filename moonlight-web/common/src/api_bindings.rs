@@ -368,20 +368,22 @@ pub enum StreamClientMessage {
     Init {
         host_id: u32,
         app_id: u32,
+        video_frame_queue_size: usize,
+        audio_sample_queue_size: usize,
+    },
+    WebRtc(StreamSignalingMessage),
+    SetTransport(TransportType),
+    StartStream {
         bitrate: u32,
         packet_size: u32,
         fps: u32,
         width: u32,
         height: u32,
-        video_frame_queue_size: u32,
         play_audio_local: bool,
-        audio_sample_queue_size: u32,
         video_supported_formats: u32,
         video_colorspace: StreamColorspace,
         video_color_range_full: bool,
     },
-    WebRtc(StreamSignalingMessage),
-    SetTransport(TransportType),
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
@@ -416,6 +418,16 @@ pub struct StreamCapabilities {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum LogMessageType {
+    Fatal,
+    FatalDescription,
+    Recover,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamServerMessage {
     Setup {
         ice_servers: Vec<RtcIceServer>,
@@ -425,20 +437,9 @@ pub enum StreamServerMessage {
     UpdateApp {
         app: App,
     },
-    InternalServerError,
-    HostNotFound,
-    AppNotFound,
-    HostNotPaired,
-    AlreadyStreaming,
-    StageStarting {
-        stage: String,
-    },
-    StageComplete {
-        stage: String,
-    },
-    StageFailed {
-        stage: String,
-        error_code: i32,
+    DebugLog {
+        message: String,
+        ty: Option<LogMessageType>,
     },
     ConnectionComplete {
         capabilities: StreamCapabilities,
@@ -1038,9 +1039,9 @@ impl From<StreamColorspace> for Colorspace {
     }
 }
 
-// Video Supported Formats
+// Video Supported Codec
 ts_consts!(
-    pub StreamSupportedVideoFormats(export_bindings_supported_video_formats: EXPORT_PATH):
+    pub StreamSupportedVideoCodecs(export_bindings_supported_video_codecs: EXPORT_PATH):
 
     pub const H264: u32 = SupportedVideoFormats::H264.bits();
     pub const H264_HIGH8_444: u32 = SupportedVideoFormats::H264_HIGH8_444.bits();

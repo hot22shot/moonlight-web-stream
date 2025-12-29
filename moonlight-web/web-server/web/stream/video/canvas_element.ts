@@ -1,4 +1,7 @@
+import { allVideoCodecs } from "../video.js"
 import { FrameVideoRenderer, getStreamRectCorrected, VideoRendererInfo, VideoRendererSetup } from "./index.js"
+
+// TODO: create an offscreen canvas renderer: https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
 
 export class CanvasVideoRenderer extends FrameVideoRenderer {
 
@@ -8,7 +11,8 @@ export class CanvasVideoRenderer extends FrameVideoRenderer {
             executionEnvironment: {
                 main: "HTMLCanvasElement" in window && "CanvasRenderingContext2D" in window,
                 worker: false
-            }
+            },
+            supportedCodecs: allVideoCodecs()
         }
     }
 
@@ -26,7 +30,7 @@ export class CanvasVideoRenderer extends FrameVideoRenderer {
         this.canvas.classList.add("video-stream")
     }
 
-    setup(setup: VideoRendererSetup): void {
+    async setup(setup: VideoRendererSetup): Promise<void> {
         this.videoSize = [setup.width, setup.height]
 
         if (this.animationFrameRequest == null) {
