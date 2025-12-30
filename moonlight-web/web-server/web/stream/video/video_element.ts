@@ -1,4 +1,4 @@
-import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
 import { emptyVideoCodecs, maybeVideoCodecs, VIDEO_DECODER_CODECS, VideoCodecSupport } from "../video.js";
 import { getStreamRectCorrected, TrackVideoRenderer, VideoRendererSetup } from "./index.js";
 
@@ -31,13 +31,10 @@ export class VideoElementRenderer implements TrackVideoRenderer {
     static readonly type = "videotrack"
 
     static async getInfo(): Promise<PipeInfo> {
-        const supported = "HTMLVideoElement" in window && "srcObject" in HTMLVideoElement.prototype
+        const supported = "HTMLVideoElement" in globalObject() && "srcObject" in HTMLVideoElement.prototype
 
         return {
-            executionEnvironment: {
-                main: supported,
-                worker: false
-            },
+            environmentSupported: supported,
             supportedVideoCodecs: supported ? detectCodecs() : emptyVideoCodecs()
         }
     }

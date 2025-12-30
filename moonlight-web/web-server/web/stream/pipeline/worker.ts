@@ -1,6 +1,7 @@
 import { LogMessageType } from "../../api_bindings.js"
 import { Logger } from "../log.js"
-import { buildPipeline, Pipe } from "./index.js"
+import { andVideoCodecs } from "../video.js"
+import { buildPipeline, getPipe, Pipe, PipeInfo, pipeName } from "./index.js"
 import { WorkerReceiver } from "./worker_pipe.js"
 import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types.js"
 
@@ -40,14 +41,39 @@ class WorkerMessageSender implements WorkerReceiver {
     }
 }
 
-function onMessage(message: ToWorkerMessage) {
+async function onMessage(message: ToWorkerMessage) {
     if ("checkSupport" in message) {
-        const className = message.checkSupport.className
+        const pipeline = message.checkSupport
 
-        const supported = className in self
+        const pipelineInfo: PipeInfo = {
+            environmentSupported: true
+        }
+
+        for (const pipeRaw of pipeline.pipes) {
+            const pipe = getPipe(pipeRaw)
+            if (!pipe) {
+                logger.debug(`Failed to find pipe "${pipeName(pipeRaw)}"`)
+                pipelineInfo.environmentSupported = false
+                break
+            }
+            const pipeInfo = await pipe.getInfo()
+
+            if (!pipeInfo.environmentSupported) {
+                pipelineInfo.environmentSupported = false
+                break
+            }
+
+            if ("supportedVideoCodecs" in pipeInfo && pipeInfo.supportedVideoCodecs) {
+                if (pipelineInfo.supportedVideoCodecs) {
+                    pipelineInfo.supportedVideoCodecs = andVideoCodecs(pipelineInfo.supportedVideoCodecs, pipeInfo.supportedVideoCodecs)
+                } else {
+                    pipelineInfo.supportedVideoCodecs = pipeInfo.supportedVideoCodecs
+                }
+            }
+        }
 
         const response: ToMainMessage = {
-            checkSupport: { supported }
+            checkSupport: pipelineInfo
         }
         postMessage(response)
     } else if ("createPipeline" in message) {
@@ -68,7 +94,7 @@ function onMessage(message: ToWorkerMessage) {
             currentPipeline.onWorkerMessage(message.input)
         } else {
             pipelineErrored = true
-            logger.debug("Failed to submit worker pipe input because pipeline errored!")
+            logger.debug("Failed to submit worker pipe input because the worker wasn't assigned a pipeline!")
         }
     }
 }

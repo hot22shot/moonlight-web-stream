@@ -233,7 +233,7 @@ export class StreamSettingsComponent implements Component {
         this.videoCodec.mount(this.divElement)
 
         // Use Canvas Renderer
-        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", "Use Canvas Renderer (Experimental)", {
+        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", "Use Canvas Renderer", {
             defaultValue: defaultSettings.canvasRenderer.toString(),
             checked: settings === null || settings === void 0 ? void 0 : settings.canvasRenderer
         })

@@ -1,4 +1,4 @@
-import { Pipe, PipeInfo } from "../pipeline/index.js"
+import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js"
 import { allVideoCodecs } from "../video.js"
 import { FrameVideoRenderer, getStreamRectCorrected, VideoRenderer, VideoRendererSetup } from "./index.js"
 
@@ -11,10 +11,7 @@ export class CanvasVideoRenderer implements VideoRenderer, FrameVideoRenderer {
     static async getInfo(): Promise<PipeInfo> {
         // no link
         return {
-            executionEnvironment: {
-                main: "HTMLCanvasElement" in window && "CanvasRenderingContext2D" in window,
-                worker: false
-            },
+            environmentSupported: "HTMLCanvasElement" in globalObject() && "CanvasRenderingContext2D" in globalObject(),
             supportedVideoCodecs: allVideoCodecs()
         }
     }

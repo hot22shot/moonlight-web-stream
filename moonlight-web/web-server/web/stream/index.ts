@@ -412,7 +412,9 @@ export class Stream implements Component {
 
             videoRenderer.mount(this.divElement)
 
-            video.addTrackListener((track) => videoRenderer.setTrack(track))
+            video.addTrackListener((track) => {
+                videoRenderer.setTrack(track)
+            })
 
             this.videoRenderer = videoRenderer
         } else if (video.type == "data") {
