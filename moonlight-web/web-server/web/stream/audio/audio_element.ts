@@ -1,17 +1,28 @@
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { AudioPlayerSetup, TrackAudioPlayer } from "./index.js";
 
-export class AudioElementPlayer extends TrackAudioPlayer {
+export class AudioElementPlayer implements TrackAudioPlayer {
 
-    static isBrowserSupported(): boolean {
-        return "HTMLAudioElement" in window && "srcObject" in HTMLAudioElement.prototype
+    static readonly type = "audiotrack"
+
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            executionEnvironment: {
+                main: "HTMLAudioElement" in window && "srcObject" in HTMLAudioElement.prototype,
+                // Not available in a worker
+                worker: false
+            }
+        }
     }
+
+    readonly implementationName: string = "audio_element"
 
     private audioElement = document.createElement("audio")
     private oldTrack: MediaStreamTrack | null = null
     private stream = new MediaStream()
 
     constructor() {
-        super("audio_element")
+        this.implementationName = "audio_element"
 
         this.audioElement.classList.add("audio-stream")
         this.audioElement.preload = "none"
@@ -51,5 +62,9 @@ export class AudioElementPlayer extends TrackAudioPlayer {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.audioElement)
+    }
+
+    getBase(): Pipe | null {
+        return null
     }
 }

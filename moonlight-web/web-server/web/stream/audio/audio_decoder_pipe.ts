@@ -1,21 +1,53 @@
 import { Logger } from "../log.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, SampleAudioPlayer } from "./index.js";
 
-export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlayer {
-
-    static isBrowserSupported(): boolean {
-        return "AudioDecoder" in window
+async function detectCodec(): Promise<boolean> {
+    if (!("isConfigSupported" in AudioDecoder)) {
+        // Opus is most likely supported
+        return true
     }
+
+    const supported = await AudioDecoder.isConfigSupported({
+        codec: "opus",
+        // normal Stereo configuration
+        numberOfChannels: 2,
+        sampleRate: 48000
+    })
+
+    return supported?.supported ?? false
+}
+
+export class AudioDecoderPipe implements DataAudioPlayer {
+
+    static readonly baseType = "audiosample"
+    static readonly type = "audiodata"
+
+    static async getInfo(): Promise<PipeInfo> {
+        const supported = await checkExecutionEnvironment("AudioDecoder")
+
+        return {
+            executionEnvironment: {
+                main: supported.main ? await detectCodec() : false,
+                // TODO: should we detect in a worker?
+                worker: supported.worker
+            },
+        }
+    }
+
+    readonly implementationName: string
 
     private logger: Logger | null = null
 
-    private base: T
+    private base: SampleAudioPlayer
 
     private errored = false
     private decoder: AudioDecoder
 
-    constructor(base: T, logger?: Logger) {
-        super(`audio_decoder -> ${base.implementationName}`)
+    constructor(base: SampleAudioPlayer, logger?: Logger) {
+        this.implementationName = `audio_decoder -> ${base.implementationName}`
         this.logger = logger ?? null
 
         this.base = base
@@ -24,6 +56,8 @@ export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlay
             error: this.onError.bind(this),
             output: this.onOutput.bind(this)
         })
+
+        addPipePassthrough(this)
     }
 
     private onError(error: any) {
@@ -38,13 +72,16 @@ export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlay
     }
 
     setup(setup: AudioPlayerSetup): void {
-        this.base.setup(setup)
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            this.base.setup(setup)
+        }
 
         this.decoder.configure({
             codec: "opus",
             numberOfChannels: setup.channels,
             sampleRate: setup.sampleRate
         })
+
     }
 
     private isFirstPacket = true
@@ -69,19 +106,15 @@ export class AudioDecoderPipe<T extends SampleAudioPlayer> extends DataAudioPlay
     }
 
     cleanup(): void {
-        this.base.cleanup()
+        if ("cleanup" in this.base && typeof this.base.cleanup == "function") {
+            this.base.cleanup()
+        }
 
         this.decoder.close()
     }
 
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
+    getBase(): Pipe | null {
+        return this.base
     }
 
 }

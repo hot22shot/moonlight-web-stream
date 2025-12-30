@@ -307,6 +307,7 @@ impl StreamConnection {
                                 return;
                             };
 
+                            // TODO: after the stream stops we don't stop the streamer -> the frontend won't show connection lost
                             let this = this.clone();
                             spawn(async move {
                                 if let Err(err) = this.start_stream(settings).await {
@@ -748,11 +749,14 @@ impl StreamConnection {
 
         debug!("[Stream]: Stopping...");
 
-        let stream = {
+        {
             let mut stream = self.stream.write().await;
-            stream.take()
-        };
-        drop(stream);
+            if let Some(stream) = stream.take() {
+                spawn_blocking(move || {
+                    stream.stop();
+                });
+            }
+        }
 
         let mut transport = self.transport_sender.lock().await;
         if let Some(transport) = transport.take() {

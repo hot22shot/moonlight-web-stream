@@ -8,6 +8,7 @@ import { buildAudioPipeline } from "./audio/pipeline.js"
 import { BIG_BUFFER } from "./buffer.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { Logger, LogMessageInfo } from "./log.js"
+import { gatherPipeInfo, getPipe } from "./pipeline/index.js"
 import { StreamStats } from "./stats.js"
 import { Transport, TransportShutdown } from "./transport/index.js"
 import { WebSocketTransport } from "./transport/web_socket.js"
@@ -123,8 +124,6 @@ export class Stream implements Component {
         this.ws.addEventListener("close", this.onWsClose.bind(this))
         this.ws.addEventListener("message", this.onRawWsMessage.bind(this))
 
-        const fps = this.settings.fps
-
         this.sendWsMessage({
             Init: {
                 host_id: this.hostId,
@@ -212,6 +211,10 @@ export class Stream implements Component {
                     sampleRate: audioSampleRate
                 })
             ])
+        } else if ("ConnectionTerminated" in message) {
+            const code = message.ConnectionTerminated.error_code
+
+            this.debugLog(`ConnectionTerminated with code ${code}`, { type: "fatalDescription" })
         }
         // -- WebRTC Config
         else if ("Setup" in message) {
@@ -331,6 +334,17 @@ export class Stream implements Component {
     }
 
     private async createPipelines(): Promise<VideoCodecSupport | null> {
+        // Print supported pipes
+        const pipesInfo = await gatherPipeInfo()
+        this.logger?.debug(`Supported Pipes: {`)
+        let isFirst = true
+        for (const [key, value] of pipesInfo.entries()) {
+            this.logger?.debug(`${isFirst ? "" : ","}"${getPipe(key)?.name}": ${JSON.stringify(value)}`)
+            isFirst = false
+        }
+        this.logger?.debug(`}`)
+
+        // Create pipelines
         const [supportedVideoCodecs] = await Promise.all([this.createVideoRenderer(), this.createAudioPlayer()])
 
         const videoPipeline = `${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
@@ -431,7 +445,7 @@ export class Stream implements Component {
 
         const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
         if (audio.type == "audiotrack") {
-            const { audioPlayer, error } = buildAudioPipeline("audiotrack", this.settings)
+            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", this.settings)
 
             if (error) {
                 return false
@@ -443,7 +457,7 @@ export class Stream implements Component {
 
             this.audioPlayer = audioPlayer
         } else if (audio.type == "data") {
-            const { audioPlayer, error } = buildAudioPipeline("data", this.settings)
+            const { audioPlayer, error } = await buildAudioPipeline("data", this.settings)
 
             if (error) {
                 return false

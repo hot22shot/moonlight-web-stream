@@ -1,32 +1,38 @@
 import { ByteBuffer } from "../buffer.js";
+import { Logger } from "../log.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough, DataPipe } from "../pipeline/pipes.js";
 import { allVideoCodecs } from "../video.js";
-import { DataVideoRenderer, VideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { DataVideoRenderer, VideoRendererSetup } from "./index.js";
 
-export class DepacketizeVideoPipe<T extends DataVideoRenderer> extends VideoRenderer {
+export class DepacketizeVideoPipe implements DataPipe {
 
-    static readonly type: "videocustom" = "videocustom"
+    static readonly baseType = "videodata"
+    static readonly type = "data"
 
-    static readonly baseType: "videodata" = "videodata"
-
-    static async getInfo(): Promise<VideoRendererInfo> {
+    static async getInfo(): Promise<PipeInfo> {
         // no link
         return {
             executionEnvironment: {
                 main: true,
                 worker: true
             },
-            supportedCodecs: allVideoCodecs()
+            supportedVideoCodecs: allVideoCodecs()
         }
     }
 
-    private base: T
+    readonly implementationName: string
+
+    private base: DataVideoRenderer
 
     private frameDurationMicroseconds = 0
     private buffer = new ByteBuffer(5)
 
-    constructor(base: T) {
-        super(`depacketize_video -> ${base.implementationName}`)
+    constructor(base: DataVideoRenderer, logger?: Logger) {
+        this.implementationName = `depacketize_video -> ${base.implementationName}`
         this.base = base
+
+        addPipePassthrough(this)
     }
 
     submitPacket(buffer: ArrayBuffer) {
@@ -47,29 +53,19 @@ export class DepacketizeVideoPipe<T extends DataVideoRenderer> extends VideoRend
             durationMicroseconds: this.frameDurationMicroseconds,
             timestampMicroseconds: timestamp,
         })
+
+        addPipePassthrough(this)
     }
 
-    async setup(setup: VideoRendererSetup): Promise<void> {
-        await this.base.setup(setup)
+    setup(setup: VideoRendererSetup) {
         this.frameDurationMicroseconds = 1000000 / setup.fps
-    }
-    cleanup(): void {
-        this.base.cleanup()
+
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            return this.base.setup(...arguments)
+        }
     }
 
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
+    getBase(): Pipe | null {
+        return this.base
     }
-
-    getStreamRect(): DOMRect {
-        return this.base.getStreamRect()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
-    }
-
 }

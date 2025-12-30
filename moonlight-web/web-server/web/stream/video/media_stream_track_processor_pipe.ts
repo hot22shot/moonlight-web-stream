@@ -1,6 +1,8 @@
+import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { allVideoCodecs } from "../video.js";
-import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererSetup } from "./index.js";
 
 function wait(time: number): Promise<void> {
     return new Promise((resolve, _reject) => {
@@ -8,27 +10,32 @@ function wait(time: number): Promise<void> {
     })
 }
 
-export class VideoMediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> extends TrackVideoRenderer {
+export class VideoMediaStreamTrackProcessorPipe implements TrackVideoRenderer {
 
-    static readonly baseType: "videoframe" = "videoframe"
+    static readonly baseType = "videoframe"
+    static readonly type = "videotrack"
 
-    static async getInfo(): Promise<VideoRendererInfo> {
+    static async getInfo(): Promise<PipeInfo> {
         // https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackProcessor
         return {
             executionEnvironment: await checkExecutionEnvironment("MediaStreamTrackProcessor"),
-            supportedCodecs: allVideoCodecs()
+            supportedVideoCodecs: allVideoCodecs()
         }
     }
+
+    readonly implementationName: string
 
     private running: boolean = false
     private newProcessor: boolean = false
     private trackProcessor: MediaStreamTrackProcessor | null = null
 
-    private base: T
+    private base: FrameVideoRenderer
 
-    constructor(base: T) {
-        super(`media_stream_track_processor -> ${base.implementationName}`)
+    constructor(base: FrameVideoRenderer) {
+        this.implementationName = `media_stream_track_processor -> ${base.implementationName}`
         this.base = base
+
+        addPipePassthrough(this)
     }
 
     setTrack(track: MediaStreamTrack): void {
@@ -67,13 +74,15 @@ export class VideoMediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> ex
         }
     }
 
-    async setup(setup: VideoRendererSetup): Promise<void> {
+    setup(setup: VideoRendererSetup) {
         this.running = true
         this.readTrack()
 
-        await this.base.setup(setup)
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            return this.base.setup(setup)
+        }
     }
-    cleanup(): void {
+    cleanup() {
         this.running = false
         try {
             if (this.trackProcessor) {
@@ -84,25 +93,12 @@ export class VideoMediaStreamTrackProcessorPipe<T extends FrameVideoRenderer> ex
         }
         this.trackProcessor = null
 
-        this.base.cleanup()
+        if ("cleanup" in this.base && typeof this.base.cleanup == "function") {
+            return this.base.cleanup(...arguments)
+        }
     }
 
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
-    }
-
-    getStreamRect(): DOMRect {
-        return this.base.getStreamRect()
-    }
-
-    getBase(): T {
+    getBase(): Pipe | null {
         return this.base
     }
 }

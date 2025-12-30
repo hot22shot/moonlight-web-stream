@@ -1,8 +1,10 @@
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { andVideoCodecs, emptyVideoCodecs, maybeVideoCodecs, VIDEO_DECODER_CODECS, VideoCodecSupport } from "../video.js";
-import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererInfo, VideoRendererSetup } from "./index.js";
+import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
 
 async function detectCodecs(): Promise<VideoCodecSupport> {
     if (!("isConfigSupported" in VideoDecoder)) {
@@ -21,13 +23,14 @@ async function detectCodecs(): Promise<VideoCodecSupport> {
     }
 
     return andVideoCodecs(codecs, {
-        // TODO: implement av1 stream translator?
         H264: true,
-        H264_HIGH8_444: true,
+        // TODO: Firefox, Safari say they can play this codec, but they can't
+        H264_HIGH8_444: false,
         H265: true,
         H265_MAIN10: true,
         H265_REXT8_444: true,
         H265_REXT10_444: true,
+        // TODO: implement av1 stream translator?
         AV1_MAIN8: false,
         AV1_MAIN10: false,
         AV1_HIGH8_444: false,
@@ -53,30 +56,31 @@ function startsWith(buffer: Uint8Array, position: number, check: Uint8Array): bo
     return true
 }
 
-// TODO: this isn't working in firefox
-export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRenderer {
+export class VideoDecoderPipe implements DataVideoRenderer {
+    static readonly baseType = "videoframe"
+    static readonly type = "videodata"
 
-    static readonly baseType: "videoframe" = "videoframe"
-
-    static async getInfo(): Promise<VideoRendererInfo> {
+    static async getInfo(): Promise<PipeInfo> {
         const supported = await checkExecutionEnvironment("VideoDecoder")
 
         return {
             executionEnvironment: supported,
             // TODO: if it's only supported in a worker check there, maybe directly in checkExecEnv?
-            supportedCodecs: supported.main ? await detectCodecs() : emptyVideoCodecs()
+            supportedVideoCodecs: supported.main ? await detectCodecs() : emptyVideoCodecs()
         }
     }
 
+    readonly implementationName: string
+
     private logger: Logger | null
 
-    private base: T
+    private base: FrameVideoRenderer
 
     private errored = false
     private decoder: VideoDecoder
 
-    constructor(base: T, logger?: Logger) {
-        super(`video_decoder -> ${base.implementationName}`)
+    constructor(base: FrameVideoRenderer, logger?: Logger) {
+        this.implementationName = `video_decoder -> ${base.implementationName}`
         this.logger = logger ?? null
 
         this.base = base
@@ -85,6 +89,8 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
             error: this.onError.bind(this),
             output: this.onOutput.bind(this)
         })
+
+        addPipePassthrough(this)
     }
 
     private onError(error: any) {
@@ -115,9 +121,8 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         } else if (setup.codec == "H265" || setup.codec == "H265_MAIN10" || setup.codec == "H265_REXT8_444" || setup.codec == "H265_REXT10_444") {
             translator = new H265StreamVideoTranslator(this.logger ?? undefined)
         } else if (setup.codec == "AV1_MAIN8" || setup.codec == "AV1_MAIN10" || setup.codec == "AV1_HIGH8_444" || setup.codec == "AV1_HIGH10_444") {
-            // TODO: av1?
             this.errored = true
-            this.logger?.debug("Av1 stream translator is not implemented currently!")
+            this.logger?.debug("Av1 stream translator is not implemented currently!", { type: "fatalDescription" })
             return
         } else {
             this.errored = true
@@ -146,9 +151,12 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         translator.setBaseConfig(config)
         this.translator = translator
 
-        await this.base.setup(setup)
+        if ("setup" in this.base && typeof this.base.setup == "function") {
+            return await this.base.setup(...arguments)
+        }
     }
 
+    private bufferedUnits: Array<VideoDecodeUnit> = []
     submitDecodeUnit(unit: VideoDecodeUnit): void {
         if (this.errored) {
             console.debug("Cannot submit video decode unit because the stream errored")
@@ -156,9 +164,17 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         }
 
         if (!this.translator) {
-            this.errored = true
-            this.logger?.debug("Failed to process video chunk because no video stream translator was set!", { "type": "fatal" })
+            this.bufferedUnits.push(unit)
+            console.debug("Cannot submit video decode unit because no video translator is currently set. Buffering frame until one is set!")
             return
+        }
+
+        if (this.bufferedUnits.length > 0) {
+            const bufferedUnits = this.bufferedUnits.splice(0)
+
+            for (const bufferedUnit of bufferedUnits) {
+                this.submitDecodeUnit(bufferedUnit)
+            }
         }
 
         const value = this.translator.submitDecodeUnit(unit)
@@ -183,27 +199,17 @@ export class VideoDecoderPipe<T extends FrameVideoRenderer> extends DataVideoRen
         this.decoder.decode(chunk)
     }
 
-    cleanup(): void {
+    cleanup() {
         this.decoder.close()
 
-        this.base.cleanup()
+        if ("cleanup" in this.base && typeof this.base.cleanup == "function") {
+            return this.base.cleanup(arguments)
+        }
     }
 
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
+    getBase(): Pipe | null {
+        return this.base
     }
-
-    getStreamRect(): DOMRect {
-        return this.base.getStreamRect()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
-    }
-
 }
 
 abstract class CodecStreamTranslator {
@@ -409,8 +415,7 @@ class H264StreamVideoTranslator extends CodecStreamTranslator {
 
             return { reconfigure: true }
         } else if (!this.hasDescription) {
-            // TODO: maybe request another idr
-            this.logger?.debug("Received key frame without Sps and Pps")
+            this.logger?.debug("Received key frame without Sps and Pps", { type: "fatal" })
         }
 
         return { reconfigure: false }

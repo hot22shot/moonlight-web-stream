@@ -1,22 +1,34 @@
-import { AudioPlayerSetup, SampleAudioPlayer, TrackAudioPlayer } from "./index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
+import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
+import { SampleAudioPlayer, TrackAudioPlayer } from "./index.js";
 
-export class AudioMediaStreamTrackGeneratorPipe<T extends TrackAudioPlayer> extends SampleAudioPlayer {
+export class AudioMediaStreamTrackGeneratorPipe implements SampleAudioPlayer {
 
-    static isBrowserSupported(): boolean {
-        return "MediaStreamTrackGenerator" in window
+    static readonly baseType = "audiotrack"
+    static readonly type = "audiosample"
+
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            executionEnvironment: await checkExecutionEnvironment("MediaStreamTrackGenerator")
+        }
     }
 
-    private base: T
+    implementationName: string
+
+    private base: TrackAudioPlayer
 
     private trackGenerator: MediaStreamTrackGenerator
     private writer: WritableStreamDefaultWriter<AudioData>
 
-    constructor(base: T) {
-        super(`audio_media_stream_track_generator -> ${base.implementationName}`)
+    constructor(base: TrackAudioPlayer) {
+        this.implementationName = `audio_media_stream_track_generator -> ${base.implementationName}`
         this.base = base
 
         this.trackGenerator = new MediaStreamTrackGenerator({ kind: "audio" })
         this.writer = this.trackGenerator.writable.getWriter()
+
+        addPipePassthrough(this)
     }
 
     private isFirstSample = true
@@ -29,22 +41,8 @@ export class AudioMediaStreamTrackGeneratorPipe<T extends TrackAudioPlayer> exte
         this.writer.write(sample)
     }
 
-    setup(setup: AudioPlayerSetup): void {
-        this.base.setup(setup)
-    }
-    cleanup(): void {
-        this.base.cleanup()
-    }
-
-    onUserInteraction(): void {
-        this.base.onUserInteraction()
-    }
-
-    mount(parent: HTMLElement): void {
-        this.base.mount(parent)
-    }
-    unmount(parent: HTMLElement): void {
-        this.base.unmount(parent)
+    getBase(): Pipe | null {
+        return this.base
     }
 
 }
